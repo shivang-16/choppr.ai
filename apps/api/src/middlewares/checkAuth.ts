@@ -1,0 +1,503 @@
+
+
+import { NextFunction, Request, Response } from "express";
+import { getAuth, clerkClient } from "@clerk/express";
+import User from "../model/user.model.js";
+import { createUser, CreateUserData } from "../queries/user.queries.js";
+import mongoose from "mongoose";
+import { logger } from "../utils/logger.js";
+import { upsertMailerLiteSubscriber } from "../services/mail/mailerlite/upsert_subscriber.js";
+import jwt from "jsonwebtoken";
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: any;
+      isServerRequest?: boolean;
+      org?: { id: string; role?: string; slug?: string };
+      team?: { id: string; role?: string };
+      sub?: {
+        planId: string;
+        planName: "free" | "lite" | "advance" | "custom";
+        status: "active" | "inactive" | "cancelled" | "free";
+        features: {
+          maxTeams: number;
+          maxTeamMembers: number;
+          maxPrAnalysisPerDay: number;
+          maxFullRepoAnalysisPerDay: number;
+          prioritySupport: boolean;
+          organizationSupport: boolean;
+        };
+        startDate?: Date;
+        endDate?: Date;
+      };
+    }
+  }
+}
+
+/**
+ * Helper function to retry Clerk API calls with exponential backoff
+ */
+async function retryClerkApiCall<T>(
+  apiCall: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 1000
+): Promise<T> {
+  let lastError: any;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await apiCall();
+    } catch (error: any) {
+      lastError = error;
+
+      // Check if it's a rate limit error (429)
+      if (
+        error?.status === 429 ||
+        error?.errors?.[0]?.code === "rate_limit_exceeded"
+      ) {
+        const delay = initialDelay * Math.pow(2, attempt);
+        logger.warn(
+          `Clerk API rate limit hit, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`
+        );
+
+        if (attempt < maxRetries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+
+      // If it's not a rate limit error or we've exhausted retries, throw
+      throw error;
+    }
+  }
+
+  throw lastError;
+}
+
+/**
+ * Base authentication middleware that handles user authentication via Clerk
+ * and ensures user exists in database. Creates new user if not found.
+ * Optimized to minimize Clerk API calls and handle rate limiting.
+ */
+export const baseAuth = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  logger.info("baseAuth middleware execution started");
+  
+  // 1. Try Clerk Authentication
+  try {
+    const { userId } = getAuth(req);
+    logger.debug("Auth context extracted", { userId });
+
+    if (userId) {
+      // Check database first to avoid unnecessary Clerk API calls
+      let user = await User.findById(userId);
+
+      if (!user) {
+        logger.warn(
+          `User not found in DB for clerkId: ${userId}. Creating new user.`
+        );
+
+        // Only call Clerk API when we need to create a new user
+        let clerkUser;
+        try {
+          clerkUser = await retryClerkApiCall(() =>
+            clerkClient.users.getUser(userId)
+          );
+        } catch (clerkError: any) {
+          logger.error(
+            `Failed to fetch user from Clerk after retries: ${clerkError}`
+          );
+
+          // Check if it's a rate limit error
+          if (
+            clerkError?.status === 429 ||
+            clerkError?.errors?.[0]?.code === "rate_limit_exceeded"
+          ) {
+            return res.status(429).json({
+              message: "Too many requests. Please try again in a moment.",
+              error: "Rate limit exceeded",
+            });
+          }
+
+          throw clerkError; // Throw to trigger fallback or error
+        }
+
+        // Fetch the free subscription plan
+        // const freePlan = await SubscriptionPlan.findOne({
+        //   name: "free",
+        //   isActive: true,
+        // });
+        // if (!freePlan) {
+        //   logger.error("Free subscription plan not found in database");
+        //   return res.status(500).json({
+        //     message: "System configuration error: Free plan not available",
+        //   });
+        // }
+
+        // Detect SSO provider from Clerk external accounts
+        const primaryAccount = clerkUser.externalAccounts?.[0];
+        const ssoProvider: 'google' | 'email' =
+          primaryAccount?.provider === 'oauth_google' || primaryAccount?.provider === 'google'
+            ? 'google'
+            : 'email';
+
+        const userData: CreateUserData = {
+          _id: clerkUser.id,
+          email: clerkUser.primaryEmailAddress?.emailAddress ?? clerkUser.id,
+          firstName:
+            clerkUser.firstName ||
+            clerkUser.username ||
+            clerkUser.primaryEmailAddress?.emailAddress.split("@")[0] ||
+            "User",
+          lastName: clerkUser.lastName || "",
+          username:
+            clerkUser.username ||
+            clerkUser.externalAccounts?.[0]?.username ||
+            clerkUser.id.split("_")[1] ||
+            clerkUser.id,
+          avatarUrl: clerkUser.imageUrl,
+          ssoProvider: ssoProvider,
+          subscriptionPlanId: 'null' as any, // Will be set to free plan in subscriptionAuth if not provided
+          subscriptionStatus: "free" as const,
+          subscriptionStartDate: new Date(),
+          // subscriptionEndDate is not set for free plan (unlimited)
+        };
+
+        user = await createUser(userData);
+        logger.info(
+          `New user created with username: ${user.username} and free subscription plan`
+        );
+    
+
+        // Upsert user to MailerLite
+        if (user.email) {
+          upsertMailerLiteSubscriber(
+            user.email,
+            user.firstName || "",
+            user.lastName || ""
+          ).catch(() => {
+            logger.warn("Failed to upsert user to MailerLite");
+          });
+        }
+      } else {
+        logger.info(`User found in DB: ${user.username}`);
+      }
+
+      req.user = user; // attach full user object for downstream handlers
+
+
+      logger.info(`User authenticated successfully via Clerk: ${user.email}`);
+      return next();
+    }
+  } catch (err) {
+    logger.warn(`Clerk auth failed or skipped, trying extension auth. Error: ${err}`);
+  }
+
+  logger.error("Authentication failed: No valid credentials found");
+  res.status(401).json({ message: "Unauthorized" });
+};
+
+/**
+ * Subscription authentication middleware that handles subscription plan data.
+ * Requires baseAuth to be run first to ensure req.user is available.
+ */
+// export const subscriptionAuth = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   logger.info("subscriptionAuth middleware execution started");
+//   try {
+//     const user = req.user;
+//     if (!user) {
+//       logger.error(
+//         "subscriptionAuth: No user found in request. baseAuth must be run first."
+//       );
+//       return res
+//         .status(500)
+//         .json({ message: "Internal error: User context missing" });
+//     }
+
+//     // Check if existing user has subscription data, if not assign free plan
+//     if (!user.subscriptionPlanId || !user.subscriptionStatus) {
+//       logger.warn(
+//         `User ${user.username} missing subscription data. Assigning free plan.`
+//       );
+
+//       const freePlan = await SubscriptionPlan.findOne({
+//         name: "free",
+//         isActive: true,
+//       });
+//       if (!freePlan) {
+//         logger.error("Free subscription plan not found in database");
+//         return res.status(500).json({
+//           message: "System configuration error: Free plan not available",
+//         });
+//       }
+
+//       // Update user with free subscription plan
+//       user.subscriptionPlanId = freePlan._id as any;
+//       user.subscriptionStatus = "free";
+//       user.subscriptionStartDate = new Date();
+//       // subscriptionEndDate remains undefined for free plan
+
+//       await user.save();
+//       logger.info(`Updated user ${user.username} with free subscription plan`);
+//     } else {
+//       logger.debug("Attaching subscription data", {
+//         subscriptionPlanId: user.subscriptionPlanId?.toString(),
+//         subscriptionStatus: user.subscriptionStatus,
+//       });
+
+//       try {
+//         // Handle case where subscriptionPlanId might be invalid or 'free' string
+//         let subscriptionPlan;
+
+//         if (user.subscriptionPlanId) {
+//           subscriptionPlan = await SubscriptionPlan.findById(
+//             new mongoose.Types.ObjectId(user.subscriptionPlanId.toString())
+//           );
+//         }
+
+//         // If no valid subscription plan found, assign free plan
+//         if (!subscriptionPlan) {
+//           logger.warn(
+//             `Invalid subscription plan ID for user ${user.username}. Assigning free plan.`
+//           );
+//           subscriptionPlan = await SubscriptionPlan.findOne({
+//             name: "free",
+//             isActive: true,
+//           });
+
+//           if (subscriptionPlan) {
+//             // Update user with correct free plan ObjectId
+//             user.subscriptionPlanId = subscriptionPlan._id as any;
+//             user.subscriptionStatus = "free";
+//             user.subscriptionStartDate = new Date();
+//             await user.save();
+//             logger.info(
+//               `Updated user ${user.username} with correct free subscription plan ObjectId`
+//             );
+//           }
+//         }
+
+//         if (subscriptionPlan) {
+//           req.sub = {
+//             planId: subscriptionPlan._id,
+//             planName: subscriptionPlan.name,
+//             status: user.subscriptionStatus || "free",
+//             features: {
+//               maxTeams: subscriptionPlan.features.maxTeams,
+//               maxTeamMembers: subscriptionPlan.features.maxTeamMembers,
+//               maxPrAnalysisPerDay:
+//                 (subscriptionPlan.features as any).maxPrAnalysisPerDay ?? 5,
+//               maxFullRepoAnalysisPerDay:
+//                 (subscriptionPlan.features as any).maxFullRepoAnalysisPerDay ??
+//                 2,
+//               prioritySupport: subscriptionPlan.features.prioritySupport,
+//               organizationSupport:
+//                 (subscriptionPlan.features as any).organizationSupport ??
+//                 (subscriptionPlan.name === "lite" ||
+//                   subscriptionPlan.name === "advance"),
+//             },
+//             startDate: user.subscriptionStartDate,
+//             endDate: user.subscriptionEndDate,
+//           };
+//           logger.debug(
+//             `Subscription data attached: ${subscriptionPlan.name} plan`
+//           );
+//         } else {
+//           logger.error("No subscription plan found, including free plan");
+//         }
+//       } catch (error) {
+//         logger.error(`Error fetching subscription plan: ${error}`);
+//         // Continue without subscription data if there's an error
+//       }
+//     }
+
+//     logger.info(`Subscription auth completed for user: ${user.email}`);
+//     next();
+//   } catch (err) {
+//     logger.error(`Subscription auth error: ${err}`);
+//     res.status(500).json({ message: "Internal server error" });
+//   }
+// };
+
+/**
+ * Team authentication middleware that handles team context and membership.
+ * Requires baseAuth to be run first to ensure req.user is available.
+ * Handles team context from headers.
+ */
+// export const teamAuth = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   logger.info("teamAuth middleware execution started");
+//   try {
+//     const user = req.user;
+//     if (!user) {
+//       logger.error(
+//         "teamAuth: No user found in request. baseAuth must be run first."
+//       );
+//       return res
+//         .status(500)
+//         .json({ message: "Internal error: User context missing" });
+//     }
+
+//     // Handle team context from X-Team-Id header
+//     const teamIdFromHeader = req.headers["x-team-id"] as string;
+//     if (teamIdFromHeader) {
+//       logger.debug(`Team ID from header: ${teamIdFromHeader}`);
+
+//       // Verify user has access to this team (either owner or member )
+//       const team = await Team.findById(teamIdFromHeader);
+//       if (team) {
+//         // Check if user is the owner
+//         if (team.ownerId === user._id) {
+//           req.team = {
+//             id: teamIdFromHeader,
+//             role: 'admin',
+//           };
+//           logger.debug(`Team context set: ${team.name} (owner/admin)`);
+//         } else if (user.team?.id === teamIdFromHeader) {
+//           // User is a member via their user.team assignment
+//           req.team = {
+//             id: teamIdFromHeader,
+//             role: user.team.role || 'member',
+//           };
+//           logger.debug(`Team context set: ${team.name} (${user.team.role || 'member'})`);
+//         } else {
+//           logger.warn(
+//             `User ${user._id} attempted to access team ${teamIdFromHeader} without membership`
+//           );
+//         }
+//       } else {
+//         logger.warn(`Team ${teamIdFromHeader} not found`);
+//       }
+//     }
+
+//     logger.info(`Team auth completed for user: ${user.email}`);
+//     next();
+//   } catch (err) {
+//     logger.error(`Team auth error: ${err}`);
+//     res.status(500).json({ message: "Internal server error" });
+//   }
+// };
+
+/**
+ * Complete authentication middleware that combines all auth layers.
+ * This is equivalent to running baseAuth + subscriptionAuth + teamAuth in sequence.
+ * Use this for routes that need full authentication context.
+ */
+// export const checkAuth = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   logger.info("checkAuth middleware execution started");
+
+//   try {
+//     // Run base authentication first
+//     await new Promise<void>((resolve, reject) => {
+//       baseAuth(req, res, (err) => {
+//         if (err) {
+//           reject(err);
+//         } else if (res.headersSent) {
+//           // If response was already sent (error case), reject
+//           reject(new Error("Response already sent"));
+//         } else {
+//           resolve();
+//         }
+//       });
+//     });
+
+//     // Run subscription authentication
+//     await new Promise<void>((resolve, reject) => {
+//       subscriptionAuth(req, res, (err) => {
+//         if (err) {
+//           reject(err);
+//         } else if (res.headersSent) {
+//           reject(new Error("Response already sent"));
+//         } else {
+//           resolve();
+//         }
+//       });
+//     });
+
+//     // Run team authentication
+//     // await new Promise<void>((resolve, reject) => {
+//     //   teamAuth(req, res, (err) => {
+//     //     if (err) {
+//     //       reject(err);
+//     //     } else if (res.headersSent) {
+//     //       reject(new Error("Response already sent"));
+//     //     } else {
+//     //       resolve();
+//     //     }
+//     //   });
+//     // });
+
+//     logger.info("checkAuth middleware completed successfully");
+//     next();
+//   } catch (err) {
+//     // If response wasn't already sent, send error response
+//     if (!res.headersSent) {
+//       logger.error(`checkAuth middleware error: ${err}`);
+//       res.status(500).json({ message: "Authentication error" });
+//     }
+//   }
+// };
+
+/**
+ * Convenience middleware that combines baseAuth + subscriptionAuth.
+ * Use this for routes that need user authentication and subscription data but not team context.
+ */
+// export const authWithSubscription = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction
+// ) => {
+//   logger.info("authWithSubscription middleware execution started");
+
+//   try {
+//     // Run base authentication first
+//     await new Promise<void>((resolve, reject) => {
+//       baseAuth(req, res, (err) => {
+//         if (err) {
+//           reject(err);
+//         } else if (res.headersSent) {
+//           reject(new Error("Response already sent"));
+//         } else {
+//           resolve();
+//         }
+//       });
+//     });
+
+//     // Run subscription authentication
+//     await new Promise<void>((resolve, reject) => {
+//       subscriptionAuth(req, res, (err) => {
+//         if (err) {
+//           reject(err);
+//         } else if (res.headersSent) {
+//           reject(new Error("Response already sent"));
+//         } else {
+//           resolve();
+//         }
+//       });
+//     });
+
+//     logger.info("authWithSubscription middleware completed successfully");
+//     next();
+//   } catch (err) {
+//     if (!res.headersSent) {
+//       logger.error(`authWithSubscription middleware error: ${err}`);
+//       res.status(500).json({ message: "Authentication error" });
+//     }
+//   }
+// };
+

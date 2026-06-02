@@ -1,0 +1,74 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { ChevronDown, Scissors } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const navItems = [
+  { label: "Features", hasDropdown: true },
+  { label: "How It Works", hasDropdown: false },
+  { label: "Pricing", hasDropdown: false },
+  { label: "Examples", hasDropdown: false },
+];
+
+export default function Navbar() {
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  return (
+    <header className="fixed top-0 left-0 right-0 z-50 flex justify-center px-4 py-4">
+      <nav className="flex items-center justify-between w-full max-w-6xl rounded-2xl border border-white/8 bg-white/4 px-5 py-3 backdrop-blur-xl">
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white">
+            <Scissors className="h-4 w-4 text-black" strokeWidth={2.5} />
+          </div>
+          <span className="text-[15px] font-semibold tracking-tight text-white">
+            choppr
+          </span>
+        </Link>
+
+        {/* Nav links */}
+        <div className="hidden md:flex items-center gap-1">
+          {navItems.map((item) => (
+            <button
+              key={item.label}
+              onMouseEnter={() => item.hasDropdown && setActiveDropdown(item.label)}
+              onMouseLeave={() => setActiveDropdown(null)}
+              className={cn(
+                "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
+                "text-white/45 hover:text-white hover:bg-white/6"
+              )}
+            >
+              {item.label}
+              {item.hasDropdown && (
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform duration-200",
+                    activeDropdown === item.label && "rotate-180"
+                  )}
+                />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <div className="flex items-center gap-2">
+          <Link
+            href="/sign-in"
+            className="rounded-lg px-4 py-2 text-[13.5px] font-medium text-white/45 hover:text-white transition-colors"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/sign-up"
+            className="rounded-xl bg-white px-4 py-2 text-[13.5px] font-semibold text-black transition-all hover:bg-white/90 active:scale-95"
+          >
+            Get started free
+          </Link>
+        </div>
+      </nav>
+    </header>
+  );
+}
