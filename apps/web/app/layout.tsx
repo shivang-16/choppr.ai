@@ -29,9 +29,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Beetle | AI Code Reviewer",
+  title: "Choppr | AI Video Clipper for Viral Content Creation",
   description:
-    "Beetle AI helps you analyze code with AI. Gain instant insights, detect issues, and improve code quality with intelligent analysis.",
+    "Choppr AI helps you analyze videos with AI. Gain instant insights, detect issues, and improve video quality with intelligent analysis.",
 };
 
 export default function RootLayout({

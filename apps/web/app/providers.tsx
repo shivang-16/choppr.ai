@@ -5,6 +5,10 @@ import { ThemeProvider } from "next-themes";
 const Providers = ({ children }: { children: React.ReactNode }) => {
   return (
     <ClerkProvider
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+      signInFallbackRedirectUrl="/dashboard"
+      signUpFallbackRedirectUrl="/dashboard"
       appearance={{
         cssLayerName: "clerk",
       }}

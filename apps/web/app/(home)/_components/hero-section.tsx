@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { Link2, Upload, Scissors, Zap, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import HeroVideoDemo from "./hero-video-demo";
@@ -15,10 +17,16 @@ export default function HeroSection() {
   const [url, setUrl] = useState("");
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { isSignedIn } = useAuth();
+  const router = useRouter();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url.trim()) return;
+    if (isSignedIn) {
+      router.push("/dashboard");
+    } else {
+      router.push("/sign-up");
+    }
   };
 
   return (
@@ -55,12 +63,12 @@ export default function HeroSection() {
 
         {/* Headline */}
         <div className="flex flex-col items-center gap-4 text-center">
-          <h2 className="max-w-3xl text-balance text-[clamp(2.4rem,6vw,4.5rem)] font-semibold leading-[1.08] tracking-[-0.04em] text-white">
-            1 long video, 10 viral clips.{" "}
+          <h2 className="max-w-4xl text-[clamp(2.4rem,6vw,4.5rem)] font-semibold leading-[1.1] tracking-[-0.04em] text-white text-center">
+            1 long video, 10 viral clips.<br />
             <span className="text-white">Create 10x faster.</span>
           </h2>
 
-          <p className="max-w-xl text-balance text-[clamp(0.95rem,2vw,1.1rem)] font-normal leading-relaxed text-white/35">
+          <p className="max-w-xl text-balance text-[clamp(0.95rem,2vw,1.1rem)] font-normal leading-relaxed text-white/60">
             Choppr turns your long videos into short-form viral content and
             publishes them to all social platforms — in one click.
           </p>
@@ -98,7 +106,7 @@ export default function HeroSection() {
           >
             Get free clips
           </button>
-          <span className="text-[13px] text-white/25 shrink-0">or</span>
+          <span className="text-[13px] text-white/50 shrink-0">or</span>
           <button
             type="button"
             className="flex shrink-0 items-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-5 py-3.5 text-[14px] font-medium text-white/55 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white/80 active:scale-95 whitespace-nowrap"
@@ -109,9 +117,9 @@ export default function HeroSection() {
         </form>
 
         {/* Social proof */}
-        <p className="text-[12.5px] text-white/20">
+        <p className="text-[12.5px] text-white/45">
           Trusted by{" "}
-          <span className="text-white/40 font-medium">50,000+</span> creators
+          <span className="text-white/70 font-medium">50,000+</span> creators
           &nbsp;·&nbsp; No credit card required
         </p>
 

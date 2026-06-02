@@ -197,25 +197,34 @@ export default function HeroVideoDemo() {
                 initial={{ opacity: 1 }}
                 exit={{ opacity: 0, transition: { duration: 0.2 } }}
               >
-                {src.clips.map((clip, i) => (
+                {src.clips.map((clip, i) => {
+                  // Distance from center (0-indexed, 6 cards → center between 2 and 3)
+                  const center = (src.clips.length - 1) / 2;
+                  const dist = i - center; // negative = left side, positive = right side
+                  const distAbs = Math.abs(dist);
+
+                  return (
                   <motion.div
                     key={clip.id}
                     className="relative shrink-0 group cursor-pointer"
                     style={{ width: 110 }}
-                    initial={{ y: 80, opacity: 0 }}
+                    // Start compressed toward center
+                    initial={{ x: -dist * 120, opacity: 0, scale: 0.75 }}
                     animate={
                       phase === "clips-exit"
                         ? {
-                            x: 300 + i * 30,
+                            x: 600,
                             opacity: 0,
-                            transition: { delay: i * 0.04, duration: 0.4, ease: "easeIn" },
+                            scale: 0.85,
+                            transition: { delay: i * 0.045, duration: 0.45, ease: [0.55, 0, 1, 0.45] },
                           }
                         : {
-                            y: 0,
+                            x: 0,
                             opacity: 1,
+                            scale: 1,
                             transition: {
-                              delay: i * 0.08,
-                              duration: 0.55,
+                              delay: distAbs * 0.07, // center first, edges last
+                              duration: 0.6,
                               ease: [0.22, 1, 0.36, 1],
                             },
                           }
@@ -252,7 +261,8 @@ export default function HeroVideoDemo() {
                       </div>
                     </div>
                   </motion.div>
-                ))}
+                  );
+                })}
               </motion.div>
             )}
           </AnimatePresence>

@@ -37,7 +37,7 @@ export default function Navbar() {
               onMouseLeave={() => setActiveDropdown(null)}
               className={cn(
                 "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
-                "text-white/45 hover:text-white hover:bg-white/6"
+                "text-white/60 hover:text-white hover:bg-white/6"
               )}
             >
               {item.label}
@@ -57,7 +57,7 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           <Link
             href="/sign-in"
-            className="rounded-lg px-4 py-2 text-[13.5px] font-medium text-white/45 hover:text-white transition-colors"
+            className="rounded-lg px-4 py-2 text-[13.5px] font-medium text-white/60 hover:text-white transition-colors"
           >
             Sign in
           </Link>

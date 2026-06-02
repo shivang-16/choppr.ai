@@ -24,7 +24,7 @@ export default async function SignUpPage({
   } else if (isCliAuth && port) {
     callbackUrl = `/cli-auth-callback?port=${port}`;
   } else {
-    callbackUrl = "/early-access";
+    callbackUrl = "/dashboard";
   }
 
   return (
