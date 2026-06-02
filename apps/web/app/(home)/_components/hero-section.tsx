@@ -63,7 +63,7 @@ export default function HeroSection() {
 
         {/* Headline */}
         <div className="flex flex-col items-center gap-4 text-center">
-          <h2 className="max-w-4xl text-[clamp(2.4rem,6vw,4.5rem)] font-semibold leading-[1.1] tracking-[-0.04em] text-white text-center">
+          <h2 className="max-w-4xl text-[clamp(1.8rem,4vw,4rem)] font-semibold leading-[1.1] tracking-[-0.04em] text-white text-center">
             1 long video, 10 viral clips.<br />
             <span className="text-white">Create 10x faster.</span>
           </h2>
