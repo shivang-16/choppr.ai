@@ -73,7 +73,7 @@ const userSchema = new Schema<IUser>(
     subscriptionPlanId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubscriptionPlan",
-      required: true,
+      required: false,
       index: true,
     },
     subscriptionStatus: {

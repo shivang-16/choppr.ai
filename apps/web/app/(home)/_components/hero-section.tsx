@@ -74,21 +74,22 @@ export default function HeroSection() {
           </p>
         </div>
 
-        {/* Input + CTA + Upload all on one row */}
+        {/* Input + CTA */}
         <form
           onSubmit={handleSubmit}
-          className="flex w-full max-w-3xl items-center gap-3"
+          className="flex w-full max-w-2xl flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3"
         >
+          {/* URL input — full width on mobile */}
           <div
             className={cn(
-              "group relative flex flex-1 items-center gap-2 rounded-2xl border px-4 py-3.5 transition-all duration-200 cursor-text",
+              "flex w-full items-center gap-2 rounded-2xl border px-4 py-3.5 transition-all duration-200 cursor-text",
               focused
                 ? "border-white/30 bg-white/8"
-                : "border-white/10 bg-white/5 hover:border-white/18"
+                : "border-white/10 bg-white/5"
             )}
             onClick={() => inputRef.current?.focus()}
           >
-            <Link2 className="h-4 w-4 shrink-0 text-white/25" />
+            <Link2 className="h-4 w-4 shrink-0 text-white/30" />
             <input
               ref={inputRef}
               type="url"
@@ -97,23 +98,27 @@ export default function HeroSection() {
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               placeholder="Drop a video link"
-              className="w-full bg-transparent text-[14px] text-white placeholder:text-white/20 outline-none"
+              className="w-full bg-transparent text-[14px] text-white placeholder:text-white/25 outline-none"
             />
           </div>
-          <button
-            type="submit"
-            className="group flex shrink-0 items-center gap-2 rounded-2xl bg-white px-5 py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
-          >
-            Get free clips
-          </button>
-          <span className="text-[13px] text-white/50 shrink-0">or</span>
-          <button
-            type="button"
-            className="flex shrink-0 items-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-5 py-3.5 text-[14px] font-medium text-white/55 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white/80 active:scale-95 whitespace-nowrap"
-          >
-            <Upload className="h-4 w-4" />
-            Upload files
-          </button>
+
+          {/* Buttons row — side by side on both mobile and desktop */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="submit"
+              className="flex-1 sm:flex-none rounded-2xl bg-white px-4 py-2.5 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+            >
+              Get free clips
+            </button>
+            <span className="text-[12px] sm:text-[13px] text-white/40 shrink-0">or</span>
+            <button
+              type="button"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 rounded-2xl border border-white/12 bg-white/6 px-4 py-2.5 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-medium text-white/55 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white/80 active:scale-95 whitespace-nowrap"
+            >
+              <Upload className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              Upload files
+            </button>
+          </div>
         </form>
 
         {/* Social proof */}

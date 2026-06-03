@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 const TOOLS = [
   { icon: Sparkles,  label: "Long to shorts" },
@@ -63,10 +67,29 @@ async function fetchVideoMeta(url: string): Promise<VideoMeta | null> {
   };
 }
 
+function timeAgo(date: string) {
+  const diff = (Date.now() - new Date(date).getTime()) / 1000;
+  if (diff < 60)    return "just now";
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
 export default function DashboardClient() {
+  const router = useRouter();
   const [inputUrl, setInputUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoMeta | null>(null);
+  const [projects, setProjects] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/projects`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setProjects)
+      .catch(() => {});
+  }, []);
   const [selectedPreset, setSelectedPreset] = useState("karaoke");
   const [clipModel, setClipModel] = useState("Auto");
   const [genre, setGenre] = useState("Auto");
@@ -74,24 +97,55 @@ export default function DashboardClient() {
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [prompt, setPrompt] = useState("");
 
+  // Step 1: just fetch preview (oEmbed thumbnail) — no API call yet
   const handleFetch = async () => {
     const trimmed = inputUrl.trim();
     if (!trimmed) return;
+    setError(null);
     setLoading(true);
     try {
-      new URL(trimmed); // validate
+      new URL(trimmed);
       const meta = await fetchVideoMeta(trimmed);
       setVideo(meta);
     } catch {
-      // invalid URL
+      setError("Please enter a valid video URL.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Step 2: user clicks "Get clips in 1 click" — create job via API
+  const handleSubmit = async () => {
+    if (!video) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/api/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ url: video.url, query: prompt }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to create job");
+      }
+
+      const { projectId } = await res.json();
+      // Redirect to project page
+      router.push(`/dashboard/projects/${projectId}`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleRemove = () => {
     setVideo(null);
     setInputUrl("");
+    setError(null);
   };
 
   return (
@@ -129,15 +183,19 @@ export default function DashboardClient() {
           )}
         </div>
 
-        {/* Get clips button */}
+        {/* Preview / fetch button */}
         {!video && (
           <button
             onClick={handleFetch}
             disabled={loading || !inputUrl.trim()}
-            className="mt-3 w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed"
+            className="mt-3 w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {loading ? "Fetching…" : "Get clips in 1 click"}
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {loading ? "Loading preview…" : "Get clips in 1 click"}
           </button>
+        )}
+        {error && (
+          <p className="mt-2 text-[12px] text-red-400 text-center">{error}</p>
         )}
       </div>
 
@@ -164,26 +222,74 @@ export default function DashboardClient() {
             ))}
           </div>
 
-          {/* Demo projects section */}
+          {/* Projects section */}
           <div className="w-full">
-            <div className="flex items-center gap-4 mb-4">
-              <button className="text-[13px] font-medium text-white border-b border-white pb-1">All projects (0)</button>
-              <button className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Saved projects (0)</button>
-              <div className="ml-auto flex items-center gap-2 text-[12px] text-white/35">
-                <span>0 GB / 100 GB</span>
-                <span className="flex items-center gap-1 rounded-full border border-white/10 px-2 py-0.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-white/50" />
-                  Auto-save
-                </span>
-              </div>
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[13px] font-medium text-white">
+                All projects ({projects.length})
+              </span>
+              {projects.length > 0 && (
+                <Link href="/dashboard/projects" className="text-[12px] text-white/35 hover:text-white/60 transition-colors">
+                  View all →
+                </Link>
+              )}
             </div>
 
-            <div className="flex flex-col items-center gap-4 py-16 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/8 bg-[#141414]">
-                <FolderIcon />
+            {projects.length === 0 ? (
+              <div className="flex flex-col items-center gap-4 py-16 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/8 bg-[#141414]">
+                  <FolderIcon />
+                </div>
+                <p className="text-[14px] text-white/40">No projects yet. Drop a video link above to get started.</p>
               </div>
-              <p className="text-[14px] text-white/40">No projects yet. Drop a video link above to get started.</p>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {projects.slice(0, 8).map((project) => (
+                  <Link
+                    key={project._id}
+                    href={`/dashboard/projects/${project._id}`}
+                    className="group flex flex-col gap-2 rounded-2xl border border-white/8 bg-[#141414] p-3 hover:border-white/16 transition-all"
+                  >
+                    {/* Thumbnail */}
+                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/6 flex items-center justify-center">
+                      {project.thumbnailUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={project.thumbnailUrl}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Film className="h-6 w-6 text-white/10" />
+                      )}
+                    </div>
+                    {/* Info */}
+                    <p className="text-[12px] font-medium text-white/80 line-clamp-1 leading-snug">
+                      {project.title}
+                    </p>
+                    <div className="flex items-center gap-1.5 text-[11px] text-white/30">
+                      {project.status === "done"
+                        ? <CheckCircle className="h-3 w-3 text-white/40" />
+                        : project.status === "processing" || project.status === "pending"
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <Clock className="h-3 w-3" />
+                      }
+                      <span>
+                        {project.status === "done"
+                          ? `${project.totalClips} clips`
+                          : project.status === "processing"
+                          ? "Processing…"
+                          : project.status === "pending"
+                          ? "Queued"
+                          : "Failed"}
+                      </span>
+                      <span className="text-white/15">·</span>
+                      <span>{timeAgo(project.createdAt)}</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -193,8 +299,13 @@ export default function DashboardClient() {
         <div className="flex flex-col items-center gap-6 mt-8 w-full max-w-2xl">
 
           {/* Get clips in 1 click */}
-          <button className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99]">
-            Get clips in 1 click
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting ? "Creating job…" : "Get clips in 1 click"}
           </button>
 
           {/* Meta row */}

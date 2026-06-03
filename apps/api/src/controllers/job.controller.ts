@@ -1,0 +1,140 @@
+import { Request, Response, NextFunction } from "express";
+import { randomUUID } from "crypto";
+import { z } from "zod";
+import { Job } from "../model/job.model.js";
+import { Project } from "../model/project.model.js";
+import { enqueueJob } from "../services/sqs.js";
+
+function titleFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace("www.", "");
+    const path = u.pathname.split("/").filter(Boolean).pop() ?? "";
+    return path ? `${host} — ${decodeURIComponent(path).slice(0, 60)}` : host;
+  } catch {
+    return url.slice(0, 60);
+  }
+}
+
+function thumbnailFromUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    // YouTube watch URLs: ?v=ID
+    const ytId = u.searchParams.get("v");
+    if (ytId) return `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+    // youtu.be/ID short links
+    if (u.hostname === "youtu.be") {
+      const id = u.pathname.replace("/", "").split("?")[0];
+      if (id) return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+    }
+    // YouTube shorts
+    if (u.hostname.includes("youtube.com") && u.pathname.startsWith("/shorts/")) {
+      const id = u.pathname.split("/shorts/")[1]?.split("/")[0];
+      if (id) return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Validation schemas ──────────────────────────────────────────────────────
+
+const CreateJobSchema = z.object({
+  url:   z.string().url("Must be a valid URL"),
+  query: z.string().max(500).default(""),
+});
+
+// ── POST /api/jobs ──────────────────────────────────────────────────────────
+
+export async function createJob(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = CreateJobSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const issues = parsed.error.issues;
+      res.status(400).json({ error: issues[0]?.message ?? "Invalid input" });
+      return;
+    }
+
+    const { url, query } = parsed.data;
+    const userId = (req as any).user?._id ?? (req as any).auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const jobId     = randomUUID();
+    const projectId = randomUUID();
+
+    // 1. Create project + job atomically (both reference each other)
+    await Promise.all([
+      Project.create({
+        _id:          projectId,
+        userId,
+        title:        titleFromUrl(url),
+        sourceUrl:    url,
+        thumbnailUrl: thumbnailFromUrl(url) ?? undefined,
+        status:       "pending",
+        jobId,
+        totalClips:   0,
+      }),
+      Job.create({
+        _id:       jobId,
+        userId,
+        url,
+        query,
+        status:    "pending",
+        progress:  0,
+        projectId,
+      }),
+    ]);
+
+    // 2. Push to SQS — worker picks it up asynchronously
+    await enqueueJob({ jobId, userId, url, query, projectId });
+
+    res.status(201).json({ jobId, projectId, status: "pending" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── GET /api/jobs/:jobId ────────────────────────────────────────────────────
+
+export async function getJob(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { jobId } = req.params;
+    const userId = (req as any).user?._id ?? (req as any).auth?.userId;
+
+    const job = await Job.findById(jobId).lean();
+    if (!job) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+    // Only the owner can see their job
+    if (job.userId !== userId) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    res.json(job);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── GET /api/jobs ── list all jobs for the authenticated user ───────────────
+
+export async function listJobs(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as any).user?._id ?? (req as any).auth?.userId;
+
+    const jobs = await Job.find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    res.json(jobs);
+  } catch (err) {
+    next(err);
+  }
+}

@@ -161,10 +161,8 @@ export const baseAuth = async (
             clerkUser.id,
           avatarUrl: clerkUser.imageUrl,
           ssoProvider: ssoProvider,
-          subscriptionPlanId: 'null' as any, // Will be set to free plan in subscriptionAuth if not provided
           subscriptionStatus: "free" as const,
           subscriptionStartDate: new Date(),
-          // subscriptionEndDate is not set for free plan (unlimited)
         };
 
         user = await createUser(userData);
