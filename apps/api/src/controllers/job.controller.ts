@@ -41,8 +41,13 @@ function thumbnailFromUrl(url: string): string | null {
 // ── Validation schemas ──────────────────────────────────────────────────────
 
 const CreateJobSchema = z.object({
-  url:   z.string().url("Must be a valid URL"),
-  query: z.string().max(500).default(""),
+  url:         z.string().url("Must be a valid URL"),
+  query:       z.string().max(500).default(""),
+  clipModel:   z.string().default("Auto"),
+  genre:       z.string().default("Auto"),
+  clipLength:  z.string().default("Auto (0m-3m)"),
+  aspectRatio: z.string().default("9:16"),
+  maxClips:    z.number().int().min(1).max(20).default(10),
 });
 
 // ── POST /api/jobs ──────────────────────────────────────────────────────────
@@ -56,7 +61,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    const { url, query } = parsed.data;
+    const { url, query, clipModel, genre, clipLength, aspectRatio, maxClips } = parsed.data;
     const userId = (req as any).user?._id ?? (req as any).auth?.userId;
     if (!userId) {
       res.status(401).json({ error: "Unauthorized" });
@@ -73,24 +78,24 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
         userId,
         title:        titleFromUrl(url),
         sourceUrl:    url,
-        thumbnailUrl: thumbnailFromUrl(url) ?? undefined,
+        ...(thumbnailFromUrl(url) ? { thumbnailUrl: thumbnailFromUrl(url)! } : {}),
         status:       "pending",
         jobId,
         totalClips:   0,
       }),
       Job.create({
-        _id:       jobId,
+        _id:         jobId,
         userId,
         url,
         query,
-        status:    "pending",
-        progress:  0,
+        status:      "pending",
+        progress:    0,
         projectId,
       }),
     ]);
 
-    // 2. Push to SQS — worker picks it up asynchronously
-    await enqueueJob({ jobId, userId, url, query, projectId });
+    // 2. Push to SQS with all clip settings
+    await enqueueJob({ jobId, userId, url, query, projectId, clipModel, genre, clipLength, aspectRatio, maxClips });
 
     res.status(201).json({ jobId, projectId, status: "pending" });
   } catch (err) {

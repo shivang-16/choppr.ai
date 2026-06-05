@@ -124,7 +124,15 @@ export default function DashboardClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ url: video.url, query: prompt }),
+        body: JSON.stringify({
+          url:         video.url,
+          query:       prompt,
+          clipModel,
+          genre,
+          clipLength,
+          aspectRatio,
+          maxClips:    10,
+        }),
       });
 
       if (!res.ok) {

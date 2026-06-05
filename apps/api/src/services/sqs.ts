@@ -9,11 +9,17 @@ const sqs = new SQSClient({
 });
 
 export interface JobMessage {
-  jobId:     string;
-  projectId: string;
-  userId:    string;
-  url:       string;
-  query:     string;
+  jobId:       string;
+  projectId:   string;
+  userId:      string;
+  url:         string;
+  // Clip settings from dashboard
+  query:       string;   // user's specific moment prompt (most important)
+  clipModel:   string;   // "Auto" | "Viral" | "Educational"
+  genre:       string;   // "Auto" | "Gaming" | "Podcast" | "Sports" etc.
+  clipLength:  string;   // "Auto (0m-3m)" | "Short (0-60s)" | "Long (1-3m)"
+  aspectRatio: string;   // "9:16" | "1:1" | "16:9"
+  maxClips:    number;
 }
 
 export async function enqueueJob(payload: JobMessage): Promise<void> {
