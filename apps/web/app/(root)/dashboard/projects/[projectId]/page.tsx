@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, CheckCircle, XCircle, Volume2, VolumeX, Download, Pencil, X, Play, Pause } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle, XCircle, Volume2, VolumeX, Download, X, Play, Pause, Wand2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter as _useRouter } from "next/navigation";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
 
@@ -123,7 +124,7 @@ function VideoModal({ clip, onClose }: { clip: any; onClose: () => void }) {
 }
 
 // ── Clip card with hover-to-play ─────────────────────────────────────────────
-function ClipCard({ clip, onExpand }: { clip: any; onExpand: () => void }) {
+function ClipCard({ clip, onExpand, onUse }: { clip: any; onExpand: () => void; onUse: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hovered, setHovered] = useState(false);
   const [muted, setMuted]     = useState(true);
@@ -178,17 +179,20 @@ function ClipCard({ clip, onExpand }: { clip: any; onExpand: () => void }) {
         </a>
       </div>
 
-      {/* Score + reason */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent px-3 pt-6 pb-2.5">
-        <div className="flex items-center justify-between">
+      {/* Bottom: score + Use this clip button */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent px-2.5 pt-8 pb-2.5">
+        <div className="flex items-center justify-between mb-2">
           <span className="text-[8px] uppercase tracking-widest text-white/40">Score</span>
-          <span className="text-[14px] font-bold text-white">{clip.score}</span>
+          <span className="text-[13px] font-bold text-white">{clip.score}</span>
         </div>
-        {clip.reason && (
-          <p className={`text-[10px] text-white/50 leading-tight mt-0.5 line-clamp-2 transition-opacity duration-150 ${hovered ? "opacity-100" : "opacity-0"}`}>
-            {clip.reason}
-          </p>
-        )}
+        {/* Use this clip button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onUse(); }}
+          className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-white py-2 text-[11px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-all"
+        >
+          <Wand2 className="h-3 w-3" />
+          Use this clip
+        </button>
       </div>
 
       <div className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white/60">
@@ -202,6 +206,7 @@ function ClipCard({ clip, onExpand }: { clip: any; onExpand: () => void }) {
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const router = useRouter();
+  const nav    = _useRouter();
   const [project, setProject]       = useState<any>(null);
   const [clips, setClips]           = useState<any[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -268,17 +273,6 @@ export default function ProjectDetailPage() {
                 <p className="text-[11px] text-white/25 truncate">{project.sourceUrl}</p>
               )}
             </div>
-            {/* Edit button */}
-            {isDone && clips.length > 0 && (
-              <Link
-                href={`/dashboard/editor/${projectId}`}
-                className="flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-[13px] font-semibold text-black hover:bg-white/90 transition-colors"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Edit with AI
-              </Link>
-            )}
-
             {/* Status badge */}
             {project && (
               <div className="flex items-center gap-1.5 rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[12px] text-white/50">
@@ -323,6 +317,7 @@ export default function ProjectDetailPage() {
                   key={clip._id}
                   clip={clip}
                   onExpand={() => setExpandedClip(clip)}
+                  onUse={() => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}`)}
                 />
               ))}
             </div>

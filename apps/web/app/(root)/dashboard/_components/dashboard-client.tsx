@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock } from "lucide-react";
@@ -18,14 +18,6 @@ const TOOLS = [
   { icon: Zap,       label: "AI hook" },
 ];
 
-const CAPTION_PRESETS = [
-  { id: "none",       label: "No caption",  preview: null },
-  { id: "beasty",     label: "Beasty",      preview: "TO GET" },
-  { id: "youshaei",   label: "Youshaei",    preview: "TO GET STARTED" },
-  { id: "mozi",       label: "Mozi",        preview: "TO GET\nSTARTED" },
-  { id: "simple",     label: "Simple",      preview: "TO GET" },
-  { id: "karaoke",    label: "Karaoke",     preview: "TO GET\nSTARTED" },
-];
 
 type VideoMeta = {
   url: string;
@@ -83,6 +75,7 @@ export default function DashboardClient() {
   const [error, setError] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoMeta | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch(`${API_URL}/api/projects`, { credentials: "include" })
@@ -90,16 +83,14 @@ export default function DashboardClient() {
       .then(setProjects)
       .catch(() => {});
   }, []);
-  const [selectedPreset, setSelectedPreset] = useState("karaoke");
   const [clipModel, setClipModel] = useState("Auto");
   const [genre, setGenre] = useState("Auto");
   const [clipLength, setClipLength] = useState("Auto (0m-3m)");
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [prompt, setPrompt] = useState("");
 
-  // Step 1: just fetch preview (oEmbed thumbnail) — no API call yet
-  const handleFetch = async () => {
-    const trimmed = inputUrl.trim();
+  const handleFetch = async (url: string) => {
+    const trimmed = url.trim();
     if (!trimmed) return;
     setError(null);
     setLoading(true);
@@ -112,6 +103,19 @@ export default function DashboardClient() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUrlChange = (value: string) => {
+    setInputUrl(value);
+    setVideo(null);
+    setError(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    // Auto-fetch after 600ms pause in typing
+    debounceRef.current = setTimeout(() => {
+      handleFetch(trimmed);
+    }, 600);
   };
 
   // Step 2: user clicks "Get clips in 1 click" — create job via API
@@ -161,7 +165,24 @@ export default function DashboardClient() {
 
       {/* ── URL input card ── */}
       <div className="w-full max-w-2xl">
-        <div className="relative flex items-center rounded-2xl border border-white/10 bg-[#141414] px-4 py-3.5 gap-3">
+        <div className="relative rounded-2xl overflow-hidden p-[1.5px]">
+          {/* Animated border sweep */}
+          {inputUrl && !video ? (
+            <div
+              className="absolute"
+              style={{
+                width: "200%",
+                height: "200%",
+                top: "-50%",
+                left: "-50%",
+                background: "conic-gradient(from 0deg, transparent 0%, rgba(255,255,255,0.85) 15%, transparent 30%)",
+                animation: "spin 1s linear infinite",
+              }}
+            />
+          ) : (
+            <div className="absolute inset-0 bg-white/10" />
+          )}
+        <div className="relative flex items-center rounded-[14px] bg-[#141414] px-4 py-3.5 gap-3 z-10">
           <Link2 className="h-4 w-4 text-white/30 shrink-0" />
           {video ? (
             <span className="flex-1 text-[13px] text-white/70 truncate">{video.url}</span>
@@ -169,8 +190,13 @@ export default function DashboardClient() {
             <input
               type="url"
               value={inputUrl}
-              onChange={(e) => setInputUrl(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleFetch()}
+              onChange={(e) => handleUrlChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (debounceRef.current) clearTimeout(debounceRef.current);
+                  handleFetch(inputUrl);
+                }
+              }}
               placeholder="Drop a video link (YouTube, Loom…)"
               className="flex-1 bg-transparent text-[14px] text-white placeholder:text-white/25 outline-none"
             />
@@ -190,16 +216,23 @@ export default function DashboardClient() {
             </div>
           )}
         </div>
+        </div>
 
-        {/* Preview / fetch button */}
-        {!video && (
+        {/* Loading indicator while auto-fetching */}
+        {!video && loading && (
+          <div className="mt-3 flex items-center justify-center gap-2 text-[13px] text-white/40 py-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading preview…
+          </div>
+        )}
+
+        {/* Manual fetch fallback */}
+        {!video && !loading && inputUrl.trim() && (
           <button
-            onClick={handleFetch}
-            disabled={loading || !inputUrl.trim()}
-            className="mt-3 w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            onClick={() => handleFetch(inputUrl)}
+            className="mt-3 w-full rounded-2xl border border-white/10 bg-white/4 py-3 text-[13px] text-white/50 hover:text-white/80 hover:border-white/20 hover:bg-white/6 transition-all"
           >
-            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-            {loading ? "Loading preview…" : "Get clips in 1 click"}
+            Fetch video manually
           </button>
         )}
         {error && (
@@ -306,16 +339,6 @@ export default function DashboardClient() {
       {video && (
         <div className="flex flex-col items-center gap-6 mt-8 w-full max-w-2xl">
 
-          {/* Get clips in 1 click */}
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {submitting ? "Creating job…" : "Get clips in 1 click"}
-          </button>
-
           {/* Meta row */}
           <div className="flex items-center gap-4 text-[12.5px] text-white/40">
             <span>Speech language: <span className="text-white/70 font-medium">English ▾</span></span>
@@ -411,56 +434,13 @@ export default function DashboardClient() {
             </div>
           </div>
 
-          {/* Caption presets */}
-          <div className="w-full rounded-2xl border border-white/8 bg-[#111] p-5 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex gap-1">
-                {["Quick presets", "My templates"].map((t) => (
-                  <button
-                    key={t}
-                    className={cn(
-                      "px-4 py-1.5 rounded-lg text-[13px] font-medium transition-colors",
-                      t === "Quick presets"
-                        ? "bg-white/10 text-white"
-                        : "text-white/35 hover:text-white/60"
-                    )}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[11px] text-white/40 uppercase tracking-widest mb-3">Caption</p>
-              <div className="grid grid-cols-5 gap-2">
-                {CAPTION_PRESETS.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setSelectedPreset(p.id)}
-                    className={cn(
-                      "flex flex-col items-center gap-1.5 rounded-xl border p-2 transition-all",
-                      selectedPreset === p.id
-                        ? "border-white/40 bg-white/8"
-                        : "border-white/8 bg-white/3 hover:border-white/18"
-                    )}
-                  >
-                    <div className="h-10 w-full rounded-lg bg-[#1a1a1a] flex items-center justify-center">
-                      {p.preview ? (
-                        <span className="text-[8px] font-black text-white text-center leading-tight whitespace-pre-line">{p.preview}</span>
-                      ) : (
-                        <span className="text-white/20 text-lg">⊘</span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-white/45">{p.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <button className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] mb-8">
-            Get clips in 1 click
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 mb-8"
+          >
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting ? "Creating job…" : "Get clips in 1 click"}
           </button>
         </div>
       )}
