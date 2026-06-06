@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Job } from "../model/job.model.js";
 import { Project } from "../model/project.model.js";
 import { enqueueJob } from "../services/sqs.js";
+import { checkBalance, MIN_CREDITS_TO_START } from "../services/credits.service.js";
 
 function titleFromUrl(url: string): string {
   try {
@@ -65,6 +66,17 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
     const userId = (req as any).user?._id ?? (req as any).auth?.userId;
     if (!userId) {
       res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    // Gate: user must have at least MIN_CREDITS_TO_START credits
+    const { ok, balance } = await checkBalance(userId);
+    if (!ok) {
+      res.status(402).json({
+        error: "insufficient_credits",
+        message: `You need at least ${MIN_CREDITS_TO_START} credits to start a job. Your balance: ${balance}.`,
+        balance,
+      });
       return;
     }
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import {
-  Home, LayoutGrid, FolderOpen, Calendar, Link2, Scissors,
+  Home, LayoutGrid, FolderOpen, Calendar, Link2, Scissors, CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -49,7 +49,19 @@ export default function Sidebar() {
       </div>
 
       {/* User */}
-      <div className="mt-auto">
+      <div className="mt-auto flex flex-col items-center gap-2">
+        <Link
+          href="/dashboard/billing"
+          title="Billing & Credits"
+          className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
+            path.startsWith("/dashboard/billing")
+              ? "bg-white/10 text-white"
+              : "text-white/35 hover:bg-white/6 hover:text-white/70"
+          )}
+        >
+          <CreditCard className="h-4 w-4" />
+        </Link>
         <UserButton
           appearance={{
             elements: {

@@ -8,6 +8,7 @@ import mongoose from "mongoose";
 import { logger } from "../utils/logger.js";
 import { upsertMailerLiteSubscriber } from "../services/mail/mailerlite/upsert_subscriber.js";
 import jwt from "jsonwebtoken";
+import { grantSignupCredits } from "../services/credits.service.js";
 
 declare global {
   namespace Express {
@@ -169,7 +170,11 @@ export const baseAuth = async (
         logger.info(
           `New user created with username: ${user.username} and free subscription plan`
         );
-    
+
+        // Grant 500 free signup credits (idempotent)
+        grantSignupCredits(user._id).catch((err) => {
+          logger.error(`Failed to grant signup credits to ${user._id}: ${err}`);
+        });
 
         // Upsert user to MailerLite
         if (user.email) {

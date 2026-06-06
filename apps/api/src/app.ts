@@ -5,6 +5,8 @@ import { clerkMiddleware } from "@clerk/express";
 import jobRoutes from "./routes/job.routes.js";
 import projectRoutes from "./routes/project.routes.js";
 import clipRoutes from "./routes/clip.routes.js";
+import creditsRoutes from "./routes/credits.routes.js";
+import planRoutes from "./routes/plan.routes.js";
 import errorHandler from "./middlewares/error.js";
 import expressWinston from "express-winston";
 import { winstonLogger } from "./utils/logger.js";
@@ -32,9 +34,11 @@ app.use(clerkMiddleware()); // must come before any route that calls getAuth()
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 app.get("/", (_req, res) => res.json({ ok: true }));
-app.use("/api/jobs", jobRoutes);
+app.use("/api/jobs",     jobRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/clips",    clipRoutes);
+app.use("/api/credits",  creditsRoutes);
+app.use("/api/plans",    planRoutes);
 
 // ── Error handler ───────────────────────────────────────────────────────────
 app.use(errorHandler);
