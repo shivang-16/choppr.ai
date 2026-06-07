@@ -10,7 +10,7 @@ export class CustomError extends Error {
   statusCode?: number;
   constructor(message: string, statusCode?: number) {
     super(message);
-    this.statusCode = statusCode;
+    if (statusCode !== undefined) this.statusCode = statusCode;
   }
 }
 
@@ -21,7 +21,7 @@ const errorMiddleware = (
   next: NextFunction,
 ) => {
   // Use err.statusCode instead of statusCode
-  err.statusCode = err.statusCode || 500;
+  err.statusCode = err.statusCode ?? 500;
   err.message = err.message || "Internal server error";
 
   if (err.statusCode >= 500) {

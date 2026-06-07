@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-export interface IPlan extends Document {
+export interface IPlan extends Document<string> {
   _id: string;                      // e.g. "free", "starter", "pro", "business"
   name: string;                     // display name: "Free", "Starter", etc.
   description: string;

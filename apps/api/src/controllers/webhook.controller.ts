@@ -37,7 +37,7 @@ function verifyDodoSignature(
     return signatures.some((s) => {
       const parts = s.split(",");
       const sig   = parts[parts.length - 1];
-      return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+      return !!sig && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
     });
   } catch (err) {
     logger.error(`Signature verification error: ${err}`);

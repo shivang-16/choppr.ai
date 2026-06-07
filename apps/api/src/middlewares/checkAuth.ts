@@ -172,8 +172,8 @@ export const baseAuth = async (
         );
 
         // Grant 500 free signup credits (idempotent)
-        grantSignupCredits(user._id).catch((err) => {
-          logger.error(`Failed to grant signup credits to ${user._id}: ${err}`);
+        grantSignupCredits(user!._id).catch((err) => {
+          logger.error(`Failed to grant signup credits to ${user!._id}: ${err}`);
         });
 
         // Upsert user to MailerLite

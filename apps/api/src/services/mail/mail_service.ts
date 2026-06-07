@@ -32,8 +32,8 @@ export class MailService {
     console.log(authUser, authPass, "auth user and pass")
     
     // Use auth user as from address if provided, otherwise use config.from or env fallback
-    const fromAddress = config.auth?.user || process.env.SMTP_USER;
-    
+    const fromAddress = config.auth?.user || process.env.SMTP_USER || '';
+
     this.config = {
       ...config,
       from: fromAddress

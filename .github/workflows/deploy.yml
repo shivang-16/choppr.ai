@@ -18,7 +18,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/api
-        run: npm ci --omit=dev
+        run: npm ci
 
       - name: Build
         working-directory: apps/api

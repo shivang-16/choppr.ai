@@ -37,7 +37,7 @@ export async function getProjectClips(req: Request, res: Response, next: NextFun
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
     if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
 
-    const clips = await Clip.find({ projectId: req.params.projectId })
+    const clips = await Clip.find({ projectId: req.params.projectId as string })
       .sort({ index: 1 })
       .lean();
     res.json(clips);
@@ -55,8 +55,8 @@ export async function deleteProject(req: Request, res: Response, next: NextFunct
     if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
 
     await Promise.all([
-      Project.deleteOne({ _id: req.params.projectId }),
-      Clip.deleteMany({ projectId: req.params.projectId }),
+      Project.deleteOne({ _id: req.params.projectId as string }),
+      Clip.deleteMany({ projectId: req.params.projectId as string }),
     ]);
     res.json({ ok: true });
   } catch (err) {

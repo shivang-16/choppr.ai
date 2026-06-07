@@ -9,7 +9,7 @@ import mongoose, { Document, Schema } from "mongoose";
  *   subscriptionCredits — reset monthly when plan renews
  *   topupCredits        — never expire, consumed after subscription bucket is empty
  */
-export interface IUserCredits extends Document {
+export interface IUserCredits extends Document<string> {
   _id: string;                    // Clerk userId
   subscriptionCredits: number;    // from active plan, resets on renewal
   topupCredits: number;           // purchased top-ups, never expire
