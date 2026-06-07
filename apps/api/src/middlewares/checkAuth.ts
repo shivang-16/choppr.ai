@@ -94,10 +94,6 @@ export const baseAuth = async (
     const { userId } = authObj;
     logger.debug("Auth context extracted", {
       userId,
-      sessionId: (authObj as any).sessionId ?? null,
-      hasToken: !!(req.headers.authorization),
-      authHeader: req.headers.authorization?.slice(0, 30) ?? null,
-      clerkPublishableKey: process.env.CLERK_PUBLISHABLE_KEY?.slice(0, 20) ?? "NOT SET",
     });
 
     if (userId) {
