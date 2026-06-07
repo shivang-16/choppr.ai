@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Check, Zap, Loader2 } from "lucide-react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { Check, Zap, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -37,10 +38,14 @@ function formatPrice(cents: number) {
   return cents === 0 ? 0 : cents / 100;
 }
 
-export default function BillingPage() {
+function BillingContent() {
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
   const [data, setData] = useState<MyPlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checkingOut, setCheckingOut] = useState<string | null>(null); // planId being checked out
+  const searchParams = useSearchParams();
+  const paymentSuccess = searchParams.get("success") === "1";
+  const paymentCancelled = searchParams.get("cancelled") === "1";
 
   useEffect(() => {
     fetch(`${API_URL}/api/plans/me`, { credentials: "include" })
@@ -48,6 +53,29 @@ export default function BillingPage() {
       .then((d) => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
+
+  async function handleUpgrade(planId: string) {
+    setCheckingOut(planId);
+    try {
+      const res = await fetch(`${API_URL}/api/payments/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ planId, billingInterval: billing }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.message ?? json.error ?? "Something went wrong");
+        return;
+      }
+      // Redirect to Dodo hosted checkout
+      window.location.href = json.checkoutUrl;
+    } catch {
+      alert("Could not start checkout. Please try again.");
+    } finally {
+      setCheckingOut(null);
+    }
+  }
 
   // Split free from paid plans
   const freePlan   = data?.plans.find((p) => p._id === "free");
@@ -68,6 +96,23 @@ export default function BillingPage() {
       <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(100,80,200,0.12),transparent)]" />
 
       <div className="relative z-10 flex flex-col items-center px-6 py-14 gap-12">
+
+        {/* ── Payment result banners ── */}
+        {paymentSuccess && (
+          <div className="w-full max-w-2xl flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/10 px-5 py-4">
+            <CheckCircle className="h-5 w-5 text-green-400 shrink-0" />
+            <div>
+              <p className="text-[13px] font-semibold text-green-300">Payment successful!</p>
+              <p className="text-[12px] text-green-400/70">Your credits have been added. It may take a moment to reflect.</p>
+            </div>
+          </div>
+        )}
+        {paymentCancelled && (
+          <div className="w-full max-w-2xl flex items-center gap-3 rounded-2xl border border-white/8 bg-white/4 px-5 py-4">
+            <XCircle className="h-5 w-5 text-white/30 shrink-0" />
+            <p className="text-[13px] text-white/40">Payment cancelled. No charges were made.</p>
+          </div>
+        )}
 
         {/* ── Header ── */}
         <div className="flex flex-col items-center gap-5 text-center max-w-2xl">
@@ -178,9 +223,10 @@ export default function BillingPage() {
 
                   {/* CTA */}
                   <button
-                    disabled={current}
+                    disabled={current || checkingOut === plan._id}
+                    onClick={() => !current && handleUpgrade(plan._id)}
                     className={cn(
-                      "w-full rounded-xl py-2.5 text-[13px] font-semibold transition-all",
+                      "w-full rounded-xl py-2.5 text-[13px] font-semibold transition-all flex items-center justify-center gap-2",
                       current
                         ? "border border-white/8 bg-transparent text-white/25 cursor-default"
                         : plan.popular
@@ -188,7 +234,8 @@ export default function BillingPage() {
                         : "border border-white/12 bg-white/5 hover:bg-white/10 text-white"
                     )}
                   >
-                    {current ? "Current plan" : plan.cta}
+                    {checkingOut === plan._id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    {current ? "Current plan" : checkingOut === plan._id ? "Redirecting…" : plan.cta}
                   </button>
 
                   {/* Features */}
@@ -264,5 +311,13 @@ export default function BillingPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function BillingPage() {
+  return (
+    <Suspense>
+      <BillingContent />
+    </Suspense>
   );
 }

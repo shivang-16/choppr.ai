@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.2",
+    "@dodopayments/nextjs": "^0.3.6",
     "@repo/ui": "workspace:*",
     "@tailwindcss/postcss": "^4.3.0",
     "clsx": "^2.1.1",

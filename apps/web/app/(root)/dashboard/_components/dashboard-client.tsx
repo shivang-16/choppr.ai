@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock } from "lucide-react";
+import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -67,8 +67,11 @@ function timeAgo(date: string) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export default function DashboardClient() {
+function DashboardInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const paymentSuccess = searchParams.get("success") === "1";
+  const paidPlan = searchParams.get("plan");
   const [inputUrl, setInputUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -162,6 +165,19 @@ export default function DashboardClient() {
 
   return (
     <div className="flex flex-col items-center w-full px-6 py-10 min-h-screen">
+
+      {/* ── Payment success banner ── */}
+      {paymentSuccess && (
+        <div className="w-full max-w-2xl mb-6 flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/10 px-5 py-4">
+          <CheckCircle className="h-5 w-5 text-green-400 shrink-0" />
+          <div>
+            <p className="text-[13px] font-semibold text-green-300">
+              Payment successful! {paidPlan ? `Welcome to ${paidPlan.charAt(0).toUpperCase() + paidPlan.slice(1)}!` : ""}
+            </p>
+            <p className="text-[12px] text-green-400/70">Your credits are being added — refresh in a moment if the balance hasn't updated yet.</p>
+          </div>
+        </div>
+      )}
 
       {/* ── URL input card ── */}
       <div className="w-full max-w-2xl">
@@ -445,6 +461,14 @@ export default function DashboardClient() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function DashboardClient() {
+  return (
+    <Suspense>
+      <DashboardInner />
+    </Suspense>
   );
 }
 

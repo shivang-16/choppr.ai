@@ -19,8 +19,8 @@ export interface IPlan extends Document {
   popular: boolean;
   active: boolean;
   order: number;                    // display order on pricing page
-  stripePriceIdMonthly?: string;    // set when Stripe is wired up
-  stripePriceIdYearly?: string;
+  dodoProductIdMonthly?: string;    // Dodo Payments product ID for monthly billing
+  dodoProductIdYearly?: string;     // Dodo Payments product ID for yearly billing
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,8 +45,8 @@ const planSchema = new Schema<IPlan>(
     popular:              { type: Boolean, default: false },
     active:               { type: Boolean, default: true },
     order:                { type: Number, default: 0 },
-    stripePriceIdMonthly: { type: String },
-    stripePriceIdYearly:  { type: String },
+    dodoProductIdMonthly: { type: String },
+    dodoProductIdYearly:  { type: String },
   },
   { timestamps: true }
 );

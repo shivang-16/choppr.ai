@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { winstonLogger } from "../utils/logger.js";
 
 export interface err extends Error {
   statusCode: number;
@@ -22,6 +23,10 @@ const errorMiddleware = (
   // Use err.statusCode instead of statusCode
   err.statusCode = err.statusCode || 500;
   err.message = err.message || "Internal server error";
+
+  if (err.statusCode >= 500) {
+    winstonLogger.error(`[${req.method} ${req.path}] ${err.message}`, { stack: err.stack });
+  }
 
   res.status(err.statusCode).json({
     success: false,

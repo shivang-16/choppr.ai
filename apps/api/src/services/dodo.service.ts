@@ -1,0 +1,64 @@
+import DodoPayments from "dodopayments";
+
+// ── SDK client (singleton) ───────────────────────────────────────────────────
+
+let _client: DodoPayments | null = null;
+
+export function getDodoClient(): DodoPayments {
+  if (!_client) {
+    const apiKey = process.env.DODO_PAYMENTS_API_KEY;
+    if (!apiKey) throw new Error("DODO_PAYMENTS_API_KEY is not set");
+
+    _client = new DodoPayments({
+      bearerToken: apiKey,
+      environment: (process.env.DODO_ENV ?? "test") === "live"
+        ? "live_mode"
+        : "test_mode",
+    });
+  }
+  return _client;
+}
+
+// ── Checkout session ─────────────────────────────────────────────────────────
+
+export type BillingInterval = "monthly" | "yearly";
+
+/**
+ * Create a Dodo Payments subscription checkout session.
+ * Returns the checkout URL to redirect the user to.
+ */
+export async function createSubscriptionCheckout(opts: {
+  userId: string;
+  userEmail: string;
+  productId: string;       // Dodo product ID for this plan+interval
+  planId: string;          // our plan _id, e.g. "pro"
+  billingInterval: BillingInterval;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ checkoutUrl: string; sessionId: string }> {
+  const client = getDodoClient();
+
+  const session = await client.checkoutSessions.create({
+    product_cart: [{ product_id: opts.productId, quantity: 1 }],
+    // Pass our internal metadata via return URL so the success page knows
+    // which plan was purchased — webhook is the authoritative source though
+    return_url: opts.successUrl,
+    customer: {
+      email: opts.userEmail,
+    },
+    metadata: {
+      userId:          opts.userId,
+      planId:          opts.planId,
+      billingInterval: opts.billingInterval,
+    },
+  });
+
+  if (!session.checkout_url) {
+    throw new Error(`Dodo did not return a checkout URL. Session: ${JSON.stringify(session)}`);
+  }
+
+  return {
+    checkoutUrl: session.checkout_url,
+    sessionId:   session.payment_id ?? "",
+  };
+}

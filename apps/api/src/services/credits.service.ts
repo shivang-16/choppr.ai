@@ -102,29 +102,25 @@ export async function grantSubscriptionCredits(
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      // Reset subscription bucket, keep topup bucket intact, update plan
+      // ADD to subscription bucket (keep leftover credits), keep topup bucket intact, update plan
       const doc = await UserCredits.findOneAndUpdate(
         { _id: userId },
         {
           $set: {
-            plan:                planId,
-            subscriptionCredits: amount,
-            cycleStart:          now,
-            cycleEnd:            end,
+            plan:       planId,
+            cycleStart: now,
+            cycleEnd:   end,
           },
-          $inc: { lifetimeEarned: amount },
+          $inc: {
+            subscriptionCredits: amount,
+            totalCredits:        amount,
+            lifetimeEarned:      amount,
+          },
         },
         { returnDocument: "after", upsert: true, session }
       ) as IUserCredits;
 
-      const total = doc.subscriptionCredits + doc.topupCredits;
-      await UserCredits.updateOne(
-        { _id: userId },
-        { $set: { totalCredits: total } },
-        { session }
-      );
-
-      await writeLedger(session, userId, amount, "subscription", "grant_subscription", total, {
+      await writeLedger(session, userId, amount, "subscription", "grant_subscription", doc.totalCredits, {
         note: `${plan.name} plan renewal — ${amount} credits`,
       });
     });

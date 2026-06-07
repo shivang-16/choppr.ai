@@ -21,6 +21,7 @@
     "@logtail/winston": "^0.5.8",
     "cors": "^2.8.6",
     "crypto": "^1.0.1",
+    "dodopayments": "^2.36.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-winston": "^4.2.0",
