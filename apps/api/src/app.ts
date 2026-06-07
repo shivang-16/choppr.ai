@@ -27,8 +27,17 @@ const app: express.Application = express();
   );
 
 // ── Middleware ──────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  process.env.FRONTEND_URL ?? "http://localhost:3000",
+  "https://choppr.pro",
+  "https://www.choppr.pro",
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS blocked: ${origin}`));
+  },
   credentials: true,
 }));
 
