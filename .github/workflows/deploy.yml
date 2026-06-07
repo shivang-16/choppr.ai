@@ -1,0 +1,32 @@
+name: Deploy choppr-api
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file
+        working-directory: apps/api
+        run: echo "${{ secrets.PROD_ENV }}" > .env
+
+      - name: Install dependencies
+        working-directory: apps/api
+        run: npm ci --omit=dev
+
+      - name: Build
+        working-directory: apps/api
+        run: npm run build
+
+      - name: Reload service
+        working-directory: apps/api
+        run: |
+          pm2 reload choppr-api --update-env || \
+          pm2 start dist/server.js --name choppr-api
+          pm2 save
