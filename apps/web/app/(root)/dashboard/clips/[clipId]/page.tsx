@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { useApiFetch } from "@/lib/apiFetch";
 import {
   ArrowLeft, Download, Play, Pause, Volume2, VolumeX,
   Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages,
@@ -68,6 +69,7 @@ export default function ClipRefinePage() {
   const { clipId }   = useParams<{ clipId: string }>();
   const sp           = useSearchParams();
   const router       = useRouter();
+  const apiFetch     = useApiFetch();
 
   const src   = sp.get("src")   ?? "";
   const score = sp.get("score") ?? "–";
@@ -98,7 +100,7 @@ export default function ClipRefinePage() {
   // Load captions from API
   useEffect(() => {
     if (!clipId) return;
-    fetch(`${API_URL}/api/clips/${clipId}/captions`, { credentials: "include" })
+    apiFetch(`${API_URL}/api/clips/${clipId}/captions`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data?.captions?.length) {
@@ -114,7 +116,7 @@ export default function ClipRefinePage() {
     if (!lang || lang === activeLang || translating) return;
     setTranslating(true);
     try {
-      const r = await fetch(`${API_URL}/api/clips/${clipId}/captions/translate/${lang}`, { credentials: "include" });
+      const r = await apiFetch(`${API_URL}/api/clips/${clipId}/captions/translate/${lang}`);
       if (r.ok) {
         const data = await r.json();
         setCaptionWords(data.captions);

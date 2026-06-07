@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useApiFetch } from "@/lib/apiFetch";
 import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +71,7 @@ function timeAgo(date: string) {
 function DashboardInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const apiFetch = useApiFetch();
   const paymentSuccess = searchParams.get("success") === "1";
   const paidPlan = searchParams.get("plan");
   const [inputUrl, setInputUrl] = useState("");
@@ -81,7 +83,7 @@ function DashboardInner() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/projects`, { credentials: "include" })
+    apiFetch(`${API_URL}/api/projects`)
       .then((r) => r.ok ? r.json() : [])
       .then(setProjects)
       .catch(() => {});
@@ -127,10 +129,9 @@ function DashboardInner() {
     setError(null);
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/api/jobs`, {
+      const res = await apiFetch(`${API_URL}/api/jobs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           url:         video.url,
           query:       prompt,

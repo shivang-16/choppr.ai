@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { useApiFetch } from "@/lib/apiFetch";
 import { randomUUID } from "crypto";
 import EditorTopbar from "./_components/editor-topbar";
 import MediaPanel from "./_components/media-panel";
@@ -35,6 +36,7 @@ interface HistoryEntry {
 
 export default function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const apiFetch = useApiFetch();
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [project, setProject]       = useState<any>(null);
@@ -60,8 +62,8 @@ export default function EditorPage() {
   useEffect(() => {
     if (!projectId) return;
     Promise.all([
-      fetch(`${API_URL}/api/projects/${projectId}`, { credentials: "include" }).then(r => r.json()),
-      fetch(`${API_URL}/api/projects/${projectId}/clips`, { credentials: "include" }).then(r => r.json()),
+      apiFetch(`${API_URL}/api/projects/${projectId}`).then(r => r.json()),
+      apiFetch(`${API_URL}/api/projects/${projectId}/clips`).then(r => r.json()),
     ]).then(([proj, clips]) => {
       setProject(proj);
       setDbClips(clips);

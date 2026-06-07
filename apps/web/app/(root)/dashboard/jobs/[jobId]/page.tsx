@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { useApiFetch } from "@/lib/apiFetch";
 import { Loader2, CheckCircle, XCircle, Volume2, VolumeX, Download } from "lucide-react";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -127,15 +128,14 @@ export default function JobPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const [job, setJob] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const apiFetch = useApiFetch();
 
   useEffect(() => {
     if (!jobId) return;
 
     const poll = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/jobs/${jobId}`, {
-          credentials: "include",
-        });
+        const res = await apiFetch(`${API_URL}/api/jobs/${jobId}`);
         if (!res.ok) throw new Error("Job not found");
         const data = await res.json();
         setJob(data);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { useApiFetch } from "@/lib/apiFetch";
 import { Check, Zap, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -42,13 +43,14 @@ function BillingContent() {
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
   const [data, setData] = useState<MyPlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [checkingOut, setCheckingOut] = useState<string | null>(null); // planId being checked out
+  const [checkingOut, setCheckingOut] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const paymentSuccess = searchParams.get("success") === "1";
   const paymentCancelled = searchParams.get("cancelled") === "1";
+  const apiFetch = useApiFetch();
 
   useEffect(() => {
-    fetch(`${API_URL}/api/plans/me`, { credentials: "include" })
+    apiFetch(`${API_URL}/api/plans/me`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
@@ -57,10 +59,9 @@ function BillingContent() {
   async function handleUpgrade(planId: string) {
     setCheckingOut(planId);
     try {
-      const res = await fetch(`${API_URL}/api/payments/checkout`, {
+      const res = await apiFetch(`${API_URL}/api/payments/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ planId, billingInterval: billing }),
       });
       const json = await res.json();

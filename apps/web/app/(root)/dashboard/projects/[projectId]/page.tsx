@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useApiFetch } from "@/lib/apiFetch";
 import { ArrowLeft, Loader2, CheckCircle, XCircle, Volume2, VolumeX, Download, X, Play, Pause, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter as _useRouter } from "next/navigation";
@@ -211,12 +212,13 @@ export default function ProjectDetailPage() {
   const [clips, setClips]           = useState<any[]>([]);
   const [loading, setLoading]       = useState(true);
   const [expandedClip, setExpandedClip] = useState<any>(null);
+  const apiFetch = useApiFetch();
 
   const fetchData = async () => {
     try {
       const [projRes, clipsRes] = await Promise.all([
-        fetch(`${API_URL}/api/projects/${projectId}`, { credentials: "include" }),
-        fetch(`${API_URL}/api/projects/${projectId}/clips`, { credentials: "include" }),
+        apiFetch(`${API_URL}/api/projects/${projectId}`),
+        apiFetch(`${API_URL}/api/projects/${projectId}/clips`),
       ]);
       if (projRes.ok)  setProject(await projRes.json());
       if (clipsRes.ok) setClips(await clipsRes.json());
@@ -231,12 +233,12 @@ export default function ProjectDetailPage() {
 
     // Poll while processing
     const interval = setInterval(async () => {
-      const res = await fetch(`${API_URL}/api/projects/${projectId}`, { credentials: "include" });
+      const res = await apiFetch(`${API_URL}/api/projects/${projectId}`);
       if (!res.ok) return;
       const p = await res.json();
       setProject(p);
       if (p.status === "done") {
-        const cr = await fetch(`${API_URL}/api/projects/${projectId}/clips`, { credentials: "include" });
+        const cr = await apiFetch(`${API_URL}/api/projects/${projectId}/clips`);
         if (cr.ok) setClips(await cr.json());
         clearInterval(interval);
       }

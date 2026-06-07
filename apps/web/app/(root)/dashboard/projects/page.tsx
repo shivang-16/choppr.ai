@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useApiFetch } from "@/lib/apiFetch";
 import { Loader2, Film, Trash2, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import Sidebar from "../_components/sidebar";
 import Topbar from "../_components/topbar";
@@ -37,10 +38,11 @@ export default function ProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
+  const apiFetch = useApiFetch();
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/projects`, { credentials: "include" });
+      const res = await apiFetch(`${API_URL}/api/projects`);
       if (res.ok) setProjects(await res.json());
     } finally {
       setLoading(false);
@@ -53,7 +55,7 @@ export default function ProjectsPage() {
     e.preventDefault();
     e.stopPropagation();
     if (!confirm("Delete this project and all its clips?")) return;
-    await fetch(`${API_URL}/api/projects/${projectId}`, { method: "DELETE", credentials: "include" });
+    await apiFetch(`${API_URL}/api/projects/${projectId}`, { method: "DELETE" });
     setProjects((p) => p.filter((x) => x._id !== projectId));
   };
 

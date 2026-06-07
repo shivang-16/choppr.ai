@@ -3,14 +3,16 @@
 import { Bell, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useApiFetch } from "@/lib/apiFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export default function Topbar() {
   const [balance, setBalance] = useState<number | null>(null);
+  const apiFetch = useApiFetch();
 
   useEffect(() => {
-    fetch(`${API_URL}/api/credits`, { credentials: "include" })
+    apiFetch(`${API_URL}/api/credits`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => { if (data) setBalance(data.balance); })
       .catch(() => {});
