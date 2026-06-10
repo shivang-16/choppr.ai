@@ -7,9 +7,11 @@ export function useApiFetch() {
     const token = await getToken();
     return fetch(input, {
       ...init,
+      cache: "no-store",
       headers: {
         ...(init.headers ?? {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        "Cache-Control": "no-store",
         ...(init.body && !(init.headers as any)?.["Content-Type"]
           ? { "Content-Type": "application/json" }
           : {}),

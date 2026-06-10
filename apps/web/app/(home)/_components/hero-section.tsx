@@ -22,10 +22,19 @@ export default function HeroSection() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmed = url.trim();
+    const destination = trimmed
+      ? `/dashboard?url=${encodeURIComponent(trimmed)}`
+      : "/dashboard";
+
     if (isSignedIn) {
-      router.push("/dashboard");
+      router.push(destination);
     } else {
-      router.push("/sign-up");
+      // After sign-up, Clerk will redirect back to this URL
+      const signUpUrl = trimmed
+        ? `/sign-up?redirect_url=${encodeURIComponent(destination)}`
+        : "/sign-up";
+      router.push(signUpUrl);
     }
   };
 

@@ -88,6 +88,7 @@ function DashboardInner() {
       .then(setProjects)
       .catch(() => {});
   }, []);
+
   const [clipModel, setClipModel] = useState("Auto");
   const [genre, setGenre] = useState("Auto");
   const [clipLength, setClipLength] = useState("Auto (0m-3m)");
@@ -109,6 +110,15 @@ function DashboardInner() {
       setLoading(false);
     }
   };
+
+  // Pre-populate URL from landing page hero (?url=...)
+  useEffect(() => {
+    const prefilledUrl = searchParams.get("url");
+    if (prefilledUrl) {
+      setInputUrl(prefilledUrl);
+      handleFetch(prefilledUrl);
+    }
+  }, []);
 
   const handleUrlChange = (value: string) => {
     setInputUrl(value);

@@ -123,39 +123,87 @@ function ClipCard({ clip }: { clip: any }) {
   );
 }
 
+// ── Skeleton clip card ────────────────────────────────────────────────────────
+function ClipSkeleton() {
+  return (
+    <div className="relative aspect-[9/16] rounded-2xl overflow-hidden border border-white/10 bg-[#111]">
+      <div className="absolute inset-0 bg-gradient-to-b from-white/4 to-transparent animate-pulse" />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <Loader2 className="h-5 w-5 text-white/20 animate-spin" />
+      </div>
+    </div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function JobPage() {
   const { jobId } = useParams<{ jobId: string }>();
-  const [job, setJob] = useState<any>(null);
+  const [job,   setJob]   = useState<any>(null);
+  const [clips, setClips] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const apiFetch = useApiFetch();
+  const apiFetch     = useApiFetch();
+  const apiFetchRef  = useRef(apiFetch);
+  const clipsRef = useRef<any[]>([]);
+  // Keep apiFetchRef current on every render so the interval never uses a stale token
+  apiFetchRef.current = apiFetch;
 
   useEffect(() => {
     if (!jobId) return;
 
-    const poll = async () => {
+    const pollJob = async () => {
       try {
-        const res = await apiFetch(`${API_URL}/api/jobs/${jobId}`);
+        const res = await apiFetchRef.current(`${API_URL}/api/jobs/${jobId}`);
         if (!res.ok) throw new Error("Job not found");
         const data = await res.json();
         setJob(data);
-        if (data.status === "done" || data.status === "failed") {
-          clearInterval(interval);
-        }
+        return data;
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Error fetching job");
+        return null;
+      }
+    };
+
+    const pollClips = async () => {
+      try {
+        const res = await apiFetchRef.current(`${API_URL}/api/clips?jobId=${jobId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        clipsRef.current = data;
+        setClips([...data]); // new array ref forces re-render
+      } catch {}
+    };
+
+    const tick = async () => {
+      const data = await pollJob();
+      if (!data) { clearInterval(interval); return; }
+
+      // Poll clips as soon as clipping starts — each clip appears as it's saved
+      if (data.status === "clipping" || data.status === "done" || data.status === "failed") {
+        await pollClips();
+      }
+
+      // Stop only when terminal AND all clips are fetched
+      const total = data.totalClips ?? 0;
+      const isTerminal = data.status === "done" || data.status === "failed";
+      if (isTerminal && (total === 0 || clipsRef.current.length >= total)) {
         clearInterval(interval);
       }
     };
 
-    poll();
-    const interval = setInterval(poll, 2000);
+    tick();
+    const interval = setInterval(tick, 2000);
     return () => clearInterval(interval);
   }, [jobId]);
 
-  const progress = job ? (STATUS_PROGRESS[job.status] ?? job.progress) : 0;
-  const isDone   = job?.status === "done";
-  const isFailed = job?.status === "failed";
+  const progress    = job ? (STATUS_PROGRESS[job.status] ?? job.progress) : 0;
+  const isDone      = job?.status === "done";
+  const isFailed    = job?.status === "failed";
+  const isClipping  = job?.status === "clipping";
+  const totalClips  = job?.totalClips ?? 0;
+  // Show skeletons while clipping — even on final tick before status flips to done
+  const skeletonCount = (isClipping || (isDone && clips.length < totalClips))
+    ? Math.max(0, totalClips - clips.length)
+    : 0;
 
   return (
     <div className="flex min-h-screen bg-[#0a0a0a]">
@@ -176,9 +224,9 @@ export default function JobPage() {
             <h1 className="text-[16px] font-semibold text-white">
               {job ? STATUS_LABELS[job.status] ?? job.status : "Loading…"}
             </h1>
-            {isDone && job?.clips?.length > 0 && (
+            {(isClipping || isDone) && totalClips > 0 && (
               <span className="ml-auto text-[13px] text-white/40">
-                {job.clips.length} clips ready
+                {clips.length} / {totalClips} clips ready
               </span>
             )}
           </div>
@@ -203,17 +251,20 @@ export default function JobPage() {
             </div>
           )}
 
-          {/* Clips grid */}
-          {isDone && job?.clips?.length > 0 && (
+          {/* Clips grid — shows ready clips + skeleton placeholders for pending ones */}
+          {(clips.length > 0 || skeletonCount > 0) && (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {job.clips.map((clip: any) => (
-                <ClipCard key={clip.index} clip={clip} />
+              {clips.map((clip: any) => (
+                <ClipCard key={clip._id ?? clip.index} clip={clip} />
+              ))}
+              {Array.from({ length: skeletonCount }).map((_, i) => (
+                <ClipSkeleton key={`skeleton-${i}`} />
               ))}
             </div>
           )}
 
           {/* Empty done state */}
-          {isDone && (!job?.clips || job.clips.length === 0) && (
+          {isDone && clips.length === 0 && (
             <p className="text-[13px] text-white/35">No clips found. Try a different query.</p>
           )}
 

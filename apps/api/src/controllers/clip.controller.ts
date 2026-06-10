@@ -10,6 +10,17 @@ const translate = new TranslateClient({
   },
 });
 
+// ── GET /api/clips?jobId=xxx ─────────────────────────────────────────────────
+export async function getClipsByJob(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as any).user?._id;
+    const jobId  = String(req.query.jobId ?? "");
+    if (!jobId) { res.status(400).json({ error: "jobId required" }); return; }
+    const clips = await Clip.find({ jobId, userId }).sort({ index: 1 }).lean();
+    res.json(clips);
+  } catch (err) { next(err); }
+}
+
 // ── GET /api/clips/:clipId/captions ─────────────────────────────────────────
 export async function getClipCaptions(req: Request, res: Response, next: NextFunction) {
   try {
