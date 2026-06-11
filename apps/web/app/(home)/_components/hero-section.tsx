@@ -132,9 +132,7 @@ export default function HeroSection() {
 
         {/* Social proof */}
         <p className="text-[12.5px] text-white/45">
-          Trusted by{" "}
-          <span className="text-white/70 font-medium">50,000+</span> creators
-          &nbsp;·&nbsp; No credit card required
+          No credit card required &nbsp;·&nbsp; Start creating in seconds
         </p>
 
         {/* Video showcase */}

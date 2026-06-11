@@ -22,7 +22,20 @@ export type CaptionStyle =
   | "gradient-gold"
   | "comic"
   | "minimal-top"
-  | "beasty";
+  | "beasty"
+  | "hormozi"
+  | "mr-beast"
+  | "stack-reveal"
+  | "shake"
+  | "gradient-pop"
+  | "clean-mid"
+  | "electric-blue"
+  | "solo-pop"
+  | "solo-red"
+  | "solo-glow"
+  | "solo-box"
+  | "solo-gradient"
+  | "solo-shake";
 
 export interface CaptionWord {
   word:  string;
@@ -67,12 +80,27 @@ const CFG: Record<CaptionStyle, {
   comic:           { weight:"900", activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.4)",  bg:"rgba(30,30,200,0.85)",showAll:false,yRatio:0.78, glow:null,       outline:{color:"#000",width:4} },
   "minimal-top":   { weight:"400", activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.4)",  bg:null,                showAll:true,  yRatio:0.12, glow:null,        outline:null },
   beasty:          { weight:"900", activeColor:"#FFFFFF",   inactiveColor:"rgba(255,255,255,0.0)",  bg:null,                showAll:false, yRatio:0.80, glow:null,        outline:{color:"#000",width:5} },
+  hormozi:         { weight:"900", activeColor:"#FFE600",   inactiveColor:"rgba(255,255,255,0.9)",  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
+  "mr-beast":      { weight:"900", activeColor:"#FF0000",   inactiveColor:"rgba(255,255,255,1.0)",  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:6} },
+  "stack-reveal":  { weight:"900", activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.45, glow:null,        outline:{color:"#000",width:4} },
+  shake:           { weight:"900", activeColor:"#FF3333",   inactiveColor:"rgba(255,255,255,0.8)",  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:4} },
+  "gradient-pop":  { weight:"900", activeColor:"gradient",  inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.50, glow:"#A855F7",   outline:{color:"#000",width:3} },
+  "clean-mid":     { weight:"900", activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.5)",  bg:"rgba(0,0,0,0.5)",   showAll:true,  yRatio:0.50, glow:null,        outline:null },
+  "electric-blue": { weight:"900", activeColor:"#00D4FF",   inactiveColor:"rgba(255,255,255,0.4)",  bg:null,                showAll:true,  yRatio:0.50, glow:"#00D4FF",   outline:{color:"#000",width:3} },
+  "solo-pop":      { weight:"900", activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
+  "solo-red":      { weight:"900", activeColor:"#FF2D2D",   inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:"#FF2D2D",   outline:{color:"#000",width:5} },
+  "solo-glow":     { weight:"900", activeColor:"#00FF88",   inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:"#00FF88",   outline:{color:"#000",width:4} },
+  "solo-box":      { weight:"900", activeColor:"#000",      inactiveColor:"transparent",           bg:"#FFE600",           showAll:false, yRatio:0.50, glow:null,        outline:null },
+  "solo-gradient": { weight:"900", activeColor:"gradient",  inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:"#A855F7",   outline:{color:"#000",width:4} },
+  "solo-shake":    { weight:"900", activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:null,        outline:{color:"#FF0000",width:5} },
 };
 
 // Rainbow colors cycle
 const RAINBOW = ["#FF0000","#FF7F00","#FFFF00","#00FF00","#0000FF","#8B00FF"];
 // Gold gradient stops
 const GOLD    = ["#FFD700","#FFA500","#FFD700","#FFFACD","#FFD700"];
+// Purple-pink gradient for gradient-pop
+const PURPLE_POP = ["#A855F7","#EC4899","#F97316","#EAB308","#A855F7"];
 
 export default function CaptionRenderer({ videoRef, words, style, fontSize = 28 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -128,6 +156,17 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 28 
         if (style === "word-pop"  && isA)   wfs = fs * 1.5;
         if (style === "beasty"    && isA)   wfs = fs * 1.6;
         if (style === "comic"     && isA)   wfs = fs * 1.2;
+        if (style === "hormozi"   && isA)   wfs = fs * 1.4;
+        if (style === "mr-beast"  && isA)   wfs = fs * 1.6;
+        if (style === "stack-reveal" && isA) wfs = fs * 1.3;
+        if (style === "shake"     && isA)   wfs = fs * 1.3;
+        if (style === "gradient-pop" && isA) wfs = fs * 1.4;
+        if (style === "solo-pop"     && isA) wfs = fs * 1.8;
+        if (style === "solo-red"     && isA) wfs = fs * 1.8;
+        if (style === "solo-glow"    && isA) wfs = fs * 1.7;
+        if (style === "solo-box"     && isA) wfs = fs * 1.6;
+        if (style === "solo-gradient"&& isA) wfs = fs * 1.8;
+        if (style === "solo-shake"   && isA) wfs = fs * 1.8;
         ctx.font = `${cfg.weight} ${wfs}px system-ui,-apple-system,sans-serif`;
 
         // Y animation
@@ -145,6 +184,13 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 28 
         if (style === "wave") {
           const phase = m.wi * 0.6;
           drawY = cy + Math.sin(Date.now() / 200 + phase) * (isA ? 12 : 6);
+        }
+
+        // Shake — rapid horizontal vibration on active word
+        if ((style === "shake" || style === "solo-shake") && isA) {
+          const shakeAmt = Math.sin(Date.now() / 30) * 4;
+          drawY += Math.cos(Date.now() / 40) * 2;
+          x += shakeAmt;
         }
 
         // Glitch offset
@@ -199,7 +245,7 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 28 
         // Fill color
         if (color === "gradient") {
           // Gradient per word
-          const pal   = style === "gradient-gold" ? GOLD : RAINBOW;
+          const pal   = style === "gradient-gold" ? GOLD : (style === "gradient-pop" || style === "solo-gradient") ? PURPLE_POP : RAINBOW;
           const grd   = ctx.createLinearGradient(x, drawY - wfs, x + ctx.measureText(m.word).width, drawY);
           pal.forEach((c, i) => grd.addColorStop(i / (pal.length - 1), c));
           ctx.fillStyle = isA ? grd : cfg.inactiveColor;

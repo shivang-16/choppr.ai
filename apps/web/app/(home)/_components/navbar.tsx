@@ -5,15 +5,14 @@ import Link from "next/link";
 import { ChevronDown, Scissors } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const navItems = [
-  { label: "Features", hasDropdown: true },
-  { label: "How It Works", hasDropdown: false },
-  { label: "Pricing", hasDropdown: false },
-  { label: "Examples", hasDropdown: false },
+const FEATURES = [
+  { label: "AI Clipping", description: "Auto-find viral moments" },
+  { label: "AI Captioning", description: "Accurate captions in seconds" },
+  { label: "AI Reframe", description: "Smart crop for any aspect ratio" },
 ];
 
 export default function Navbar() {
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [showFeatures, setShowFeatures] = useState(false);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex justify-center px-4 py-4">
@@ -30,27 +29,62 @@ export default function Navbar() {
 
         {/* Nav links */}
         <div className="hidden md:flex items-center gap-1">
-          {navItems.map((item) => (
+          {/* Features dropdown */}
+          <div
+            className="relative"
+            onMouseEnter={() => setShowFeatures(true)}
+            onMouseLeave={() => setShowFeatures(false)}
+          >
             <button
-              key={item.label}
-              onMouseEnter={() => item.hasDropdown && setActiveDropdown(item.label)}
-              onMouseLeave={() => setActiveDropdown(null)}
               className={cn(
                 "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
                 "text-white/60 hover:text-white hover:bg-white/6"
               )}
             >
-              {item.label}
-              {item.hasDropdown && (
-                <ChevronDown
-                  className={cn(
-                    "h-3.5 w-3.5 transition-transform duration-200",
-                    activeDropdown === item.label && "rotate-180"
-                  )}
-                />
-              )}
+              Features
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 transition-transform duration-200",
+                  showFeatures && "rotate-180"
+                )}
+              />
             </button>
-          ))}
+            {showFeatures && (
+              <div className="absolute top-full left-0 mt-1 w-56 rounded-xl border border-white/10 bg-[#1a1a1a]/95 backdrop-blur-xl p-2 shadow-xl">
+                {FEATURES.map((f) => (
+                  <div
+                    key={f.label}
+                    className="rounded-lg px-3 py-2 hover:bg-white/6 transition-colors cursor-default"
+                  >
+                    <p className="text-[13px] font-medium text-white/80">{f.label}</p>
+                    <p className="text-[11px] text-white/40">{f.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* How It Works */}
+          <a
+            href="#how-it-works"
+            className={cn(
+              "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
+              "text-white/60 hover:text-white hover:bg-white/6"
+            )}
+          >
+            How It Works
+          </a>
+
+          {/* Pricing */}
+          <Link
+            href="/dashboard/billing"
+            className={cn(
+              "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
+              "text-white/60 hover:text-white hover:bg-white/6"
+            )}
+          >
+            Pricing
+          </Link>
         </div>
 
         {/* CTA */}

@@ -60,7 +60,7 @@ const PLATFORM_ICONS: Record<string, React.ReactNode> = {
 };
 
 const FEATURE_TAGS = [
-  "AI clipping", "AI captioning", "AI reframe", "AI B-Roll", "AI audio enhance", "AI music sync",
+  "AI clipping", "AI captioning", "AI reframe",
 ];
 
 // ── Timing (ms) ──
@@ -102,7 +102,7 @@ export default function HeroVideoDemo() {
   const clipsVisible = phase === "clips" || phase === "clips-exit";
 
   return (
-    <div className="relative w-full max-w-4xl select-none">
+    <div id="how-it-works" className="relative w-full max-w-4xl select-none">
       <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-[#0d0d0d] flex flex-col">
 
         {/* ── Main animation stage ── */}
