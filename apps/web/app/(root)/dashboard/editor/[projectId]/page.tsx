@@ -10,6 +10,7 @@ import VideoPreview, { VideoPreviewHandle } from "./_components/video-preview";
 import RightToolbar from "./_components/right-toolbar";
 import AudioPanel from "./_components/audio-panel";
 import Timeline, { Track, TrackItem, TrackItemType } from "./_components/timeline";
+import ExportModal from "./_components/export-modal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const INITIAL_ZOOM = 60;
@@ -51,6 +52,7 @@ export default function EditorPage() {
   const [isMuted, setIsMuted]                 = useState(false);
   const [zoom, setZoom]                       = useState(INITIAL_ZOOM);
   const [rightPanel, setRightPanel]           = useState("");
+  const [showExport, setShowExport]           = useState(false);
   // volume per item id (0-100), default 100
   const [volumes, setVolumes]                 = useState<Record<string, number>>({});
   const [history, setHistory]                 = useState<HistoryEntry[]>([]);
@@ -435,12 +437,19 @@ export default function EditorPage() {
     setVolumes(v => ({ ...v, [audioItemId]: v[selectedItemId ?? ""] ?? 100 }));
   }, [selectedItem, selectedItemId, tracks, volumes]);
 
-  const handleExport = () => {
-    alert("Export coming soon — will render via FFmpeg backend.");
-  };
+  const handleExport = () => setShowExport(true);
 
   return (
     <div className="flex flex-col h-screen bg-[#111] overflow-hidden select-none">
+      {showExport && (
+        <ExportModal
+          projectId={projectId}
+          tracks={tracks}
+          volumes={volumes}
+          aspectRatio="9:16"
+          onClose={() => setShowExport(false)}
+        />
+      )}
       {/* Topbar */}
       <EditorTopbar
         title={project?.title ?? "Untitled project"}

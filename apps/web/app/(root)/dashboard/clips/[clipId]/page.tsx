@@ -5,7 +5,7 @@ import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
 import {
   ArrowLeft, Download, Play, Pause, Volume2, VolumeX,
-  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages,
+  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle,
 } from "lucide-react";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -110,6 +110,12 @@ export default function ClipRefinePage() {
   const [contrast, setContrast]       = useState(100);
   const [saturation, setSaturation]   = useState(100);
 
+  // Export state
+  const [exportPhase, setExportPhase]   = useState<"idle" | "exporting" | "done" | "error">("idle");
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportUrl, setExportUrl]       = useState<string | null>(null);
+  const exportPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Load captions from API
   useEffect(() => {
     if (!clipId) return;
@@ -138,6 +144,83 @@ export default function ClipRefinePage() {
       }
     } finally {
       setTranslating(false);
+    }
+  };
+
+  // Cleanup export poll on unmount
+  useEffect(() => () => { if (exportPollRef.current) clearInterval(exportPollRef.current); }, []);
+
+  const handleExport = async () => {
+    if (!src || exportPhase === "exporting") return;
+    setExportPhase("exporting");
+    setExportProgress(0);
+    setExportUrl(null);
+
+    try {
+      // Build a single-clip timeline from this clip's current settings
+      const effectiveEnd = trimEnd > 0 ? trimEnd : duration;
+      const clipDuration = effectiveEnd - trimStart;
+
+      const tracks = [
+        {
+          id: "track-video",
+          items: [{
+            id: clipId,
+            type: "video",
+            startTime: 0,
+            duration: clipDuration,
+            sourceDuration: duration,
+            trimIn: trimStart,
+            trimOut: duration - effectiveEnd,
+            src,
+          }],
+        },
+        { id: "track-audio", items: [] },
+      ];
+
+      const res = await apiFetch(`${API_URL}/api/exports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: sp.get("projectId") ?? clipId,
+          tracks,
+          volumes:      { [clipId]: 100 },
+          speeds:       { [clipId]: speed },
+          captionStyle,
+          captionMap:   {},
+          aspectRatio:  "9:16",
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? "Export failed");
+      }
+
+      const { exportId } = await res.json();
+
+      exportPollRef.current = setInterval(async () => {
+        try {
+          const r = await apiFetch(`${API_URL}/api/exports/${exportId}`);
+          const data = await r.json();
+          setExportProgress(data.progress ?? 0);
+          if (data.status === "done") {
+            clearInterval(exportPollRef.current!);
+            setExportUrl(data.s3Url);
+            setExportPhase("done");
+            // Auto-download
+            const a = document.createElement("a");
+            a.href = data.s3Url;
+            a.download = `clip-${index}.mp4`;
+            a.click();
+          } else if (data.status === "failed") {
+            clearInterval(exportPollRef.current!);
+            setExportPhase("error");
+          }
+        } catch { /* keep polling */ }
+      }, 2500);
+    } catch {
+      setExportPhase("error");
     }
   };
 
@@ -240,12 +323,6 @@ export default function ClipRefinePage() {
                 <span className="text-[11px] font-mono text-white/35">{fmt(currentTime)} / {fmt(duration)}</span>
                 {speed !== 1 && <span className="text-[10px] font-semibold text-white/50 bg-white/8 px-1.5 py-0.5 rounded">{speed}×</span>}
               </div>
-              <a
-                href={src} download={`clip-${index}.mp4`}
-                className="flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-[12px] font-semibold text-black hover:bg-white/90 transition-colors"
-              >
-                <Download className="h-3.5 w-3.5" /> Download
-              </a>
             </div>
           </div>
         </div>
@@ -429,11 +506,56 @@ export default function ClipRefinePage() {
           </div>
 
           {/* Export */}
-          <div className="p-4 border-t border-white/6">
-            <button className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all">
-              Export clip
-            </button>
-            <p className="text-[11px] text-white/20 text-center mt-2">Settings applied on export</p>
+          <div className="p-4 border-t border-white/6 flex flex-col gap-2">
+            {exportPhase === "idle" && (
+              <button
+                onClick={handleExport}
+                className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+              >
+                Export clip
+              </button>
+            )}
+
+            {exportPhase === "exporting" && (
+              <>
+                <div className="flex items-center justify-between text-[11px] text-white/40 mb-1">
+                  <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Rendering…</span>
+                  <span>{exportProgress}%</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-white/10">
+                  <div className="h-full rounded-full bg-white transition-all duration-500" style={{ width: `${exportProgress}%` }} />
+                </div>
+              </>
+            )}
+
+            {exportPhase === "done" && exportUrl && (
+              <>
+                <div className="flex items-center gap-2 text-[12px] text-green-400">
+                  <CheckCircle className="h-4 w-4" /> Downloaded!
+                </div>
+                <button onClick={() => { setExportPhase("idle"); setExportUrl(null); }} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
+                  Export again
+                </button>
+              </>
+            )}
+
+            {exportPhase === "error" && (
+              <>
+                <div className="flex items-center gap-2 text-[12px] text-red-400 mb-1">
+                  <AlertCircle className="h-4 w-4" /> Export failed
+                </div>
+                <button
+                  onClick={() => setExportPhase("idle")}
+                  className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 transition-all"
+                >
+                  Try again
+                </button>
+              </>
+            )}
+
+            {exportPhase === "idle" && (
+              <p className="text-[11px] text-white/20 text-center">Settings applied on export</p>
+            )}
           </div>
         </div>
       </main>
