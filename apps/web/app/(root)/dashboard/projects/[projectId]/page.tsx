@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
-import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Pause, Wand2, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Pause, Wand2, Sparkles, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { useRouter as _useRouter } from "next/navigation";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -263,11 +263,30 @@ export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const router = useRouter();
   const nav    = _useRouter();
-  const [project, setProject]       = useState<any>(null);
-  const [clips, setClips]           = useState<any[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [project, setProject]           = useState<any>(null);
+  const [clips, setClips]               = useState<any[]>([]);
+  const [loading, setLoading]           = useState(true);
   const [expandedClip, setExpandedClip] = useState<any>(null);
+  const [retrying, setRetrying]         = useState(false);
   const apiFetch = useApiFetch();
+
+  const handleRetry = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      const res = await apiFetch(`${API_URL}/api/projects/${projectId}/retry`, { method: "POST" });
+      if (res.ok) {
+        const [projRes, clipsRes] = await Promise.all([
+          apiFetch(`${API_URL}/api/projects/${projectId}`),
+          apiFetch(`${API_URL}/api/projects/${projectId}/clips`),
+        ]);
+        if (projRes.ok)  setProject(await projRes.json());
+        if (clipsRes.ok) setClips(await clipsRes.json());
+      }
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   useEffect(() => {
     if (!projectId) return;
@@ -296,7 +315,7 @@ export default function ProjectDetailPage() {
     <div className="flex min-h-screen bg-[#0a0a0a]">
       <Sidebar />
       <Topbar />
-      <main className="ml-14 mt-12 flex-1 px-6 py-10">
+      <main className="md:ml-14 mt-12 flex-1 px-6 py-10 pb-24 md:pb-10">
         <div className="max-w-5xl mx-auto flex flex-col gap-6">
 
           {/* Back + header */}
@@ -315,6 +334,14 @@ export default function ProjectDetailPage() {
                 <p className="text-[11px] text-white/25 truncate">{project.sourceUrl}</p>
               )}
             </div>
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
+            >
+              <RotateCcw className={`h-3.5 w-3.5 ${retrying ? "animate-spin" : ""}`} />
+              {retrying ? "Retrying…" : "Retry"}
+            </button>
           </div>
 
           {/* Loading */}

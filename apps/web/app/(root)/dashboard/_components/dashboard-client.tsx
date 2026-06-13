@@ -11,12 +11,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 const TOOLS = [
   { icon: Sparkles,  label: "Long to shorts" },
-  { icon: Captions,  label: "AI Captions",   badge: null },
   { icon: Scissors,  label: "Video editor" },
-  { icon: AudioLines,label: "Enhance speech" },
-  { icon: Crop,      label: "AI Reframe" },
-  { icon: Film,      label: "AI B-Roll",     badge: "New" },
-  { icon: Zap,       label: "AI hook" },
 ];
 
 

@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { Project } from "../model/project.model.js";
 import { Clip } from "../model/clip.model.js";
+import { Job } from "../model/job.model.js";
+import { enqueueJob } from "../services/sqs.js";
 
 // ── GET /api/projects ── list all projects for user ─────────────────────────
 export async function listProjects(req: Request, res: Response, next: NextFunction) {
@@ -41,6 +43,43 @@ export async function getProjectClips(req: Request, res: Response, next: NextFun
       .sort({ index: 1 })
       .lean();
     res.json(clips);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── POST /api/projects/:projectId/retry ──────────────────────────────────────
+export async function retryProject(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId  = (req as any).user?._id;
+    const project = await Project.findById(req.params.projectId);
+    if (!project) { res.status(404).json({ error: "Not found" }); return; }
+    if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    const job = await Job.findById(project.jobId);
+    if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+
+    // Reset both project and job back to pending
+    await Promise.all([
+      Project.updateOne({ _id: project._id }, { $set: { status: "pending", totalClips: 0 } }),
+      Job.updateOne({ _id: job._id }, { $set: { status: "pending", progress: 0, error: undefined, clips: [] } }),
+    ]);
+
+    // Re-enqueue the job
+    await enqueueJob({
+      jobId:       job._id,
+      projectId:   project._id as string,
+      userId,
+      url:         job.url,
+      query:       job.query ?? "",
+      clipModel:   "Auto",
+      genre:       "Auto",
+      clipLength:  "Auto (0m-3m)",
+      aspectRatio: "9:16",
+      maxClips:    10,
+    });
+
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
