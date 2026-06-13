@@ -3,20 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
-import { ArrowLeft, Loader2, CheckCircle, XCircle, Volume2, VolumeX, Download, X, Play, Pause, Wand2 } from "lucide-react";
-import Link from "next/link";
+import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Pause, Wand2, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 import { useRouter as _useRouter } from "next/navigation";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-
-const STATUS_LABELS: Record<string, string> = {
-  pending:    "Queued…",
-  processing: "Processing…",
-  done:       "Done",
-  failed:     "Failed",
-};
 
 // ── Full-screen video modal ───────────────────────────────────────────────────
 function VideoModal({ clip, onClose }: { clip: any; onClose: () => void }) {
@@ -124,12 +116,27 @@ function VideoModal({ clip, onClose }: { clip: any; onClose: () => void }) {
   );
 }
 
-// ── Clip card with hover-to-play ─────────────────────────────────────────────
-function ClipCard({ clip, onExpand, onUse }: { clip: any; onExpand: () => void; onUse: () => void }) {
+// ── Clip card — full-width, arrows inside at mid-height, dots below ───────────
+function ClipCard({ clip, editedClips, onExpand, onUse }: {
+  clip: any; editedClips: any[]; onExpand: (c: any) => void; onUse: () => void;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hovered, setHovered] = useState(false);
   const [muted, setMuted]     = useState(true);
   const [loaded, setLoaded]   = useState(false);
+
+  const slides   = [clip, ...editedClips];
+  const hasMany  = slides.length > 1;
+  const [idx, setIdx] = useState(0);
+  const current  = slides[idx];
+  const isEdited = idx > 0;
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.load();
+    if (hovered) v.play().catch(() => {});
+  }, [idx]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -140,65 +147,113 @@ function ClipCard({ clip, onExpand, onUse }: { clip: any; onExpand: () => void; 
 
   return (
     <div
-      className="group relative aspect-[9/16] rounded-2xl overflow-hidden border border-white/10 bg-[#111] hover:border-white/25 transition-all duration-200 cursor-pointer"
+      className="flex flex-col gap-2"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setMuted(true); }}
-      onClick={onExpand}
     >
-      <video
-        ref={videoRef}
-        src={clip.s3Url}
-        muted={muted}
-        loop
-        playsInline
-        preload="metadata"
-        onLoadedData={() => setLoaded(true)}
-        className="absolute inset-0 w-full h-full object-cover"
-      />
-
-      {!loaded && <div className="absolute inset-0 bg-white/4 animate-pulse" />}
-      <div className={`absolute inset-0 bg-black/40 transition-opacity duration-200 ${hovered ? "opacity-0" : "opacity-100"}`} />
-
-      {/* Controls */}
+      {/* Card: no overflow-hidden so arrows at mid-height aren't clipped */}
       <div
-        className={`absolute top-2 right-2 flex gap-1.5 transition-opacity duration-150 ${hovered ? "opacity-100" : "opacity-0"}`}
-        onClick={(e) => e.stopPropagation()}
+        className="relative w-full rounded-2xl border border-white/10 hover:border-white/25 transition-all duration-200 bg-[#111]"
+        style={{ aspectRatio: "9/16" }}
       >
-        <button
-          onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }}
-          className="h-7 w-7 flex items-center justify-center rounded-full bg-black/60 text-white/80 hover:text-white transition-colors"
+        {/* Video layer — overflow-hidden only here for rounded corners */}
+        <div
+          className="absolute inset-0 rounded-2xl overflow-hidden cursor-pointer"
+          onClick={() => onExpand(current)}
         >
-          {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-        </button>
-        <a
-          href={clip.s3Url}
-          download
-          onClick={(e) => e.stopPropagation()}
-          className="h-7 w-7 flex items-center justify-center rounded-full bg-black/60 text-white/80 hover:text-white transition-colors"
-        >
-          <Download className="h-3.5 w-3.5" />
-        </a>
-      </div>
-
-      {/* Bottom: score + Use this clip button */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent px-2.5 pt-8 pb-2.5">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[8px] uppercase tracking-widest text-white/40">Score</span>
-          <span className="text-[13px] font-bold text-white">{clip.score}</span>
+          <video
+            ref={videoRef}
+            src={current.s3Url}
+            muted={muted}
+            loop
+            playsInline
+            preload="metadata"
+            onLoadedData={() => setLoaded(true)}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          {!loaded && <div className="absolute inset-0 bg-white/4 animate-pulse" />}
+          <div className={`absolute inset-0 bg-black/40 transition-opacity duration-200 ${hovered ? "opacity-0" : "opacity-100"}`} />
         </div>
-        {/* Use this clip button */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onUse(); }}
-          className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-white py-2 text-[11px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-all"
-        >
-          <Wand2 className="h-3 w-3" />
-          Use this clip
-        </button>
+
+        {/* Overlays (badges, mute, bottom bar) — above video, below arrows */}
+        <div className="absolute top-2 left-2 right-2 flex items-start justify-between pointer-events-none z-10">
+          {isEdited ? (
+            <div className="flex items-center gap-1 rounded-full bg-white/15 backdrop-blur-sm border border-white/20 px-2 py-0.5">
+              <Sparkles className="h-2.5 w-2.5 text-white/80" />
+              <span className="text-[9px] font-semibold text-white/80">Edited</span>
+            </div>
+          ) : (
+            <div className="rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white/60">
+              #{current.index}
+            </div>
+          )}
+          <button
+            className={`pointer-events-auto h-7 w-7 flex items-center justify-center rounded-full bg-black/60 text-white/80 hover:text-white transition-all ${hovered ? "opacity-100" : "opacity-0"}`}
+            onClick={(e) => { e.stopPropagation(); setMuted(m => !m); }}
+          >
+            {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent px-2.5 pt-8 pb-2.5 z-10">
+          {!isEdited && (
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[8px] uppercase tracking-widest text-white/40">Score</span>
+              <span className="text-[13px] font-bold text-white">{current.score}</span>
+            </div>
+          )}
+          {isEdited ? (
+            <a
+              href={current.s3Url}
+              download
+              onClick={(e) => e.stopPropagation()}
+              className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-white py-2 text-[11px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-all"
+            >
+              <Download className="h-3 w-3" />
+              Download
+            </a>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); onUse(); }}
+              className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-white py-2 text-[11px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-all"
+            >
+              <Wand2 className="h-3 w-3" />
+              Use this clip
+            </button>
+          )}
+        </div>
+
+        {/* Arrows — full-height flex overlay so items-center always centers them */}
+        {hasMany && (
+          <div className="absolute inset-0 z-20 flex items-center justify-between px-2 pointer-events-none">
+            <button
+              onClick={() => setIdx(i => i - 1)}
+              className={`pointer-events-auto h-7 w-7 flex items-center justify-center rounded-full bg-black/60 backdrop-blur-sm hover:bg-black/80 text-white transition-all ${idx === 0 ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setIdx(i => i + 1)}
+              className={`pointer-events-auto h-7 w-7 flex items-center justify-center rounded-full bg-black/60 backdrop-blur-sm hover:bg-black/80 text-white transition-all ${idx === slides.length - 1 ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white/60">
-        #{clip.index}
-      </div>
+      {/* Dots below */}
+      {hasMany && (
+        <div className="flex justify-center gap-1.5">
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIdx(i)}
+              className={`rounded-full transition-all duration-200 ${i === idx ? "w-4 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/30 hover:bg-white/50"}`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -214,43 +269,28 @@ export default function ProjectDetailPage() {
   const [expandedClip, setExpandedClip] = useState<any>(null);
   const apiFetch = useApiFetch();
 
-  const fetchData = async () => {
-    try {
-      const [projRes, clipsRes] = await Promise.all([
-        apiFetch(`${API_URL}/api/projects/${projectId}`),
-        apiFetch(`${API_URL}/api/projects/${projectId}/clips`),
-      ]);
-      if (projRes.ok)  setProject(await projRes.json());
-      if (clipsRes.ok) setClips(await clipsRes.json());
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (!projectId) return;
-    fetchData();
-
-    // Poll while processing
-    const interval = setInterval(async () => {
-      const res = await apiFetch(`${API_URL}/api/projects/${projectId}`);
-      if (!res.ok) return;
-      const p = await res.json();
-      setProject(p);
-      if (p.status === "done") {
-        const cr = await apiFetch(`${API_URL}/api/projects/${projectId}/clips`);
-        if (cr.ok) setClips(await cr.json());
-        clearInterval(interval);
+    (async () => {
+      try {
+        const [projRes, clipsRes] = await Promise.all([
+          apiFetch(`${API_URL}/api/projects/${projectId}`),
+          apiFetch(`${API_URL}/api/projects/${projectId}/clips`),
+        ]);
+        if (projRes.ok)  setProject(await projRes.json());
+        if (clipsRes.ok) setClips(await clipsRes.json());
+      } finally {
+        setLoading(false);
       }
-      if (p.status === "failed") clearInterval(interval);
-    }, 3000);
-
-    return () => clearInterval(interval);
+    })();
   }, [projectId]);
 
-  const isDone       = project?.status === "done";
-  const isFailed     = project?.status === "failed";
-  const isProcessing = project?.status === "processing" || project?.status === "pending";
+  // Separate original clips from edited exports, group by parent
+  const originalClips = clips.filter((c: any) => !c.originalClipId);
+  const editedByParent: Record<string, any[]> = {};
+  clips.filter((c: any) => c.originalClipId).forEach((c: any) => {
+    (editedByParent[c.originalClipId] ??= []).push(c);
+  });
 
   return (
     <div className="flex min-h-screen bg-[#0a0a0a]">
@@ -275,59 +315,40 @@ export default function ProjectDetailPage() {
                 <p className="text-[11px] text-white/25 truncate">{project.sourceUrl}</p>
               )}
             </div>
-            {/* Status badge */}
-            {project && (
-              <div className="flex items-center gap-1.5 rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[12px] text-white/50">
-                {isProcessing && <Loader2 className="h-3 w-3 animate-spin" />}
-                {isDone       && <CheckCircle className="h-3 w-3 text-white/60" />}
-                {isFailed     && <XCircle className="h-3 w-3 text-red-400" />}
-                {STATUS_LABELS[project.status] ?? project.status}
-              </div>
-            )}
           </div>
 
-          {/* Processing state */}
-          {isProcessing && (
-            <div className="flex flex-col gap-3 rounded-2xl border border-white/8 bg-[#111] p-5">
-              <p className="text-[13px] text-white/50">Your video is being processed…</p>
-              <div className="h-1 w-full rounded-full bg-white/8 overflow-hidden">
-                <div className="h-full bg-white/40 rounded-full animate-pulse w-2/3" />
-              </div>
-              <p className="text-[11px] text-white/25">This can take a few minutes depending on video length.</p>
-            </div>
-          )}
-
-          {/* Failed state */}
-          {isFailed && (
-            <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-[13px] text-red-400">
-              Processing failed. Please try again from the dashboard.
+          {/* Loading */}
+          {loading && (
+            <div className="flex items-center gap-2 text-[13px] text-white/30">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading clips…
             </div>
           )}
 
           {/* Clips count */}
-          {isDone && clips.length > 0 && (
+          {!loading && originalClips.length > 0 && (
             <p className="text-[13px] text-white/40">
-              {clips.length} clip{clips.length !== 1 ? "s" : ""} ready
+              {originalClips.length} clip{originalClips.length !== 1 ? "s" : ""} ready
             </p>
           )}
 
           {/* Clips grid */}
-          {clips.length > 0 && (
+          {originalClips.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {clips.map((clip) => (
+              {originalClips.map((clip: any) => (
                 <ClipCard
                   key={clip._id}
                   clip={clip}
-                  onExpand={() => setExpandedClip(clip)}
-                  onUse={() => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}`)}
+                  editedClips={editedByParent[clip._id] ?? []}
+                  onExpand={(c) => setExpandedClip(c)}
+                  onUse={() => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
                 />
               ))}
             </div>
           )}
 
-          {/* Empty done */}
-          {isDone && clips.length === 0 && (
-            <p className="text-[13px] text-white/30">No clips were found for this video. Try a different query.</p>
+          {/* Empty */}
+          {!loading && originalClips.length === 0 && (
+            <p className="text-[13px] text-white/30">No clips found for this project.</p>
           )}
         </div>
       </main>

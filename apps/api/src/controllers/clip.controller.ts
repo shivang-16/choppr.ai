@@ -21,6 +21,17 @@ export async function getClipsByJob(req: Request, res: Response, next: NextFunct
   } catch (err) { next(err); }
 }
 
+// ── GET /api/clips/:clipId ───────────────────────────────────────────────────
+export async function getClip(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as any).user?._id;
+    const clip   = await Clip.findById(req.params.clipId).lean();
+    if (!clip)                  { res.status(404).json({ error: "Not found" });  return; }
+    if (clip.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    res.json(clip);
+  } catch (err) { next(err); }
+}
+
 // ── GET /api/clips/:clipId/captions ─────────────────────────────────────────
 export async function getClipCaptions(req: Request, res: Response, next: NextFunction) {
   try {
@@ -29,6 +40,20 @@ export async function getClipCaptions(req: Request, res: Response, next: NextFun
     if (!clip)                  { res.status(404).json({ error: "Not found" });  return; }
     if (clip.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
     res.json({ captions: clip.captions ?? [], lang: clip.captionLang ?? "" });
+  } catch (err) { next(err); }
+}
+
+// ── PATCH /api/clips/:clipId/settings ───────────────────────────────────────
+export async function saveClipSettings(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as any).user?._id;
+    const clip   = await Clip.findById(req.params.clipId);
+    if (!clip)                  { res.status(404).json({ error: "Not found" });  return; }
+    if (clip.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    clip.editSettings = req.body;
+    await clip.save();
+    res.json({ ok: true });
   } catch (err) { next(err); }
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
 import {
@@ -111,25 +111,68 @@ export default function ClipRefinePage() {
   const [saturation, setSaturation]   = useState(100);
 
   // Export state
-  const [exportPhase, setExportPhase]   = useState<"idle" | "exporting" | "done" | "error">("idle");
+  const [exportPhase, setExportPhase]       = useState<"idle" | "exporting" | "done" | "error">("idle");
   const [exportProgress, setExportProgress] = useState(0);
-  const [exportUrl, setExportUrl]       = useState<string | null>(null);
+  const [exportUrl, setExportUrl]           = useState<string | null>(null);
   const exportPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load captions from API
+  // Load clip (settings + captions) on mount — single fetch to avoid race conditions
   useEffect(() => {
     if (!clipId) return;
-    apiFetch(`${API_URL}/api/clips/${clipId}/captions`)
+
+    apiFetch(`${API_URL}/api/clips/${clipId}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data?.captions?.length) {
+        if (!data) return;
+
+        // Apply saved edit settings first
+        const s = data.editSettings;
+        if (s) {
+          if (s.captionStyle) setCaptionStyle(s.captionStyle);
+          if (s.speed      != null) setSpeed(s.speed);
+          if (s.trimStart  != null) setTrimStart(s.trimStart);
+          if (s.trimEnd    != null) setTrimEnd(s.trimEnd);
+          if (s.brightness != null) setBrightness(s.brightness);
+          if (s.contrast   != null) setContrast(s.contrast);
+          if (s.saturation != null) setSaturation(s.saturation);
+
+          // Use saved translated captions if present, else fall back to original
+          if (s.captionWords?.length) {
+            setCaptionWords(s.captionWords);
+            setCaptionLang(s.captionLang ?? "");
+            setActiveLang(s.captionLang ?? "");
+            return; // don't overwrite with original below
+          }
+        }
+
+        // No saved translation — use original captions from clip
+        if (data.captions?.length) {
           setCaptionWords(data.captions);
-          setCaptionLang(data.lang ?? "");
-          setActiveLang(data.lang?.split("-")[0] ?? "");
+          setCaptionLang(data.captionLang ?? "");
+          setActiveLang((data.captionLang ?? "").split("-")[0]);
         }
       })
       .catch(() => {});
   }, [clipId]);
+
+  // Debounced auto-save edit settings
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveSettings = useCallback((settings: object) => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      apiFetch(`${API_URL}/api/clips/${clipId}/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      }).catch(() => {});
+    }, 800);
+  }, [clipId]);
+
+  // Auto-save whenever any setting changes (captionWords saved too so translation persists)
+  useEffect(() => {
+    if (!clipId) return;
+    saveSettings({ captionStyle, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation });
+  }, [captionStyle, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation]);
 
   const handleTranslate = async (lang: string) => {
     if (!lang || lang === activeLang || translating) return;
@@ -187,8 +230,9 @@ export default function ClipRefinePage() {
           volumes:      { [clipId]: 100 },
           speeds:       { [clipId]: speed },
           captionStyle,
-          captionMap:   {},
-          aspectRatio:  "9:16",
+          captionMap:     captionWords.length ? { [clipId]: captionWords } : {},
+          aspectRatio:    "9:16",
+          originalClipId: clipId,
         }),
       });
 

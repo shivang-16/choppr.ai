@@ -37,13 +37,14 @@ const CaptionWordSchema = z.object({
 });
 
 const CreateExportSchema = z.object({
-  projectId:    z.string(),
-  tracks:       z.array(TrackSchema),
-  volumes:      z.record(z.string(), z.number()).default({}),
-  speeds:       z.record(z.string(), z.number()).default({}),
-  captionStyle: z.string().default("none"),
-  captionMap:   z.record(z.string(), z.array(CaptionWordSchema)).default({}),
-  aspectRatio:  z.string().default("9:16"),
+  projectId:      z.string(),
+  tracks:         z.array(TrackSchema),
+  volumes:        z.record(z.string(), z.number()).default({}),
+  speeds:         z.record(z.string(), z.number()).default({}),
+  captionStyle:   z.string().default("none"),
+  captionMap:     z.record(z.string(), z.array(CaptionWordSchema)).default({}),
+  aspectRatio:    z.string().default("9:16"),
+  originalClipId: z.string().optional(),
 });
 
 // ── POST /api/exports ───────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionMap, aspectRatio } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionMap, aspectRatio, originalClipId } = parsed.data;
     const exportId = randomUUID();
 
     await Export.create({
@@ -81,7 +82,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
     await sqs.send(new SendMessageCommand({
       QueueUrl:    queueUrl,
       MessageBody: JSON.stringify({
-        type:         "export",
+        type:           "export",
         exportId,
         projectId,
         userId,
@@ -91,6 +92,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
         captionStyle,
         captionMap,
         aspectRatio,
+        originalClipId: originalClipId ?? null,
       }),
     }));
 

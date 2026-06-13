@@ -6,6 +6,18 @@ export interface ICaptionWord {
   end:   number;
 }
 
+export interface IEditSettings {
+  captionStyle:     string;
+  captionLang:      string;
+  captionWords?:    { word: string; start: number; end: number }[];
+  speed:            number;
+  trimStart:        number;
+  trimEnd:          number;
+  brightness:       number;
+  contrast:         number;
+  saturation:       number;
+}
+
 export interface IClip {
   _id: string;
   projectId: string;
@@ -21,6 +33,8 @@ export interface IClip {
   endTime: number;
   captions: ICaptionWord[];
   captionLang: string;
+  editSettings?: IEditSettings;
+  originalClipId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +55,21 @@ const ClipSchema = new Schema<IClip>(
     endTime:     { type: Number, default: 0 },
     captions:    { type: [{ word: String, start: Number, end: Number }], default: [] },
     captionLang: { type: String, default: "" },
+    editSettings: {
+      type: {
+        captionStyle:  { type: String, default: "none" },
+        captionLang:   { type: String, default: "" },
+        captionWords:  { type: [{ word: String, start: Number, end: Number }], default: undefined },
+        speed:         { type: Number, default: 1.0 },
+        trimStart:     { type: Number, default: 0 },
+        trimEnd:       { type: Number, default: 0 },
+        brightness:    { type: Number, default: 100 },
+        contrast:      { type: Number, default: 100 },
+        saturation:    { type: Number, default: 100 },
+      },
+      default: undefined,
+    },
+    originalClipId: { type: String, default: undefined, index: true },
   },
   { timestamps: true, _id: false }
 );
