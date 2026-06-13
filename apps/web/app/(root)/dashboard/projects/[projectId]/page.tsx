@@ -10,23 +10,38 @@ import Topbar from "../../_components/topbar";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-// ── Full-screen video modal ───────────────────────────────────────────────────
-function VideoModal({ clip, onClose }: { clip: any; onClose: () => void }) {
-  const videoRef  = useRef<HTMLVideoElement>(null);
+// ── Full-screen video modal — carousel with Use / Download ───────────────────
+function VideoModal({ slides, startIdx, onClose, onUse }: {
+  slides: any[]; startIdx: number; onClose: () => void; onUse: (clip: any) => void;
+}) {
+  const videoRef        = useRef<HTMLVideoElement>(null);
+  const [idx, setIdx]   = useState(startIdx);
   const [playing, setPlaying] = useState(true);
   const [muted, setMuted]     = useState(false);
 
-  // Close on Escape
+  const current  = slides[idx];
+  const isEdited = !!current?.originalClipId;
+  const hasMany  = slides.length > 1;
+
+  // Close on Escape / arrow keys
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight" && idx < slides.length - 1) setIdx(i => i + 1);
+      if (e.key === "ArrowLeft"  && idx > 0)                 setIdx(i => i - 1);
+    };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  }, [onClose, idx, slides.length]);
 
-  // Auto-play on open
+  // Reload + autoplay when slide changes
   useEffect(() => {
-    videoRef.current?.play().catch(() => setPlaying(false));
-  }, []);
+    const v = videoRef.current;
+    if (!v) return;
+    v.load();
+    v.play().catch(() => setPlaying(false));
+    setPlaying(true);
+  }, [idx]);
 
   const togglePlay = () => {
     const v = videoRef.current;
@@ -36,79 +51,123 @@ function VideoModal({ clip, onClose }: { clip: any; onClose: () => void }) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center"
-      onClick={onClose}
-    >
-      {/* Blurry backdrop */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/85 backdrop-blur-xl" />
 
-      {/* Modal content */}
+      {/* Content — stop propagation so clicking inside doesn't close */}
       <div
-        className="relative z-10 flex flex-col items-center gap-4 px-4 w-full max-w-sm"
+        className="relative z-10 flex flex-col items-center gap-4 px-4 w-full"
+        style={{ maxWidth: "min(380px, 90vw)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Video */}
-        <div className="relative w-full rounded-2xl overflow-hidden shadow-2xl shadow-black/80 bg-[#111]">
-          <video
-            ref={videoRef}
-            src={clip.s3Url}
-            muted={muted}
-            loop
-            playsInline
-            className="w-full"
-            onClick={togglePlay}
-          />
+        {/* Video card — no overflow-hidden on wrapper so arrows aren't clipped */}
+        <div className="relative w-full rounded-2xl shadow-2xl shadow-black/80 bg-[#111]" style={{ aspectRatio: "9/16" }}>
 
-          {/* Play/pause overlay */}
-          <div
-            className="absolute inset-0 flex items-center justify-center cursor-pointer"
-            onClick={togglePlay}
-          >
-            {!playing && (
+          {/* Video layer with overflow-hidden only here */}
+          <div className="absolute inset-0 rounded-2xl overflow-hidden cursor-pointer" onClick={togglePlay}>
+            <video
+              ref={videoRef}
+              src={current?.s3Url}
+              muted={muted}
+              loop
+              playsInline
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          </div>
+
+          {/* Play/pause overlay — z-10, pointer-events-none so arrows stay clickable */}
+          {!playing && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
               <div className="h-16 w-16 flex items-center justify-center rounded-full bg-black/50 backdrop-blur-sm border border-white/20">
                 <Play className="h-7 w-7 fill-white text-white ml-1" />
               </div>
+            </div>
+          )}
+
+          {/* Top bar — z-30, badge + sound + close */}
+          <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between">
+            <span className="rounded-full bg-black/60 backdrop-blur-sm px-2.5 py-0.5 text-[11px] font-semibold text-white/70 flex items-center gap-1.5">
+              {isEdited
+                ? <><Sparkles className="h-3 w-3 text-white/70" /> Edited</>
+                : `#${current?.index} · Score ${current?.score}`}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); setMuted(m => !m); }}
+                className="h-8 w-8 flex items-center justify-center rounded-full bg-black/60 backdrop-blur-sm text-white/70 hover:text-white transition-colors cursor-pointer"
+              >
+                {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onClose(); }}
+                className="h-8 w-8 flex items-center justify-center rounded-full bg-black/60 backdrop-blur-sm text-white/70 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom bar — z-30 */}
+          <div className="absolute bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black via-black/70 to-transparent px-3 pt-10 pb-3">
+            {isEdited ? (
+              <a
+                href={current?.s3Url}
+                download
+                onClick={(e) => e.stopPropagation()}
+                className="w-full flex items-center justify-center gap-1.5 rounded-full bg-white py-2.5 text-[13px] font-semibold text-black hover:bg-white/90 transition-colors cursor-pointer"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download
+              </a>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); onUse(current); onClose(); }}
+                className="w-full flex items-center justify-center gap-1.5 rounded-full bg-white py-2.5 text-[13px] font-semibold text-black hover:bg-white/90 transition-colors cursor-pointer"
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                Use this clip
+              </button>
             )}
           </div>
 
-          {/* Top controls */}
-          <div className="absolute top-3 left-3 right-3 flex items-center justify-between">
-            <span className="rounded-full bg-black/60 px-2.5 py-0.5 text-[11px] font-semibold text-white/70">
-              #{clip.index}  ·  Score {clip.score}
-            </span>
-            <button
-              onClick={onClose}
-              className="h-8 w-8 flex items-center justify-center rounded-full bg-black/60 text-white/70 hover:text-white transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Bottom controls */}
-          <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-            <button
-              onClick={() => { setMuted(m => !m); if (videoRef.current) videoRef.current.muted = !muted; }}
-              className="h-8 w-8 flex items-center justify-center rounded-full bg-black/60 text-white/70 hover:text-white transition-colors"
-            >
-              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-            </button>
-            <a
-              href={clip.s3Url}
-              download
-              onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-[12px] font-semibold text-black hover:bg-white/90 transition-colors"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Download
-            </a>
-          </div>
+          {/* Side arrows — inset-0 flex for reliable vertical centering */}
+          {hasMany && (
+            <div className="absolute inset-0 z-40 flex items-center justify-between px-2" style={{ pointerEvents: "none" }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setIdx(i => i - 1); }}
+                style={{ pointerEvents: "auto" }}
+                className={`h-9 w-9 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${idx === 0 ? "invisible" : ""}`}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setIdx(i => i + 1); }}
+                style={{ pointerEvents: "auto" }}
+                className={`h-9 w-9 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${idx === slides.length - 1 ? "invisible" : ""}`}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Reason */}
-        {clip.reason && (
-          <p className="text-[12px] text-white/50 text-center max-w-xs leading-relaxed">
-            {clip.reason}
+        {/* Dots */}
+        {hasMany && (
+          <div className="flex justify-center gap-1.5">
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setIdx(i)}
+                className={`rounded-full transition-all duration-200 ${i === idx ? "w-4 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/30 hover:bg-white/50"}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Reason text */}
+        {current?.reason && !isEdited && (
+          <p className="text-[12px] text-white/45 text-center leading-relaxed px-2">
+            {current.reason}
           </p>
         )}
       </div>
@@ -188,7 +247,7 @@ function ClipCard({ clip, editedClips, onExpand, onUse }: {
             </div>
           )}
           <button
-            className={`pointer-events-auto h-7 w-7 flex items-center justify-center rounded-full bg-black/60 text-white/80 hover:text-white transition-all ${hovered ? "opacity-100" : "opacity-0"}`}
+            className={`pointer-events-auto cursor-pointer h-7 w-7 flex items-center justify-center rounded-full bg-black/60 text-white/80 hover:text-white transition-all ${hovered ? "opacity-100" : "opacity-0"}`}
             onClick={(e) => { e.stopPropagation(); setMuted(m => !m); }}
           >
             {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
@@ -207,7 +266,7 @@ function ClipCard({ clip, editedClips, onExpand, onUse }: {
               href={current.s3Url}
               download
               onClick={(e) => e.stopPropagation()}
-              className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-white py-2 text-[11px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-all"
+              className="w-full cursor-pointer flex items-center justify-center gap-1.5 rounded-xl bg-white py-2 text-[11px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-all"
             >
               <Download className="h-3 w-3" />
               Download
@@ -215,7 +274,7 @@ function ClipCard({ clip, editedClips, onExpand, onUse }: {
           ) : (
             <button
               onClick={(e) => { e.stopPropagation(); onUse(); }}
-              className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-white py-2 text-[11px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-all"
+              className="w-full cursor-pointer flex items-center justify-center gap-1.5 rounded-xl bg-white py-2 text-[11px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-all"
             >
               <Wand2 className="h-3 w-3" />
               Use this clip
@@ -223,18 +282,20 @@ function ClipCard({ clip, editedClips, onExpand, onUse }: {
           )}
         </div>
 
-        {/* Arrows — full-height flex overlay so items-center always centers them */}
+        {/* Arrows — inset-0 flex for reliable vertical centering */}
         {hasMany && (
-          <div className="absolute inset-0 z-20 flex items-center justify-between px-2 pointer-events-none">
+          <div className="absolute inset-0 z-30 flex items-center justify-between px-1.5" style={{ pointerEvents: "none" }}>
             <button
-              onClick={() => setIdx(i => i - 1)}
-              className={`pointer-events-auto h-7 w-7 flex items-center justify-center rounded-full bg-black/60 backdrop-blur-sm hover:bg-black/80 text-white transition-all ${idx === 0 ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+              onClick={(e) => { e.stopPropagation(); setIdx(i => i - 1); }}
+              style={{ pointerEvents: "auto" }}
+              className={`h-7 w-7 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${idx === 0 ? "invisible" : ""}`}
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setIdx(i => i + 1)}
-              className={`pointer-events-auto h-7 w-7 flex items-center justify-center rounded-full bg-black/60 backdrop-blur-sm hover:bg-black/80 text-white transition-all ${idx === slides.length - 1 ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+              onClick={(e) => { e.stopPropagation(); setIdx(i => i + 1); }}
+              style={{ pointerEvents: "auto" }}
+              className={`h-7 w-7 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${idx === slides.length - 1 ? "invisible" : ""}`}
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -266,7 +327,7 @@ export default function ProjectDetailPage() {
   const [project, setProject]           = useState<any>(null);
   const [clips, setClips]               = useState<any[]>([]);
   const [loading, setLoading]           = useState(true);
-  const [expandedClip, setExpandedClip] = useState<any>(null);
+  const [modal, setModal] = useState<{ slides: any[]; startIdx: number } | null>(null);
   const [retrying, setRetrying]         = useState(false);
   const apiFetch = useApiFetch();
 
@@ -322,7 +383,7 @@ export default function ProjectDetailPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.push("/dashboard/projects")}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-white/40 hover:text-white transition-colors"
+              className="cursor-pointer flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-white/40 hover:text-white transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
@@ -337,7 +398,7 @@ export default function ProjectDetailPage() {
             <button
               onClick={handleRetry}
               disabled={retrying}
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
+              className="cursor-pointer flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
             >
               <RotateCcw className={`h-3.5 w-3.5 ${retrying ? "animate-spin" : ""}`} />
               {retrying ? "Retrying…" : "Retry"}
@@ -361,15 +422,22 @@ export default function ProjectDetailPage() {
           {/* Clips grid */}
           {originalClips.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {originalClips.map((clip: any) => (
-                <ClipCard
-                  key={clip._id}
-                  clip={clip}
-                  editedClips={editedByParent[clip._id] ?? []}
-                  onExpand={(c) => setExpandedClip(c)}
-                  onUse={() => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
-                />
-              ))}
+              {originalClips.map((clip: any) => {
+                const edited = editedByParent[clip._id] ?? [];
+                const slides = [clip, ...edited];
+                return (
+                  <ClipCard
+                    key={clip._id}
+                    clip={clip}
+                    editedClips={edited}
+                    onExpand={(c) => {
+                      const startIdx = slides.findIndex(s => s._id === c._id);
+                      setModal({ slides, startIdx: startIdx >= 0 ? startIdx : 0 });
+                    }}
+                    onUse={() => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
+                  />
+                );
+              })}
             </div>
           )}
 
@@ -381,10 +449,12 @@ export default function ProjectDetailPage() {
       </main>
 
       {/* Video expand modal */}
-      {expandedClip && (
+      {modal && (
         <VideoModal
-          clip={expandedClip}
-          onClose={() => setExpandedClip(null)}
+          slides={modal.slides}
+          startIdx={modal.startIdx}
+          onClose={() => setModal(null)}
+          onUse={(clip) => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
         />
       )}
     </div>

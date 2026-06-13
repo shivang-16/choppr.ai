@@ -20,6 +20,14 @@ export default function HeroSection() {
   const { isSignedIn } = useAuth();
   const router = useRouter();
 
+  const handleUploadClick = () => {
+    if (isSignedIn) {
+      router.push("/dashboard?upload=1");
+    } else {
+      router.push("/sign-up?redirect_url=/dashboard?upload=1");
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = url.trim();
@@ -73,13 +81,13 @@ export default function HeroSection() {
         {/* Headline */}
         <div className="flex flex-col items-center gap-4 text-center">
           <h2 className="max-w-4xl text-[clamp(1.8rem,4vw,4rem)] font-semibold leading-[1.1] tracking-[-0.04em] text-white text-center">
-            1 long video, 10 viral clips.<br />
-            <span className="text-white">Create 10x faster.</span>
+            Your best moments deserve<br />
+            <span className="text-white">to go viral.</span>
           </h2>
 
           <p className="max-w-xl text-balance text-[clamp(0.95rem,2vw,1.1rem)] font-normal leading-relaxed text-white/60">
-            Choppr turns your long videos into short-form viral content and
-            publishes them to all social platforms — in one click.
+            Drop a video. Choppr's AI finds the hooks, cuts the clips, adds captions —
+            and hands you content that actually stops the scroll.
           </p>
         </div>
 
@@ -115,14 +123,15 @@ export default function HeroSection() {
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="submit"
-              className="flex-1 sm:flex-none rounded-2xl bg-white px-4 py-2.5 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+              className="cursor-pointer flex-1 sm:flex-none rounded-2xl bg-white px-4 py-2.5 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
             >
               Get free clips
             </button>
             <span className="text-[12px] sm:text-[13px] text-white/40 shrink-0">or</span>
             <button
               type="button"
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 rounded-2xl border border-white/12 bg-white/6 px-4 py-2.5 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-medium text-white/55 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white/80 active:scale-95 whitespace-nowrap"
+              onClick={handleUploadClick}
+              className="cursor-pointer flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 rounded-2xl border border-white/12 bg-white/6 px-4 py-2.5 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-medium text-white/55 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white/80 active:scale-95 whitespace-nowrap"
             >
               <Upload className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Upload files

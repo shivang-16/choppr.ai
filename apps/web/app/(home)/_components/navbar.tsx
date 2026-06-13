@@ -37,7 +37,7 @@ export default function Navbar() {
           >
             <button
               className={cn(
-                "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
+                "cursor-pointer flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
                 "text-white/60 hover:text-white hover:bg-white/6"
               )}
             >
@@ -97,7 +97,7 @@ export default function Navbar() {
           </Link>
           <Link
             href="/sign-up"
-            className="rounded-xl bg-white px-4 py-2 text-[13.5px] font-semibold text-black transition-all hover:bg-white/90 active:scale-95"
+            className="cursor-pointer rounded-xl bg-white px-4 py-2 text-[13.5px] font-semibold text-black transition-all hover:bg-white/90 active:scale-95"
           >
             Get started free
           </Link>

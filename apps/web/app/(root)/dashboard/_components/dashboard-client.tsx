@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useApiFetch } from "@/lib/apiFetch";
-import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle } from "lucide-react";
+import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -76,6 +76,10 @@ function DashboardInner() {
   const [video, setVideo] = useState<VideoMeta | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTriggeredRef = useRef(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null); // null = not uploading, 0-100 = %
+  const [uploadedS3Key, setUploadedS3Key] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch(`${API_URL}/api/projects`)
@@ -113,6 +117,11 @@ function DashboardInner() {
       setInputUrl(prefilledUrl);
       handleFetch(prefilledUrl);
     }
+    // Auto-open file picker if redirected from landing page upload button
+    if (searchParams.get("upload") === "1" && !uploadTriggeredRef.current) {
+      uploadTriggeredRef.current = true;
+      setTimeout(() => fileInputRef.current?.click(), 300);
+    }
   }, []);
 
   const handleUrlChange = (value: string) => {
@@ -128,24 +137,70 @@ function DashboardInner() {
     }, 600);
   };
 
+  const handleFileSelect = async (file: File) => {
+    if (!file) return;
+    const MAX_SIZE = 500 * 1024 * 1024; // 500 MB
+    if (file.size > MAX_SIZE) {
+      setError("File too large. Maximum size is 500 MB.");
+      return;
+    }
+    setError(null);
+    setUploadProgress(0);
+    setUploadedS3Key(null);
+
+    try {
+      // 1. Get presigned URL
+      const presignRes = await apiFetch(`${API_URL}/api/uploads/presign`, { method: "POST" });
+      if (!presignRes.ok) throw new Error("Failed to get upload URL");
+      const { uploadUrl, s3Key } = await presignRes.json();
+
+      // 2. PUT directly to S3 with XMLHttpRequest for progress tracking
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", "video/mp4");
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
+        xhr.onerror = () => reject(new Error("Upload failed"));
+        xhr.send(file);
+      });
+
+      setUploadedS3Key(s3Key);
+      setUploadProgress(null);
+      // Set a pseudo video meta so the settings form shows
+      setVideo({ url: `[Uploaded] ${file.name}`, thumbnail: "", title: file.name, duration: "0:00" });
+    } catch (err: unknown) {
+      setUploadProgress(null);
+      setError(err instanceof Error ? err.message : "Upload failed");
+    }
+  };
+
   // Step 2: user clicks "Get clips in 1 click" — create job via API
   const handleSubmit = async () => {
     if (!video) return;
     setError(null);
     setSubmitting(true);
     try {
+      const body: Record<string, unknown> = {
+        query: prompt,
+        clipModel,
+        genre,
+        clipLength,
+        aspectRatio,
+        maxClips: 10,
+      };
+      if (uploadedS3Key) {
+        body.s3Key = uploadedS3Key;
+      } else {
+        body.url = video.url;
+      }
+
       const res = await apiFetch(`${API_URL}/api/jobs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url:         video.url,
-          query:       prompt,
-          clipModel,
-          genre,
-          clipLength,
-          aspectRatio,
-          maxClips:    10,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
@@ -167,6 +222,9 @@ function DashboardInner() {
     setVideo(null);
     setInputUrl("");
     setError(null);
+    setUploadedS3Key(null);
+    setUploadProgress(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   return (
@@ -188,8 +246,20 @@ function DashboardInner() {
       {/* ── URL input card ── */}
       <div className="w-full max-w-2xl">
         <div className="relative rounded-2xl overflow-hidden p-[1.5px]">
-          {/* Animated border sweep */}
-          {inputUrl && !video ? (
+          {/* Border: sweep while typing, fill while uploading, static otherwise */}
+          {uploadProgress !== null ? (
+            <div
+              className="absolute"
+              style={{
+                width: "200%",
+                height: "200%",
+                top: "-50%",
+                left: "-50%",
+                background: `conic-gradient(from 0deg, rgba(255,255,255,0.9) ${uploadProgress * 3.6}deg, rgba(255,255,255,0.12) ${uploadProgress * 3.6}deg)`,
+                transition: "background 0.3s ease-out",
+              }}
+            />
+          ) : inputUrl && !video ? (
             <div
               className="absolute"
               style={{
@@ -232,13 +302,31 @@ function DashboardInner() {
             </button>
           ) : (
             <div className="flex items-center gap-2 shrink-0">
-              <button className="flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 transition-colors">
-                <Upload className="h-3.5 w-3.5" /> Upload
-              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
+              />
+              {uploadProgress !== null ? (
+                <span className="text-[12px] text-white/50 flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {uploadProgress}%
+                </span>
+              ) : (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 transition-colors"
+                >
+                  <Upload className="h-3.5 w-3.5" /> Upload
+                </button>
+              )}
             </div>
           )}
         </div>
         </div>
+
 
         {/* Loading indicator while auto-fetching */}
         {!video && loading && (
@@ -267,18 +355,13 @@ function DashboardInner() {
         <div className="flex flex-col items-center gap-10 mt-16 w-full max-w-3xl">
           {/* Tool icons */}
           <div className="flex flex-wrap items-center justify-center gap-6">
-            {TOOLS.map(({ icon: Icon, label, badge }) => (
+            {TOOLS.map(({ icon: Icon, label }) => (
               <button
                 key={label}
                 className="group flex flex-col items-center gap-2"
               >
                 <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-white/8 bg-[#141414] group-hover:bg-white/8 transition-colors">
                   <Icon className="h-6 w-6 text-white/60 group-hover:text-white transition-colors" />
-                  {badge && (
-                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-white px-1.5 py-0.5 text-[9px] font-bold text-black">
-                      {badge}
-                    </span>
-                  )}
                 </div>
                 <span className="text-[12px] text-white/45 group-hover:text-white/70 transition-colors">{label}</span>
               </button>
@@ -368,11 +451,19 @@ function DashboardInner() {
             <span>Credit usage: <span className="text-white/70 font-medium">⚡ 11</span></span>
           </div>
 
-          {/* Thumbnail */}
+          {/* Thumbnail / upload placeholder */}
           <div className="relative w-64 rounded-xl overflow-hidden border border-white/10">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={video.thumbnail} alt={video.title} className="w-full aspect-video object-cover" />
-            <div className="absolute top-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white/70 font-mono">720p</div>
+            {video.thumbnail ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={video.thumbnail} alt={video.title} className="w-full aspect-video object-cover" />
+                <div className="absolute top-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white/70 font-mono">720p</div>
+              </>
+            ) : (
+              <div className="w-full aspect-video bg-[#1a1a1a] flex items-center justify-center">
+                <CheckCircle className="h-8 w-8 text-green-400" />
+              </div>
+            )}
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
               <p className="text-[11px] text-white/70 truncate">{video.title}</p>
             </div>

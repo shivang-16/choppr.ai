@@ -13,6 +13,7 @@ export interface JobMessage {
   projectId:   string;
   userId:      string;
   url:         string;
+  s3Key:       string;   // non-empty when source is a direct S3 upload
   // Clip settings from dashboard
   query:       string;   // user's specific moment prompt (most important)
   clipModel:   string;   // "Auto" | "Viral" | "Educational"

@@ -42,13 +42,16 @@ function thumbnailFromUrl(url: string): string | null {
 // ── Validation schemas ──────────────────────────────────────────────────────
 
 const CreateJobSchema = z.object({
-  url:         z.string().url("Must be a valid URL"),
+  url:         z.string().url("Must be a valid URL").optional(),
+  s3Key:       z.string().optional(),
   query:       z.string().max(500).default(""),
   clipModel:   z.string().default("Auto"),
   genre:       z.string().default("Auto"),
   clipLength:  z.string().default("Auto (0m-3m)"),
   aspectRatio: z.string().default("9:16"),
   maxClips:    z.number().int().min(1).max(20).default(10),
+}).refine(data => data.url || data.s3Key, {
+  message: "Either url or s3Key is required",
 });
 
 // ── POST /api/jobs ──────────────────────────────────────────────────────────
@@ -62,7 +65,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    const { url, query, clipModel, genre, clipLength, aspectRatio, maxClips } = parsed.data;
+    const { url, s3Key, query, clipModel, genre, clipLength, aspectRatio, maxClips } = parsed.data;
     const userId = (req as any).user?._id ?? (req as any).auth?.userId;
     if (!userId) {
       res.status(401).json({ error: "Unauthorized" });
@@ -82,15 +85,16 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
 
     const jobId     = randomUUID();
     const projectId = randomUUID();
+    const sourceUrl = url ?? `s3://${s3Key}`;
 
     // 1. Create project + job atomically (both reference each other)
     await Promise.all([
       Project.create({
         _id:          projectId,
         userId,
-        title:        titleFromUrl(url),
-        sourceUrl:    url,
-        ...(thumbnailFromUrl(url) ? { thumbnailUrl: thumbnailFromUrl(url)! } : {}),
+        title:        url ? titleFromUrl(url) : (s3Key?.split("/").pop() ?? "Uploaded video"),
+        sourceUrl,
+        ...(url && thumbnailFromUrl(url) ? { thumbnailUrl: thumbnailFromUrl(url)! } : {}),
         status:       "pending",
         jobId,
         totalClips:   0,
@@ -98,7 +102,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
       Job.create({
         _id:         jobId,
         userId,
-        url,
+        url:         sourceUrl,
         query,
         status:      "pending",
         progress:    0,
@@ -107,7 +111,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
     ]);
 
     // 2. Push to SQS with all clip settings
-    await enqueueJob({ jobId, userId, url, query, projectId, clipModel, genre, clipLength, aspectRatio, maxClips });
+    await enqueueJob({ jobId, userId, url: url ?? "", s3Key: s3Key ?? "", query, projectId, clipModel, genre, clipLength, aspectRatio, maxClips });
 
     res.status(201).json({ jobId, projectId, status: "pending" });
   } catch (err) {

@@ -65,12 +65,15 @@ export async function retryProject(req: Request, res: Response, next: NextFuncti
       Job.updateOne({ _id: job._id }, { $set: { status: "pending", progress: 0, error: undefined, clips: [] } }),
     ]);
 
-    // Re-enqueue the job
+    // Re-enqueue the job — detect S3-upload source vs URL
+    const isS3Upload = job.url?.startsWith("s3://");
+    const s3Key = isS3Upload ? job.url.replace("s3://", "") : "";
     await enqueueJob({
       jobId:       job._id,
       projectId:   project._id as string,
       userId,
-      url:         job.url,
+      url:         isS3Upload ? "" : (job.url ?? ""),
+      s3Key,
       query:       job.query ?? "",
       clipModel:   "Auto",
       genre:       "Auto",
