@@ -351,18 +351,42 @@ export default function ProjectDetailPage() {
 
   useEffect(() => {
     if (!projectId) return;
-    (async () => {
+    let stopped = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const fetchAll = async () => {
       try {
         const [projRes, clipsRes] = await Promise.all([
           apiFetch(`${API_URL}/api/projects/${projectId}`),
           apiFetch(`${API_URL}/api/projects/${projectId}/clips`),
         ]);
-        if (projRes.ok)  setProject(await projRes.json());
+        if (stopped) return null;
+        let proj = null;
+        if (projRes.ok)  { proj = await projRes.json(); setProject(proj); }
         if (clipsRes.ok) setClips(await clipsRes.json());
+        return proj;
       } finally {
-        setLoading(false);
+        if (!stopped) setLoading(false);
       }
-    })();
+    };
+
+    fetchAll().then((proj) => {
+      if (stopped) return;
+      if (proj?.status && ["done", "failed"].includes(proj.status)) return;
+      // Poll every 4s until done/failed
+      intervalId = setInterval(async () => {
+        const updated = await fetchAll();
+        if (updated?.status && ["done", "failed"].includes(updated.status)) {
+          clearInterval(intervalId!);
+          intervalId = null;
+        }
+      }, 4000);
+    });
+
+    return () => {
+      stopped = true;
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [projectId]);
 
   // Separate original clips from edited exports, group by parent
@@ -412,6 +436,13 @@ export default function ProjectDetailPage() {
             </div>
           )}
 
+          {/* Still processing — no clips yet */}
+          {!loading && originalClips.length === 0 && project?.status && !["done", "failed"].includes(project.status) && (
+            <div className="flex items-center gap-2 text-[13px] text-white/30">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing video, clips will appear here shortly…
+            </div>
+          )}
+
           {/* Clips count */}
           {!loading && originalClips.length > 0 && (
             <p className="text-[13px] text-white/40">
@@ -441,8 +472,8 @@ export default function ProjectDetailPage() {
             </div>
           )}
 
-          {/* Empty */}
-          {!loading && originalClips.length === 0 && (
+          {/* Empty — only after job is fully done */}
+          {!loading && originalClips.length === 0 && ["done", "failed"].includes(project?.status) && (
             <p className="text-[13px] text-white/30">No clips found for this project.</p>
           )}
         </div>

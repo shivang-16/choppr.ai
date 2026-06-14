@@ -20,7 +20,90 @@ type VideoMeta = {
   thumbnail: string;
   title: string;
   duration: string;
+  platform?: PlatformInfo | null;
 };
+
+type PlatformInfo = {
+  name: string;
+  color: string;
+  icon: React.ReactNode;
+};
+
+const PLATFORM_MAP: { match: (h: string, p: string) => boolean; info: PlatformInfo }[] = [
+  {
+    match: (h) => h.includes("instagram.com"),
+    info: {
+      name: "Instagram",
+      color: "#E1306C",
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>,
+    },
+  },
+  {
+    match: (h) => h.includes("x.com") || h.includes("twitter.com"),
+    info: {
+      name: "X / Twitter",
+      color: "#e5e5e5",
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.742l7.732-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>,
+    },
+  },
+  {
+    match: (h) => h.includes("tiktok.com"),
+    info: {
+      name: "TikTok",
+      color: "#69C9D0",
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.88a8.27 8.27 0 004.84 1.55V7a4.85 4.85 0 01-1.07-.31z"/></svg>,
+    },
+  },
+  {
+    match: (h) => h.includes("twitch.tv"),
+    info: {
+      name: "Twitch",
+      color: "#9146FF",
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg>,
+    },
+  },
+  {
+    match: (h) => h.includes("facebook.com") || h.includes("fb.com") || h.includes("fb.watch"),
+    info: {
+      name: "Facebook",
+      color: "#1877F2",
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>,
+    },
+  },
+  {
+    match: (h) => h.includes("vimeo.com"),
+    info: {
+      name: "Vimeo",
+      color: "#1AB7EA",
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current"><path d="M23.977 6.416c-.105 2.338-1.739 5.543-4.894 9.609-3.268 4.247-6.026 6.37-8.29 6.37-1.409 0-2.578-1.294-3.553-3.881L5.322 11.4C4.603 8.816 3.834 7.522 3.01 7.522c-.179 0-.806.378-1.881 1.132L0 7.197c1.185-1.044 2.351-2.084 3.501-3.128C5.08 2.701 6.266 1.984 7.055 1.91c1.867-.18 3.016 1.1 3.447 3.838.465 2.953.789 4.789.971 5.507.539 2.45 1.131 3.674 1.776 3.674.502 0 1.256-.796 2.265-2.385 1.004-1.589 1.54-2.797 1.612-3.628.144-1.371-.395-2.061-1.612-2.061-.574 0-1.167.121-1.777.391 1.186-3.868 3.434-5.757 6.762-5.637 2.473.06 3.628 1.664 3.478 4.807z"/></svg>,
+    },
+  },
+  {
+    match: (h) => h.includes("reddit.com"),
+    info: {
+      name: "Reddit",
+      color: "#FF4500",
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/></svg>,
+    },
+  },
+  {
+    match: (h, p) => h.includes("youtube.com") || h.includes("youtu.be"),
+    info: {
+      name: "YouTube",
+      color: "#FF0000",
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.2 31.2 0 0 0 0 12a31.2 31.2 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.2 31.2 0 0 0 24 12a31.2 31.2 0 0 0-.5-5.8zM9.75 15.5V8.5l6.25 3.5-6.25 3.5z"/></svg>,
+    },
+  },
+];
+
+function getPlatformInfo(url: string): PlatformInfo | null {
+  try {
+    const u = new URL(url);
+    return PLATFORM_MAP.find(p => p.match(u.hostname, u.pathname))?.info ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function extractYouTubeId(url: string) {
   const match = url.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{11})/);
@@ -28,9 +111,9 @@ function extractYouTubeId(url: string) {
 }
 
 async function fetchVideoMeta(url: string): Promise<VideoMeta | null> {
+  const platform = getPlatformInfo(url);
   const ytId = extractYouTubeId(url);
   if (ytId) {
-    // Use oEmbed to get title + duration info
     try {
       const res = await fetch(
         `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`
@@ -42,16 +125,20 @@ async function fetchVideoMeta(url: string): Promise<VideoMeta | null> {
           thumbnail: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
           title: data.title ?? "YouTube Video",
           duration: "0:00",
+          platform,
         };
       }
     } catch {}
   }
-  // Fallback for non-YouTube: use a placeholder
+  // Non-YouTube: no real thumbnail available before processing
+  let hostname = url;
+  try { hostname = new URL(url).hostname.replace("www.", ""); } catch {}
   return {
     url,
-    thumbnail: `https://picsum.photos/seed/${encodeURIComponent(url)}/640/360`,
-    title: new URL(url).hostname,
+    thumbnail: "",
+    title: platform?.name ?? hostname,
     duration: "0:00",
+    platform,
   };
 }
 
@@ -397,18 +484,27 @@ function DashboardInner() {
                     className="group flex flex-col gap-2 rounded-2xl border border-white/8 bg-[#141414] p-3 hover:border-white/16 transition-all"
                   >
                     {/* Thumbnail */}
-                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/6 flex items-center justify-center">
-                      {project.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={project.thumbnailUrl}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Film className="h-6 w-6 text-white/10" />
-                      )}
-                    </div>
+                    {(() => {
+                      const pl = getPlatformInfo(project.sourceUrl ?? "");
+                      return (
+                        <div className="aspect-video w-full rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/6 flex items-center justify-center">
+                          {project.thumbnailUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={project.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+                          ) : pl ? (
+                            <div
+                              className="w-full h-full flex flex-col items-center justify-center gap-1.5"
+                              style={{ background: `radial-gradient(ellipse at center, ${pl.color}20 0%, #1e1e1e 70%)` }}
+                            >
+                              <span style={{ color: pl.color }} className="opacity-70">{pl.icon}</span>
+                              <span className="text-[9px] text-white/25">{pl.name}</span>
+                            </div>
+                          ) : (
+                            <Film className="h-6 w-6 text-white/10" />
+                          )}
+                        </div>
+                      );
+                    })()}
                     {/* Info */}
                     <p className="text-[12px] font-medium text-white/80 line-clamp-1 leading-snug">
                       {project.title}
@@ -446,12 +542,10 @@ function DashboardInner() {
 
           {/* Meta row */}
           <div className="flex items-center gap-4 text-[12.5px] text-white/40">
-            <span>Speech language: <span className="text-white/70 font-medium">English ▾</span></span>
-            <span className="text-white/20">|</span>
             <span>Credit usage: <span className="text-white/70 font-medium">⚡ 11</span></span>
           </div>
 
-          {/* Thumbnail / upload placeholder */}
+          {/* Thumbnail / platform placeholder */}
           <div className="relative w-64 rounded-xl overflow-hidden border border-white/10">
             {video.thumbnail ? (
               <>
@@ -459,6 +553,16 @@ function DashboardInner() {
                 <img src={video.thumbnail} alt={video.title} className="w-full aspect-video object-cover" />
                 <div className="absolute top-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white/70 font-mono">720p</div>
               </>
+            ) : video.platform ? (
+              <div
+                className="w-full aspect-video flex flex-col items-center justify-center gap-3"
+                style={{ background: `radial-gradient(ellipse at center, ${video.platform.color}22 0%, #111 70%)` }}
+              >
+                <div style={{ color: video.platform.color }} className="opacity-80">
+                  {video.platform.icon}
+                </div>
+                <span className="text-[11px] font-medium text-white/40">{video.platform.name} video</span>
+              </div>
             ) : (
               <div className="w-full aspect-video bg-[#1a1a1a] flex items-center justify-center">
                 <CheckCircle className="h-8 w-8 text-green-400" />
@@ -473,31 +577,29 @@ function DashboardInner() {
             Using video you don't own may violate copyright laws. By continuing, you confirm this is your own original content.
           </p>
 
-          {/* AI Clipping settings */}
+          {/* Clipping settings */}
           <div className="w-full rounded-2xl border border-white/8 bg-[#111] p-5 flex flex-col gap-5">
-            {/* Tabs */}
-            <div className="flex gap-1">
-              {["AI clipping", "Don't clip"].map((t) => (
-                <button
-                  key={t}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[13px] font-medium transition-colors",
-                    t === "AI clipping"
-                      ? "bg-white/10 text-white"
-                      : "text-white/35 hover:text-white/60"
-                  )}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-
             {/* Settings row */}
             <div className="flex flex-wrap gap-4 text-[13px]">
               {[
-                { label: "Clip model", value: clipModel, set: setClipModel, opts: ["Auto", "Viral", "Educational"] },
-                { label: "Genre", value: genre, set: setGenre, opts: ["Auto", "Gaming", "Podcast", "Sports"] },
-                { label: "Clip Length", value: clipLength, set: setClipLength, opts: ["Auto (0m-3m)", "Short (0-60s)", "Long (1-3m)"] },
+                {
+                  label: "Clip model",
+                  value: clipModel,
+                  set: setClipModel,
+                  opts: ["Auto", "Viral", "Educational", "Highlights", "Storytelling", "Motivational"],
+                },
+                {
+                  label: "Genre",
+                  value: genre,
+                  set: setGenre,
+                  opts: ["Auto", "Gaming", "Podcast", "Sports", "Finance", "Fitness", "News", "Comedy", "Interview", "Tutorial", "Vlog", "Music"],
+                },
+                {
+                  label: "Clip Length",
+                  value: clipLength,
+                  set: setClipLength,
+                  opts: ["Auto (0m-3m)", "Short (0-60s)", "Long (1-3m)"],
+                },
               ].map(({ label, value, set, opts }) => (
                 <label key={label} className="flex items-center gap-2 text-white/50">
                   {label}

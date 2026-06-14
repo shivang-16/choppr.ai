@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { Link2, Upload, Scissors, Zap, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import HeroVideoDemo from "./hero-video-demo";
+
+const PLACEHOLDERS = [
+  "Drop a YouTube link...",
+  "Drop an Instagram reel...",
+  "Drop a Twitter/X video...",
+  "Drop a TikTok link...",
+  "Drop a video link...",
+];
 
 const BADGES = [
   { icon: Zap, label: "10x faster editing" },
@@ -16,7 +24,15 @@ const BADGES = [
 export default function HeroSection() {
   const [url, setUrl] = useState("");
   const [focused, setFocused] = useState(false);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPlaceholderIndex((i) => (i + 1) % PLACEHOLDERS.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
   const { isSignedIn } = useAuth();
   const router = useRouter();
 
@@ -114,7 +130,7 @@ export default function HeroSection() {
               onChange={(e) => setUrl(e.target.value)}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
-              placeholder="Drop a video link"
+              placeholder={PLACEHOLDERS[placeholderIndex]}
               className="w-full bg-transparent text-[14px] text-white placeholder:text-white/25 outline-none"
             />
           </div>
