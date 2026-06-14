@@ -84,9 +84,12 @@ export default function ClipRefinePage() {
   const router       = useRouter();
   const apiFetch     = useApiFetch();
 
-  const src   = sp.get("src")   ?? "";
-  const score = sp.get("score") ?? "–";
-  const index = sp.get("index") ?? "?";
+  const src       = sp.get("src")       ?? "";
+  const score     = sp.get("score")     ?? "–";
+  const index     = sp.get("index")     ?? "?";
+  const projectId = sp.get("projectId") ?? "";
+
+  const [aspectRatio, setAspectRatio] = useState("9:16");
 
   const videoRef              = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -96,11 +99,12 @@ export default function ClipRefinePage() {
   const [activeTab, setActiveTab]     = useState("captions");
 
   // Caption state
-  const [captionStyle, setCaptionStyle] = useState<CaptionStyle>("none");
-  const [captionWords, setCaptionWords] = useState<CaptionWord[]>([]);
-  const [captionLang, setCaptionLang]   = useState("");
-  const [translating, setTranslating]   = useState(false);
-  const [activeLang, setActiveLang]     = useState("");
+  const [captionStyle, setCaptionStyle]   = useState<CaptionStyle>("none");
+  const [captionWords, setCaptionWords]   = useState<CaptionWord[]>([]);
+  const [captionLang, setCaptionLang]     = useState("");
+  const [captionFontSize, setCaptionFontSize] = useState(28);
+  const [translating, setTranslating]     = useState(false);
+  const [activeLang, setActiveLang]       = useState("");
 
   // Other settings
   const [speed, setSpeed]             = useState(1.0);
@@ -116,6 +120,15 @@ export default function ClipRefinePage() {
   const [exportUrl, setExportUrl]           = useState<string | null>(null);
   const exportPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Load project aspect ratio
+  useEffect(() => {
+    if (!projectId) return;
+    apiFetch(`${API_URL}/api/projects/${projectId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.aspectRatio) setAspectRatio(data.aspectRatio); })
+      .catch(() => {});
+  }, [projectId]);
+
   // Load clip (settings + captions) on mount — single fetch to avoid race conditions
   useEffect(() => {
     if (!clipId) return;
@@ -128,7 +141,8 @@ export default function ClipRefinePage() {
         // Apply saved edit settings first
         const s = data.editSettings;
         if (s) {
-          if (s.captionStyle) setCaptionStyle(s.captionStyle);
+          if (s.captionStyle)          setCaptionStyle(s.captionStyle);
+          if (s.captionFontSize != null) setCaptionFontSize(s.captionFontSize);
           if (s.speed      != null) setSpeed(s.speed);
           if (s.trimStart  != null) setTrimStart(s.trimStart);
           if (s.trimEnd    != null) setTrimEnd(s.trimEnd);
@@ -171,8 +185,8 @@ export default function ClipRefinePage() {
   // Auto-save whenever any setting changes (captionWords saved too so translation persists)
   useEffect(() => {
     if (!clipId) return;
-    saveSettings({ captionStyle, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation });
-  }, [captionStyle, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation]);
+    saveSettings({ captionStyle, captionFontSize, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation });
+  }, [captionStyle, captionFontSize, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation]);
 
   const handleTranslate = async (lang: string) => {
     if (!lang || lang === activeLang || translating) return;
@@ -225,13 +239,13 @@ export default function ClipRefinePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          projectId: sp.get("projectId") ?? clipId,
+          projectId: projectId || clipId,
           tracks,
           volumes:      { [clipId]: 100 },
           speeds:       { [clipId]: speed },
           captionStyle,
           captionMap:     captionWords.length ? { [clipId]: captionWords } : {},
-          aspectRatio:    "9:16",
+          aspectRatio,
           originalClipId: clipId,
         }),
       });
@@ -312,7 +326,11 @@ export default function ClipRefinePage() {
             {src ? (
               <div
                 className="relative rounded-2xl overflow-hidden shadow-2xl shadow-black/80"
-                style={{ maxHeight: "calc(100vh - 200px)", maxWidth: "min(380px, 100%)", aspectRatio: "9/16" }}
+                style={{
+                  aspectRatio: aspectRatio === "16:9" ? "16/9" : aspectRatio === "1:1" ? "1/1" : "9/16",
+                  maxHeight: "calc(100vh - 200px)",
+                  maxWidth: aspectRatio === "16:9" ? "min(780px, 100%)" : aspectRatio === "1:1" ? "min(560px, 100%)" : "min(380px, 100%)",
+                }}
               >
                 <video
                   ref={videoRef}
@@ -333,7 +351,7 @@ export default function ClipRefinePage() {
                 />
 
                 {/* Caption canvas overlay */}
-                <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} />
+                <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} />
 
                 {/* Play/pause tap */}
                 <div className="absolute inset-0 flex items-center justify-center cursor-pointer" onClick={togglePlay}>
@@ -426,6 +444,23 @@ export default function ClipRefinePage() {
                         {captionStyle === s.id && <Check className="h-3 w-3 text-white/60 shrink-0" />}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* Font size slider */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] text-white/50">Font size</span>
+                    <span className="text-[11px] font-semibold text-white/60">{captionFontSize}px</span>
+                  </div>
+                  <input
+                    type="range" min={14} max={72} step={2}
+                    value={captionFontSize}
+                    onChange={e => setCaptionFontSize(Number(e.target.value))}
+                    className="w-full accent-white cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-white/20">
+                    <span>14px</span><span>72px</span>
                   </div>
                 </div>
 

@@ -44,10 +44,11 @@ export interface CaptionWord {
 }
 
 interface Props {
-  videoRef:  React.RefObject<HTMLVideoElement | null>;
-  words:     CaptionWord[];
-  style:     CaptionStyle;
-  fontSize?: number;
+  videoRef:    React.RefObject<HTMLVideoElement | null>;
+  words:       CaptionWord[];
+  style:       CaptionStyle;
+  fontSize?:   number;
+  aspectRatio?: string;
 }
 
 const CFG: Record<CaptionStyle, {
@@ -102,7 +103,9 @@ const GOLD    = ["#FFD700","#FFA500","#FFD700","#FFFACD","#FFD700"];
 // Purple-pink gradient for gradient-pop
 const PURPLE_POP = ["#A855F7","#EC4899","#F97316","#EAB308","#A855F7"];
 
-export default function CaptionRenderer({ videoRef, words, style, fontSize = 28 }: Props) {
+export default function CaptionRenderer({ videoRef, words, style, fontSize = 28, aspectRatio = "9:16" }: Props) {
+  const canvasW = aspectRatio === "16:9" ? 1920 : 1080;
+  const canvasH = aspectRatio === "16:9" ? 1080 : aspectRatio === "1:1" ? 1080 : 1920;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef    = useRef(0);
   const bounceRef = useRef<Record<string, number>>({});
@@ -128,7 +131,9 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 28 
       if (activeIdx === -1) { rafRef.current = requestAnimationFrame(draw); return; }
 
       const active = words[activeIdx]!;
-      const fs     = fontSize * (cw / 400);
+      // Scale font relative to canvas width — 9:16 reference is 1080px, 16:9 is 1920px
+      const baseRef = aspectRatio === "16:9" ? 1920 : 1080;
+      const fs      = fontSize * (cw / baseRef);
       const cx     = cw / 2;
       const cy     = ch * cfg.yRatio;
 
@@ -278,8 +283,8 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 28 
   return (
     <canvas
       ref={canvasRef}
-      width={1080}
-      height={1920}
+      width={canvasW}
+      height={canvasH}
       className="absolute inset-0 w-full h-full pointer-events-none"
       style={{ objectFit: "contain" }}
     />

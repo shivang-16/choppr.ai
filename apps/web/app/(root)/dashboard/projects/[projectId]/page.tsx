@@ -10,9 +10,15 @@ import Topbar from "../../_components/topbar";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+const ASPECT_CSS: Record<string, string> = {
+  "9:16": "9/16",
+  "1:1":  "1/1",
+  "16:9": "16/9",
+};
+
 // ── Full-screen video modal — carousel with Use / Download ───────────────────
-function VideoModal({ slides, startIdx, onClose, onUse }: {
-  slides: any[]; startIdx: number; onClose: () => void; onUse: (clip: any) => void;
+function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: {
+  slides: any[]; startIdx: number; onClose: () => void; onUse: (clip: any) => void; aspectRatio?: string;
 }) {
   const videoRef        = useRef<HTMLVideoElement>(null);
   const [idx, setIdx]   = useState(startIdx);
@@ -57,11 +63,11 @@ function VideoModal({ slides, startIdx, onClose, onUse }: {
       {/* Content — stop propagation so clicking inside doesn't close */}
       <div
         className="relative z-10 flex flex-col items-center gap-4 px-4 w-full"
-        style={{ maxWidth: "min(380px, 90vw)" }}
+        style={{ maxWidth: aspectRatio === "16:9" ? "min(780px, 92vw)" : aspectRatio === "1:1" ? "min(480px, 90vw)" : "min(380px, 90vw)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Video card — no overflow-hidden on wrapper so arrows aren't clipped */}
-        <div className="relative w-full rounded-2xl shadow-2xl shadow-black/80 bg-[#111]" style={{ aspectRatio: "9/16" }}>
+        <div className="relative w-full rounded-2xl shadow-2xl shadow-black/80 bg-[#111]" style={{ aspectRatio: ASPECT_CSS[aspectRatio] ?? "9/16" }}>
 
           {/* Video layer with overflow-hidden only here */}
           <div className="absolute inset-0 rounded-2xl overflow-hidden cursor-pointer" onClick={togglePlay}>
@@ -176,8 +182,8 @@ function VideoModal({ slides, startIdx, onClose, onUse }: {
 }
 
 // ── Clip card — full-width, arrows inside at mid-height, dots below ───────────
-function ClipCard({ clip, editedClips, onExpand, onUse }: {
-  clip: any; editedClips: any[]; onExpand: (c: any) => void; onUse: () => void;
+function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: {
+  clip: any; editedClips: any[]; onExpand: (c: any) => void; onUse: () => void; aspectRatio?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hovered, setHovered] = useState(false);
@@ -213,7 +219,7 @@ function ClipCard({ clip, editedClips, onExpand, onUse }: {
       {/* Card: no overflow-hidden so arrows at mid-height aren't clipped */}
       <div
         className="relative w-full rounded-2xl border border-white/10 hover:border-white/25 transition-all duration-200 bg-[#111]"
-        style={{ aspectRatio: "9/16" }}
+        style={{ aspectRatio: ASPECT_CSS[aspectRatio] ?? "9/16" }}
       >
         {/* Video layer — overflow-hidden only here for rounded corners */}
         <div
@@ -451,26 +457,35 @@ export default function ProjectDetailPage() {
           )}
 
           {/* Clips grid */}
-          {originalClips.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {originalClips.map((clip: any) => {
-                const edited = editedByParent[clip._id] ?? [];
-                const slides = [clip, ...edited];
-                return (
-                  <ClipCard
-                    key={clip._id}
-                    clip={clip}
-                    editedClips={edited}
-                    onExpand={(c) => {
-                      const startIdx = slides.findIndex(s => s._id === c._id);
-                      setModal({ slides, startIdx: startIdx >= 0 ? startIdx : 0 });
-                    }}
-                    onUse={() => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
-                  />
-                );
-              })}
-            </div>
-          )}
+          {originalClips.length > 0 && (() => {
+            const ar = project?.aspectRatio ?? "9:16";
+            const gridCols = ar === "16:9"
+              ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3"
+              : ar === "1:1"
+              ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
+              : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5";
+            return (
+              <div className={`grid ${gridCols} gap-3`}>
+                {originalClips.map((clip: any) => {
+                  const edited = editedByParent[clip._id] ?? [];
+                  const slides = [clip, ...edited];
+                  return (
+                    <ClipCard
+                      key={clip._id}
+                      clip={clip}
+                      editedClips={edited}
+                      aspectRatio={ar}
+                      onExpand={(c) => {
+                        const startIdx = slides.findIndex(s => s._id === c._id);
+                        setModal({ slides, startIdx: startIdx >= 0 ? startIdx : 0 });
+                      }}
+                      onUse={() => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Empty — only after job is fully done */}
           {!loading && originalClips.length === 0 && ["done", "failed"].includes(project?.status) && (
@@ -484,6 +499,7 @@ export default function ProjectDetailPage() {
         <VideoModal
           slides={modal.slides}
           startIdx={modal.startIdx}
+          aspectRatio={project?.aspectRatio ?? "9:16"}
           onClose={() => setModal(null)}
           onUse={(clip) => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
         />

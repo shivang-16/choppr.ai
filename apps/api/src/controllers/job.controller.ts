@@ -96,6 +96,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
         sourceUrl,
         ...(url && thumbnailFromUrl(url) ? { thumbnailUrl: thumbnailFromUrl(url)! } : {}),
         status:       "pending",
+        aspectRatio,
         jobId,
         totalClips:   0,
       }),
