@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Undo2, Redo2, Share2, Download, Cloud, Scissors } from "lucide-react";
+import { ChevronDown, Undo2, Redo2, Share2, Download, Cloud } from "lucide-react";
+import ChopprLogo from "@/components/choppr-logo";
 import Link from "next/link";
 
 interface Props {
@@ -22,8 +23,8 @@ export default function EditorTopbar({ title, onUndo, onRedo, onExport, canUndo,
     <header className="flex h-11 items-center justify-between border-b border-white/8 bg-[#1a1a1a] px-3 shrink-0 z-50">
       {/* Left — logo + title */}
       <div className="flex items-center gap-3">
-        <Link href="/dashboard" className="flex h-7 w-7 items-center justify-center rounded-lg bg-white shrink-0">
-          <Scissors className="h-3.5 w-3.5 text-black" strokeWidth={2.5} />
+        <Link href="/dashboard">
+          <ChopprLogo size={28} />
         </Link>
 
         <div className="flex items-center gap-1">

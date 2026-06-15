@@ -5,7 +5,7 @@ import { createSubscriptionCheckout } from "../services/dodo.service.js";
 import { logger } from "../utils/logger.js";
 
 const CheckoutSchema = z.object({
-  planId:          z.enum(["starter", "pro", "business"]),
+  planId:          z.enum(["core", "growth", "scale"]),
   billingInterval: z.enum(["monthly", "yearly"]),
 });
 
@@ -27,7 +27,7 @@ export async function createCheckout(req: Request, res: Response, next: NextFunc
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
     // Look up plan from DB
-    const plan = await Plan.findById(planId).lean();
+    const plan = await Plan.findOne({ slug: planId }).lean();
     if (!plan || !plan.active) {
       res.status(404).json({ error: "Plan not found" });
       return;

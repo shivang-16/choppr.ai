@@ -14,7 +14,7 @@ export interface IUserCredits extends Document<string> {
   subscriptionCredits: number;    // from active plan, resets on renewal
   topupCredits: number;           // purchased top-ups, never expire
   totalCredits: number;           // subscriptionCredits + topupCredits (denormalized for fast reads)
-  plan: "free" | "starter" | "pro" | "business";
+  plan: "free" | "core" | "growth" | "scale";  // matches Plan.slug
   cycleStart: Date;               // when current subscription cycle started
   cycleEnd: Date;                 // when current cycle ends (reset happens here)
   lifetimeEarned: number;         // total credits ever granted (for analytics)
@@ -31,7 +31,7 @@ const userCreditsSchema = new Schema<IUserCredits>(
     totalCredits:        { type: Number, default: 0, min: 0 },
     plan: {
       type: String,
-      enum: ["free", "starter", "pro", "business"],
+      enum: ["free", "core", "growth", "scale"],
       default: "free",
     },
     cycleStart: { type: Date, required: true },

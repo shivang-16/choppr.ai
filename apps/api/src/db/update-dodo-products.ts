@@ -6,12 +6,12 @@ async function run() {
   await mongoose.connect(process.env.CHOPPR_DB!);
   const plans = mongoose.connection.db!.collection("plans");
 
-  await plans.updateOne({ _id: "starter" as any },  { $set: { dodoProductIdMonthly: "pdt_0NWzs21Qdmsf6gizRmVAM" } });
-  await plans.updateOne({ _id: "pro" as any },      { $set: { dodoProductIdMonthly: "pdt_0NgSVEfgTJWfMtz8vUKFI" } });
-  await plans.updateOne({ _id: "business" as any }, { $set: { dodoProductIdMonthly: "pdt_0NgSVKiRjTPOVCzooDLIR" } });
+  await plans.updateOne({ slug: "core" },   { $set: { dodoProductIdMonthly: "pdt_0NWzs21Qdmsf6gizRmVAM" } });
+  await plans.updateOne({ slug: "growth" }, { $set: { dodoProductIdMonthly: "pdt_0NgSVEfgTJWfMtz8vUKFI" } });
+  await plans.updateOne({ slug: "scale" },  { $set: { dodoProductIdMonthly: "pdt_0NgSVKiRjTPOVCzooDLIR" } });
 
   const result = await plans.find(
-    { _id: { $in: ["starter", "pro", "business"] } as any },
+    { slug: { $in: ["core", "growth", "scale"] } },
     { projection: { _id: 1, dodoProductIdMonthly: 1, dodoProductIdYearly: 1 } }
   ).toArray();
 

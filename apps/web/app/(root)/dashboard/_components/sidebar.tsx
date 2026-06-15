@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
-import { Home, LayoutGrid, Scissors, CreditCard } from "lucide-react";
+import { Home, LayoutGrid, CreditCard } from "lucide-react";
+import ChopprLogo from "@/components/choppr-logo";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -82,8 +83,8 @@ export default function Sidebar() {
     <>
       {/* ── Desktop sidebar — only on md+ ── */}
       <aside className="hidden md:flex h-screen w-14 flex-col items-center border-r border-white/6 bg-[#0a0a0a] py-4 gap-2 fixed left-0 top-0 z-40">
-        <Link href="/dashboard" className="flex h-8 w-8 items-center justify-center rounded-lg bg-white mb-3">
-          <Scissors className="h-4 w-4 text-black" strokeWidth={2.5} />
+        <Link href="/dashboard" className="mb-3">
+          <ChopprLogo size={32} />
         </Link>
 
         <div className="flex flex-col items-center gap-1 flex-1">

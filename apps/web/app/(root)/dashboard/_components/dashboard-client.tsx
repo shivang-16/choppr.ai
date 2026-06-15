@@ -20,6 +20,7 @@ type VideoMeta = {
   thumbnail: string;
   title: string;
   duration: string;
+  durationSecs?: number;
   platform?: PlatformInfo | null;
 };
 
@@ -256,8 +257,17 @@ function DashboardInner() {
 
       setUploadedS3Key(s3Key);
       setUploadProgress(null);
-      // Set a pseudo video meta so the settings form shows
-      setVideo({ url: `[Uploaded] ${file.name}`, thumbnail: "", title: file.name, duration: "0:00" });
+
+      // Read local duration from the file so we can show an accurate credit estimate
+      const durationSecs = await new Promise<number>((resolve) => {
+        const tmp = document.createElement("video");
+        tmp.preload = "metadata";
+        tmp.src = URL.createObjectURL(file);
+        tmp.onloadedmetadata = () => { URL.revokeObjectURL(tmp.src); resolve(tmp.duration || 0); };
+        tmp.onerror = () => resolve(0);
+      });
+      const dur = durationSecs > 0 ? `${Math.floor(durationSecs / 60)}:${String(Math.floor(durationSecs % 60)).padStart(2, "0")}` : "0:00";
+      setVideo({ url: `[Uploaded] ${file.name}`, thumbnail: "", title: file.name, duration: dur, durationSecs });
     } catch (err: unknown) {
       setUploadProgress(null);
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -542,7 +552,20 @@ function DashboardInner() {
 
           {/* Meta row */}
           <div className="flex items-center gap-4 text-[12.5px] text-white/40">
-            <span>Credit usage: <span className="text-white/70 font-medium">⚡ 11</span></span>
+            {video.durationSecs && video.durationSecs > 0 ? (
+              <span>
+                Credit usage:{" "}
+                <span className="text-white/70 font-medium">
+                  ⚡ {Math.ceil(video.durationSecs / 60) * 2} credits
+                </span>
+                <span className="text-white/25 text-[11px]"> ({Math.ceil(video.durationSecs / 60)} min × 2)</span>
+              </span>
+            ) : (
+              <span>
+                Credit usage:{" "}
+                <span className="text-white/70 font-medium">⚡ 2 credits / min</span>
+              </span>
+            )}
           </div>
 
           {/* Thumbnail / platform placeholder */}

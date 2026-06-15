@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ChopprLogo from "@/components/choppr-logo";
 
 const LINKS = {
   Product: [
@@ -58,11 +59,7 @@ export default function Footer() {
           <div className="flex gap-4 justify-between shrink-0">
           <div className="flex flex-col gap-4 shrink-0">
             <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white">
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-black">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" />
-                </svg>
-              </div>
+              <ChopprLogo size={28} />
               <span className="text-[15px] font-semibold text-white tracking-tight">choppr</span>
             </div>
             <p className="text-[13px] text-white/60 leading-relaxed max-w-[220px]">

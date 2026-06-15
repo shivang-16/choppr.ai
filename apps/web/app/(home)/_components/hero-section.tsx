@@ -102,7 +102,7 @@ export default function HeroSection() {
           </h2>
 
           <p className="max-w-xl text-balance text-[clamp(0.95rem,2vw,1.1rem)] font-normal leading-relaxed text-white/60">
-            Drop a video. Choppr's AI finds the hooks, cuts the clips, adds captions —
+            Drop a video. Choppr's AI finds the hooks, cuts the clips, adds captions
             and hands you content that actually stops the scroll.
           </p>
         </div>

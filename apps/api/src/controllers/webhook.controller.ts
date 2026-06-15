@@ -69,7 +69,7 @@ async function planIdFromProductId(dodoProductId: string): Promise<string | null
       { dodoProductIdYearly:  dodoProductId },
     ],
   }).lean();
-  return plan?._id ?? null;
+  return plan?.slug ?? null;
 }
 
 // ── Main webhook handler ─────────────────────────────────────────────────────

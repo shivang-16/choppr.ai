@@ -1,8 +1,8 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-export interface IPlan extends Document<string> {
-  _id: string;                      // e.g. "free", "starter", "pro", "business"
-  name: string;                     // display name: "Free", "Starter", etc.
+export interface IPlan extends Document {
+  slug: string;                     // stable identifier: "free" | "core" | "growth" | "scale"
+  name: string;                     // display name: "Free", "Core", etc.
   description: string;
   monthlyPrice: number;             // USD cents  (0 for free)
   yearlyPrice: number;              // USD cents per month when billed yearly
@@ -27,7 +27,7 @@ export interface IPlan extends Document<string> {
 
 const planSchema = new Schema<IPlan>(
   {
-    _id:                  { type: String, required: true },
+    slug:                 { type: String, required: true, unique: true },
     name:                 { type: String, required: true },
     description:          { type: String, required: true },
     monthlyPrice:         { type: Number, required: true, min: 0 },
@@ -52,6 +52,7 @@ const planSchema = new Schema<IPlan>(
 );
 
 planSchema.index({ active: 1, order: 1 });
+planSchema.index({ slug: 1 });
 
 export const Plan =
   (mongoose.models.Plan as mongoose.Model<IPlan>) ||

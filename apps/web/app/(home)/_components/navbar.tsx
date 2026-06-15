@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Scissors } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ChopprLogo from "@/components/choppr-logo";
 
 const FEATURES = [
   { label: "AI Clipping", description: "Auto-find viral moments" },
@@ -19,9 +20,7 @@ export default function Navbar() {
       <nav className="flex items-center justify-between w-full max-w-6xl rounded-2xl border border-white/8 bg-white/4 px-5 py-3 backdrop-blur-xl">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white">
-            <Scissors className="h-4 w-4 text-black" strokeWidth={2.5} />
-          </div>
+          <ChopprLogo size={32} />
           <span className="text-[15px] font-semibold tracking-tight text-white">
             choppr
           </span>

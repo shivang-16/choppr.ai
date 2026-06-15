@@ -9,7 +9,7 @@ export const CREDITS_PER_MINUTE = 2;
 // User must have at least this many credits to start a job (1 min worth)
 export const MIN_CREDITS_TO_START = CREDITS_PER_MINUTE;
 
-export type PlanName = "free" | "starter" | "pro" | "business";
+export type PlanName = "free" | "core" | "growth" | "scale";
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -19,9 +19,9 @@ function cycleEnd(from: Date): Date {
   return d;
 }
 
-async function getPlanOrThrow(planId: string) {
-  const plan = await Plan.findById(planId).lean();
-  if (!plan) throw new Error(`Plan not found in DB: "${planId}". Run npm run seed:plans.`);
+async function getPlanOrThrow(slug: string) {
+  const plan = await Plan.findOne({ slug }).lean();
+  if (!plan) throw new Error(`Plan not found in DB: "${slug}". Run npm run seed:plans.`);
   return plan;
 }
 
@@ -189,7 +189,7 @@ export async function deductJobCredits(
   // Look up the user's current plan to get cost per minute
   const userCredits = await UserCredits.findById(userId).lean();
   const planId      = userCredits?.plan ?? "free";
-  const plan        = await Plan.findById(planId).lean();
+  const plan        = await Plan.findOne({ slug: planId }).lean();
   const costPerMin  = plan?.creditCostPerMin ?? CREDITS_PER_MINUTE;
   const totalCost   = durationMins * costPerMin;
 

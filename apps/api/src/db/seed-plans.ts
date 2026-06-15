@@ -14,7 +14,7 @@ config({ path: "./.env" });
 
 const PLANS = [
   {
-    _id: "free",
+    slug: "free",
     name: "Free",
     description: "Get started with AI clipping at no cost.",
     monthlyPrice: 0,
@@ -41,8 +41,8 @@ const PLANS = [
     order: 0,
   },
   {
-    _id: "starter",
-    name: "Starter",
+    slug: "core",
+    name: "Core",
     description: "For creators who are just getting started with AI video clipping.",
     monthlyPrice: 1200,   // $12.00
     yearlyPrice: 900,     // $9.00/mo billed yearly
@@ -69,8 +69,8 @@ const PLANS = [
     order: 1,
   },
   {
-    _id: "pro",
-    name: "Pro",
+    slug: "growth",
+    name: "Growth",
     description: "For power creators who clip multiple videos every week at scale.",
     monthlyPrice: 2900,   // $29.00
     yearlyPrice: 2200,    // $22.00/mo billed yearly
@@ -98,10 +98,10 @@ const PLANS = [
     order: 2,
   },
   {
-    _id: "business",
-    name: "Business",
+    slug: "scale",
+    name: "Scale",
     description: "For agencies and teams processing large volumes of content daily.",
-    monthlyPrice: 7900,   // $79.00
+    monthlyPrice: 7500,   // $75.00
     yearlyPrice: 5900,    // $59.00/mo billed yearly
     credits: 20000,
     creditCostPerMin: 2,
@@ -114,7 +114,7 @@ const PLANS = [
     features: [
       "20,000 credits / month",
       "~160 hrs of AI clipping",
-      "Everything in Pro",
+      "Everything in Growth",
       "3 team seats included",
       "API access",
       "Custom integrations",
@@ -132,8 +132,8 @@ async function seed() {
   console.log("Connected to MongoDB");
 
   for (const plan of PLANS) {
-    await Plan.findByIdAndUpdate(plan._id, plan, { upsert: true, new: true });
-    console.log(`  ✓ Upserted plan: ${plan._id}`);
+    await Plan.findOneAndUpdate({ slug: plan.slug }, plan, { upsert: true, new: true });
+    console.log(`  ✓ Upserted plan: ${plan.slug}`);
   }
 
   console.log("Done.");

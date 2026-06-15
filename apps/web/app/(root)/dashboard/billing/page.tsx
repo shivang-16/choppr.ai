@@ -10,7 +10,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 // Shape returned by GET /api/plans/me
 type Plan = {
-  _id: string;
+  _id: string;   // MongoDB ObjectId
+  slug: string;  // stable identifier: "free" | "core" | "growth" | "scale"
   name: string;
   description: string;
   monthlyPrice: number;   // cents
@@ -79,8 +80,8 @@ function BillingContent() {
   }
 
   // Split free from paid plans
-  const freePlan   = data?.plans.find((p) => p._id === "free");
-  const paidPlans  = data?.plans.filter((p) => p._id !== "free") ?? [];
+  const freePlan   = data?.plans.find((p) => p.slug === "free");
+  const paidPlans  = data?.plans.filter((p) => p.slug !== "free") ?? [];
   const currentId  = data?.currentPlanId ?? "free";
 
   return (
@@ -178,11 +179,11 @@ function BillingContent() {
                 : formatPrice(plan.monthlyPrice);
               const monthlyPrice = formatPrice(plan.monthlyPrice);
               const yearlyPrice  = formatPrice(plan.yearlyPrice);
-              const current      = currentId === plan._id;
+              const current      = currentId === plan.slug;
 
               return (
                 <div
-                  key={plan._id}
+                  key={plan.slug}
                   className={cn(
                     "relative flex flex-col rounded-2xl p-6 gap-5",
                     plan.popular
@@ -224,8 +225,8 @@ function BillingContent() {
 
                   {/* CTA */}
                   <button
-                    disabled={current || checkingOut === plan._id}
-                    onClick={() => !current && handleUpgrade(plan._id)}
+                    disabled={current || checkingOut === plan.slug}
+                    onClick={() => !current && handleUpgrade(plan.slug)}
                     className={cn(
                       "w-full rounded-xl py-2.5 text-[13px] font-semibold transition-all flex items-center justify-center gap-2",
                       current
@@ -235,8 +236,8 @@ function BillingContent() {
                         : "border border-white/12 bg-white/5 hover:bg-white/10 text-white"
                     )}
                   >
-                    {checkingOut === plan._id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    {current ? "Current plan" : checkingOut === plan._id ? "Redirecting…" : plan.cta}
+                    {checkingOut === plan.slug && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    {current ? "Current plan" : checkingOut === plan.slug ? "Redirecting…" : plan.cta}
                   </button>
 
                   {/* Features */}
