@@ -46,7 +46,42 @@ router.get("/", async (req: Request, res: Response) => {
   try {
     const ytId = extractYouTubeId(url);
     if (ytId) {
-      // Fetch the YouTube watch page and pull duration from og:video:duration or itemprop
+      // --- Method 1: InnerTube API (what YouTube web app uses internally) ---
+      try {
+        const innerTubeRes = await fetch(
+          "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+              ...(YT_COOKIE_HEADER ? { Cookie: YT_COOKIE_HEADER } : {}),
+            },
+            body: JSON.stringify({
+              videoId: ytId,
+              context: {
+                client: {
+                  clientName: "WEB",
+                  clientVersion: "2.20240101.00.00",
+                  hl: "en",
+                  gl: "US",
+                },
+              },
+            }),
+            signal: AbortSignal.timeout(8000),
+          }
+        );
+        const data = await innerTubeRes.json() as any;
+        const lengthSecs = data?.videoDetails?.lengthSeconds;
+        if (lengthSecs && parseInt(lengthSecs) > 0) {
+          res.json({ durationSecs: parseInt(lengthSecs) });
+          return;
+        }
+      } catch {
+        // fall through to HTML scrape
+      }
+
+      // --- Method 2: HTML scrape fallback ---
       const headers: Record<string, string> = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
@@ -59,18 +94,21 @@ router.get("/", async (req: Request, res: Response) => {
       });
       const html = await pageRes.text();
 
-      // "approxDurationMs":"12345678"
       const msMatch = html.match(/"approxDurationMs":"(\d+)"/);
       if (msMatch?.[1]) {
-        const durationSecs = Math.floor(parseInt(msMatch[1]) / 1000);
-        res.json({ durationSecs });
+        res.json({ durationSecs: Math.floor(parseInt(msMatch[1]) / 1000) });
         return;
       }
 
-      // itemprop="duration" content="PT1H2M3S"
       const isoMatch = html.match(/itemprop="duration"\s+content="([^"]+)"/);
       if (isoMatch?.[1]) {
         res.json({ durationSecs: parseIsoDuration(isoMatch[1]) });
+        return;
+      }
+
+      const lengthMatch = html.match(/"lengthSeconds":"(\d+)"/);
+      if (lengthMatch?.[1]) {
+        res.json({ durationSecs: parseInt(lengthMatch[1]) });
         return;
       }
     }
