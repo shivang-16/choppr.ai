@@ -19,7 +19,7 @@ const PLANS = [
     description: "Get started with AI clipping at no cost.",
     monthlyPrice: 0,
     yearlyPrice: 0,
-    credits: 500,
+    credits: 250,
     creditCostPerMin: 2,
     maxVideoLengthMins: 60,
     maxClipsPerJob: 10,
@@ -28,8 +28,8 @@ const PLANS = [
     apiAccess: false,
     priorityQueue: false,
     features: [
-      "500 credits / month",
-      "~4 hrs of AI clipping",
+      "250 credits / month",
+      "~2 hrs of AI clipping",
       "60 min max per video",
       "10 clips per video",
       "720p export",
@@ -46,7 +46,7 @@ const PLANS = [
     description: "For creators who are just getting started with AI video clipping.",
     monthlyPrice: 1200,   // $12.00
     yearlyPrice: 900,     // $9.00/mo billed yearly
-    credits: 1500,
+    credits: 500,
     creditCostPerMin: 2,
     maxVideoLengthMins: 120,
     maxClipsPerJob: 30,
@@ -55,8 +55,8 @@ const PLANS = [
     apiAccess: false,
     priorityQueue: true,
     features: [
-      "1,500 credits / month",
-      "~12 hrs of AI clipping",
+      "500 credits / month",
+      "~4 hrs of AI clipping",
       "Up to 2 hr video per job",
       "30 clips per video",
       "1080p export",
@@ -74,7 +74,7 @@ const PLANS = [
     description: "For power creators who clip multiple videos every week at scale.",
     monthlyPrice: 2900,   // $29.00
     yearlyPrice: 2200,    // $22.00/mo billed yearly
-    credits: 5000,
+    credits: 1500,
     creditCostPerMin: 2,
     maxVideoLengthMins: null,   // unlimited
     maxClipsPerJob: null,        // unlimited
@@ -83,14 +83,13 @@ const PLANS = [
     apiAccess: false,
     priorityQueue: true,
     features: [
-      "5,000 credits / month",
-      "~40 hrs of AI clipping",
+      "1,500 credits / month",
+      "~12 hrs of AI clipping",
       "Unlimited video length",
       "Unlimited clips per video",
       "4K export",
       "Priority queue",
       "All features unlocked",
-      "AI Hook & Speech Enhance",
     ],
     cta: "Get Started",
     popular: true,
@@ -101,8 +100,8 @@ const PLANS = [
     slug: "scale",
     name: "Scale",
     description: "For agencies and teams processing large volumes of content daily.",
-    monthlyPrice: 7500,   // $75.00
-    yearlyPrice: 5900,    // $59.00/mo billed yearly
+    monthlyPrice: 0,
+    yearlyPrice: 0,
     credits: 20000,
     creditCostPerMin: 2,
     maxVideoLengthMins: null,
@@ -112,13 +111,12 @@ const PLANS = [
     apiAccess: true,
     priorityQueue: true,
     features: [
-      "20,000 credits / month",
-      "~160 hrs of AI clipping",
-      "Everything in Growth",
-      "3 team seats included",
-      "API access",
-      "Custom integrations",
-      "Dedicated support",
+      "Custom credits volume",
+      "Unlimited video length",
+      "Unlimited clips per video",
+      "4K export",
+      "Priority queue",
+      "Dedicated support & onboarding",
     ],
     cta: "Schedule a demo",
     popular: false,

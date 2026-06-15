@@ -135,8 +135,8 @@ function BillingContent() {
             Clip smarter, not harder. No credit card required on free plan.
           </p>
 
-          {/* Billing toggle */}
-          <div className="flex items-center gap-3 text-[13px]">
+          {/* Billing toggle — hidden until yearly plans are re-enabled */}
+          {/* <div className="flex items-center gap-3 text-[13px]">
             <span className={cn("transition-colors", billing === "monthly" ? "text-white" : "text-white/35")}>Monthly</span>
             <button
               onClick={() => setBilling(b => b === "monthly" ? "yearly" : "monthly")}
@@ -159,7 +159,7 @@ function BillingContent() {
             )}>
               20% off
             </span>
-          </div>
+          </div> */}
         </div>
 
         {/* ── Loading skeleton ── */}
@@ -211,34 +211,46 @@ function BillingContent() {
                   <div className="border-t border-dashed border-white/8" />
 
                   {/* Price */}
-                  <div className="flex flex-col gap-1">
+                  {plan.slug === "scale" ? (
                     <div className="flex items-baseline gap-2">
-                      <span className="text-[38px] font-bold text-white leading-none">${price}</span>
-                      <span className="text-[14px] text-white/35 font-medium">/ month</span>
+                      <span className="text-[28px] font-bold text-white leading-none">Custom pricing</span>
                     </div>
-                    {billing === "yearly" && (
-                      <p className="text-[11px] text-indigo-400">
-                        Billed ${yearlyPrice * 12}/yr · Save ${(monthlyPrice - yearlyPrice) * 12}
-                      </p>
-                    )}
-                  </div>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-[38px] font-bold text-white leading-none">${price}</span>
+                        <span className="text-[14px] text-white/35 font-medium">/ month</span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* CTA */}
-                  <button
-                    disabled={current || checkingOut === plan.slug}
-                    onClick={() => !current && handleUpgrade(plan.slug)}
-                    className={cn(
-                      "w-full rounded-xl py-2.5 text-[13px] font-semibold transition-all flex items-center justify-center gap-2",
-                      current
-                        ? "border border-white/8 bg-transparent text-white/25 cursor-default"
-                        : plan.popular
-                        ? "bg-indigo-500 hover:bg-indigo-400 text-white"
-                        : "border border-white/12 bg-white/5 hover:bg-white/10 text-white"
-                    )}
-                  >
-                    {checkingOut === plan.slug && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    {current ? "Current plan" : checkingOut === plan.slug ? "Redirecting…" : plan.cta}
-                  </button>
+                  {plan.slug === "scale" ? (
+                    <a
+                      href="https://cal.com/shivang-yadav/choppr-demo"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full rounded-xl py-2.5 text-[13px] font-semibold transition-all flex items-center justify-center gap-2 border border-white/12 bg-white/5 hover:bg-white/10 text-white"
+                    >
+                      Book a call
+                    </a>
+                  ) : (
+                    <button
+                      disabled={current || checkingOut === plan.slug}
+                      onClick={() => !current && handleUpgrade(plan.slug)}
+                      className={cn(
+                        "w-full rounded-xl py-2.5 text-[13px] font-semibold transition-all flex items-center justify-center gap-2",
+                        current
+                          ? "border border-white/8 bg-transparent text-white/25 cursor-default"
+                          : plan.popular
+                          ? "bg-indigo-500 hover:bg-indigo-400 text-white"
+                          : "border border-white/12 bg-white/5 hover:bg-white/10 text-white"
+                      )}
+                    >
+                      {checkingOut === plan.slug && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {current ? "Current plan" : checkingOut === plan.slug ? "Redirecting…" : plan.cta}
+                    </button>
+                  )}
 
                   {/* Features */}
                   <ul className="flex flex-col gap-2.5 mt-1">
