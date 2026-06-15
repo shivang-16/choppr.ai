@@ -9,6 +9,7 @@ export interface IProject {
   videoDuration?: number;
   totalClips: number;
   status: "pending" | "processing" | "done" | "failed";
+  error?: string;
   aspectRatio?: string;
   jobId: string;
   createdAt: Date;
@@ -25,6 +26,7 @@ const ProjectSchema = new Schema<IProject>(
     videoDuration: { type: Number },
     totalClips:    { type: Number, default: 0 },
     status:        { type: String, enum: ["pending", "processing", "done", "failed"], default: "pending" },
+    error:         { type: String },
     aspectRatio:   { type: String, default: "9:16" },
     jobId:         { type: String, required: true, index: true },
   },

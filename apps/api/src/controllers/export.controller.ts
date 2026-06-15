@@ -1,16 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { Export } from "../model/export.model.js";
-
-const sqs = new SQSClient({
-  region: process.env.AWS_REGION ?? "us-east-1",
-  credentials: {
-    accessKeyId:     process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
 
 const TrackItemSchema = z.object({
   id:             z.string(),
@@ -76,25 +67,42 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       aspectRatio,
     });
 
-    const queueUrl = process.env.SQS_QUEUE_URL;
-    if (!queueUrl) throw new Error("SQS_QUEUE_URL not set");
+    const workerUrl = process.env.WORKER_URL;
+    if (!workerUrl) throw new Error("WORKER_URL env variable is not set");
 
-    await sqs.send(new SendMessageCommand({
-      QueueUrl:    queueUrl,
-      MessageBody: JSON.stringify({
-        type:           "export",
-        exportId,
-        projectId,
-        userId,
-        tracks,
-        volumes,
-        speeds,
-        captionStyle,
-        captionMap,
-        aspectRatio,
-        originalClipId: originalClipId ?? null,
-      }),
-    }));
+    const secret = process.env.INTERNAL_API_SECRET ?? "";
+
+    try {
+      const workerRes = await fetch(`${workerUrl}/internal/export`, {
+        method:  "POST",
+        headers: {
+          "Content-Type":      "application/json",
+          "X-Internal-Secret": secret,
+        },
+        body: JSON.stringify({
+          exportId,
+          projectId,
+          userId,
+          tracks,
+          volumes,
+          speeds,
+          captionStyle,
+          captionMap,
+          aspectRatio,
+          originalClipId: originalClipId ?? null,
+        }),
+        signal: AbortSignal.timeout(10_000), // 10s to get the 202 ack
+      });
+
+      if (!workerRes.ok) {
+        const text = await workerRes.text().catch(() => "");
+        throw new Error(`Worker rejected export: ${workerRes.status} ${text}`);
+      }
+    } catch (workerErr: any) {
+      // Worker unreachable or rejected — mark export failed immediately
+      await Export.findByIdAndUpdate(exportId, { status: "failed", error: workerErr.message });
+      throw workerErr;
+    }
 
     res.status(201).json({ exportId, status: "pending" });
   } catch (err) {

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
-import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Pause, Wand2, Sparkles, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Pause, Wand2, Sparkles, ChevronLeft, ChevronRight, RotateCcw, AlertCircle } from "lucide-react";
 import { useRouter as _useRouter } from "next/navigation";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -425,14 +425,21 @@ export default function ProjectDetailPage() {
                 <p className="text-[11px] text-white/25 truncate">{project.sourceUrl}</p>
               )}
             </div>
-            <button
-              onClick={handleRetry}
-              disabled={retrying}
-              className="cursor-pointer flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
-            >
-              <RotateCcw className={`h-3.5 w-3.5 ${retrying ? "animate-spin" : ""}`} />
-              {retrying ? "Retrying…" : "Retry"}
-            </button>
+            {project && !["done", "failed"].includes(project.status) ? (
+              <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/40">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Processing…
+              </div>
+            ) : (
+              <button
+                onClick={handleRetry}
+                disabled={retrying}
+                className="cursor-pointer flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
+              >
+                <RotateCcw className={`h-3.5 w-3.5 ${retrying ? "animate-spin" : ""}`} />
+                {retrying ? "Retrying…" : "Retry"}
+              </button>
+            )}
           </div>
 
           {/* Loading */}
@@ -487,8 +494,21 @@ export default function ProjectDetailPage() {
             );
           })()}
 
-          {/* Empty — only after job is fully done */}
-          {!loading && originalClips.length === 0 && ["done", "failed"].includes(project?.status) && (
+          {/* Failed */}
+          {!loading && project?.status === "failed" && (
+            <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/8 px-4 py-3">
+              <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-0.5">
+                <p className="text-[13px] font-medium text-red-300">Processing failed</p>
+                {project?.error && (
+                  <p className="text-[11px] text-red-400/70 font-mono break-all">{project.error}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Empty — only after job is fully done with no clips */}
+          {!loading && originalClips.length === 0 && project?.status === "done" && (
             <p className="text-[13px] text-white/30">No clips found for this project.</p>
           )}
         </div>

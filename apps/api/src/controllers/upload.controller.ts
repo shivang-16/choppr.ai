@@ -11,7 +11,7 @@ const s3 = new S3Client({
   },
 });
 
-const BUCKET = process.env.S3_UPLOADS_BUCKET ?? process.env.S3_CLIPS_BUCKET ?? "choppr-clips";
+const BUCKET = process.env.S3_MEDIA_BUCKET ?? "choppr-media";
 
 // POST /api/uploads/presign  — returns a presigned PUT URL + s3Key
 export async function presignUpload(req: Request, res: Response, next: NextFunction) {
