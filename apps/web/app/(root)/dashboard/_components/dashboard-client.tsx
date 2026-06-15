@@ -181,9 +181,22 @@ function DashboardInner() {
 
   const [clipModel, setClipModel] = useState("Auto");
   const [genre, setGenre] = useState("Auto");
-  const [clipLength, setClipLength] = useState("Auto (0m-3m)");
+  const [clipLength, setClipLength] = useState("Short (0-60s)");
   const [aspectRatio, setAspectRatio] = useState("9:16");
+  const [maxClips, setMaxClips] = useState(10);
   const [prompt, setPrompt] = useState("");
+
+  // Derive available clip count options from video duration
+  const maxClipsLimit = (() => {
+    const mins = (video?.durationSecs ?? 0) / 60;
+    if (mins <= 5)  return 5;
+    if (mins <= 10) return 10;
+    if (mins <= 20) return 15;
+    if (mins <= 30) return 20;
+    if (mins <= 60) return 20;
+    return 20;
+  })();
+  const clipCountOptions = [5, 10, 15, 20].filter((n) => n <= maxClipsLimit);
   const [maxVideoLengthMins, setMaxVideoLengthMins] = useState<number | null>(null);
 
   useEffect(() => {
@@ -206,6 +219,12 @@ function DashboardInner() {
       new URL(trimmed);
       const meta = await fetchVideoMeta(trimmed, apiFetch);
       setVideo(meta);
+      // Set default clip count based on video length
+      if (meta?.durationSecs) {
+        const mins = meta.durationSecs / 60;
+        const suggested = mins <= 5 ? 5 : 10;
+        setMaxClips(suggested);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Please enter a valid video URL.");
       setInputUrl("");
@@ -310,7 +329,7 @@ function DashboardInner() {
         genre,
         clipLength,
         aspectRatio,
-        maxClips: 10,
+        maxClips,
         ...(video.durationSecs && video.durationSecs > 0 ? { durationSecs: video.durationSecs } : {}),
       };
       if (uploadedS3Key) {
@@ -670,6 +689,18 @@ function DashboardInner() {
                   </select>
                 </label>
               ))}
+              <label className="flex items-center gap-2 text-white/50">
+                Max clips
+                <select
+                  value={Math.min(maxClips, maxClipsLimit)}
+                  onChange={(e) => setMaxClips(Number(e.target.value))}
+                  className="bg-transparent text-white/80 border-b border-white/15 outline-none cursor-pointer"
+                >
+                  {clipCountOptions.map((n) => (
+                    <option key={n} value={n} className="bg-[#111]">{n} clips</option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             {/* Prompt */}

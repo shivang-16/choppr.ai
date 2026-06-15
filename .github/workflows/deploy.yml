@@ -16,10 +16,6 @@ jobs:
         working-directory: apps/api
         run: echo "${{ secrets.PROD_ENV }}" > .env
 
-      - name: Restore YouTube auth state
-        working-directory: apps/api
-        run: echo '${{ secrets.YOUTUBE_AUTH_STATE }}' > .youtube_auth_state.json
-
       - name: Install dependencies
         working-directory: apps/api
         run: npm ci
