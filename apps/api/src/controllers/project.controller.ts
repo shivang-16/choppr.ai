@@ -25,7 +25,10 @@ export async function getProject(req: Request, res: Response, next: NextFunction
     const project = await Project.findById(req.params.projectId).lean();
     if (!project) { res.status(404).json({ error: "Not found" }); return; }
     if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
-    res.json(project);
+
+    // Include real job stage + progress so the frontend can show accurate processing state
+    const job = await Job.findById(project.jobId).select("status progress").lean();
+    res.json({ ...project, jobStatus: job?.status ?? null, jobProgress: job?.progress ?? 0 });
   } catch (err) {
     next(err);
   }

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
-import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Pause, Wand2, Sparkles, ChevronLeft, ChevronRight, RotateCcw, AlertCircle } from "lucide-react";
+import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Wand2, Sparkles, ChevronLeft, ChevronRight, RotateCcw, AlertCircle, CheckCircle2 } from "lucide-react";
 import { useRouter as _useRouter } from "next/navigation";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -325,6 +325,76 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
   );
 }
 
+// ── Processing stages animation ─────────────────────────────────────────────
+
+const STAGES = [
+  { key: "pending",      label: "Getting things ready",   sub: "Your video is up next hang tight!" },
+  { key: "downloading",  label: "Grabbing your video",    sub: "Pulling in the source so we can work on it" },
+  { key: "transcribing", label: "Listening to the audio", sub: "Turning speech into text to find the good bits" },
+  { key: "analyzing",    label: "Finding the best moments", sub: "AI is scanning for highlights worth clipping" },
+  { key: "clipping",     label: "Making your clips",      sub: "Almost there — cutting and saving your clips" },
+];
+
+const STATUS_TO_IDX: Record<string, number> = {
+  pending: 0, downloading: 1, transcribing: 2, analyzing: 3, clipping: 4,
+};
+
+function ProcessingView({ jobStatus }: { jobStatus?: string | null }) {
+  const stageIdx = STATUS_TO_IDX[jobStatus ?? "pending"] ?? 0;
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-10 min-h-[60vh]">
+    
+
+      {/* Stage list */}
+      <div className="flex flex-col gap-3 w-full max-w-sm">
+        {STAGES.map((stage, i) => {
+          const done   = i < stageIdx;
+          const active = i === stageIdx;
+          return (
+            <div
+              key={stage.key}
+              className={`flex items-center gap-3.5 rounded-2xl px-4 py-3.5 transition-all duration-500 ${
+                active ? "bg-indigo-500/10 border border-indigo-500/25" :
+                done   ? "bg-white/3 border border-white/6" :
+                         "border border-transparent"
+              }`}
+            >
+              <div className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center transition-all duration-500 ${
+                done   ? "bg-green-500/15 border border-green-500/25" :
+                active ? "bg-indigo-500/20 border border-indigo-500/30" :
+                         "bg-white/5 border border-white/8"
+              }`}>
+                {done ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-400" />
+                ) : active ? (
+                  <Loader2 className="h-4 w-4 text-indigo-400 animate-spin" />
+                ) : (
+                  <div className="h-1.5 w-1.5 rounded-full bg-white/20" />
+                )}
+              </div>
+
+              {/* Text */}
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className={`text-[13px] font-semibold transition-colors duration-300 ${
+                  done ? "text-white/50" : active ? "text-white" : "text-white/25"
+                }`}>
+                  {stage.label}
+                </span>
+                {active && (
+                  <span className="text-[11px] text-indigo-300/70 leading-snug">{stage.sub}</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-[12px] text-white/20 text-center">This usually takes 3–10 minutes depending on video length</p>
+    </div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -406,8 +476,8 @@ export default function ProjectDetailPage() {
     <div className="flex min-h-screen bg-[#0a0a0a]">
       <Sidebar />
       <Topbar />
-      <main className="md:ml-14 mt-12 flex-1 px-6 py-10 pb-24 md:pb-10">
-        <div className="max-w-5xl mx-auto flex flex-col gap-6">
+      <main className="md:ml-14 mt-12 flex-1 flex flex-col px-6 py-10 pb-24 md:pb-10">
+        <div className="max-w-5xl w-full mx-auto flex flex-col gap-6 flex-1">
 
           {/* Back + header */}
           <div className="flex items-center gap-3">
@@ -449,11 +519,9 @@ export default function ProjectDetailPage() {
             </div>
           )}
 
-          {/* Still processing — no clips yet */}
+          {/* Still processing — animated stages */}
           {!loading && originalClips.length === 0 && project?.status && !["done", "failed"].includes(project.status) && (
-            <div className="flex items-center gap-2 text-[13px] text-white/30">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Processing video, clips will appear here shortly…
-            </div>
+            <ProcessingView jobStatus={project?.jobStatus} />
           )}
 
           {/* Clips count */}
