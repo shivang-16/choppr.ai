@@ -111,24 +111,28 @@ function extractYouTubeId(url: string) {
   return match?.[1] ?? null;
 }
 
-async function fetchVideoMeta(url: string): Promise<VideoMeta | null> {
+async function fetchVideoMeta(url: string, apiFetch: (u: string, o?: RequestInit) => Promise<Response>): Promise<VideoMeta | null> {
   const platform = getPlatformInfo(url);
   const ytId = extractYouTubeId(url);
   if (ytId) {
     try {
-      const res = await fetch(
-        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        return {
-          url,
-          thumbnail: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
-          title: data.title ?? "YouTube Video",
-          duration: "0:00",
-          platform,
-        };
-      }
+      const [oembedRes, metaRes] = await Promise.all([
+        fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`),
+        apiFetch(`${API_URL}/api/video-meta?url=${encodeURIComponent(url)}`),
+      ]);
+      const title = oembedRes.ok ? (await oembedRes.json()).title ?? "YouTube Video" : "YouTube Video";
+      const durationSecs: number | null = metaRes.ok ? (await metaRes.json()).durationSecs : null;
+      const dur = durationSecs && durationSecs > 0
+        ? `${Math.floor(durationSecs / 3600) > 0 ? Math.floor(durationSecs / 3600) + ":" : ""}${String(Math.floor((durationSecs % 3600) / 60)).padStart(2, "0")}:${String(durationSecs % 60).padStart(2, "0")}`
+        : "0:00";
+      return {
+        url,
+        thumbnail: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+        title,
+        duration: dur,
+        durationSecs: durationSecs ?? undefined,
+        platform,
+      };
     } catch {}
   }
   // Non-YouTube: no real thumbnail available before processing
@@ -181,6 +185,18 @@ function DashboardInner() {
   const [clipLength, setClipLength] = useState("Auto (0m-3m)");
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [prompt, setPrompt] = useState("");
+  const [maxVideoLengthMins, setMaxVideoLengthMins] = useState<number | null>(null);
+
+  useEffect(() => {
+    apiFetch(`${API_URL}/api/plans/me`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (!d) return;
+        const currentPlan = d.plans?.find((p: any) => p.slug === d.currentPlanId || p._id === d.currentPlanId);
+        if (currentPlan?.maxVideoLengthMins != null) setMaxVideoLengthMins(currentPlan.maxVideoLengthMins);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleFetch = async (url: string) => {
     const trimmed = url.trim();
@@ -189,7 +205,7 @@ function DashboardInner() {
     setLoading(true);
     try {
       new URL(trimmed);
-      const meta = await fetchVideoMeta(trimmed);
+      const meta = await fetchVideoMeta(trimmed, apiFetch);
       setVideo(meta);
     } catch {
       setError("Please enter a valid video URL.");
@@ -277,6 +293,13 @@ function DashboardInner() {
   // Step 2: user clicks "Get clips in 1 click" — create job via API
   const handleSubmit = async () => {
     if (!video) return;
+
+    // Client-side plan limit check
+    if (maxVideoLengthMins != null && video.durationSecs && video.durationSecs > maxVideoLengthMins * 60) {
+      setError(`Your plan allows videos up to ${maxVideoLengthMins} minutes. Upgrade to process longer videos.`);
+      return;
+    }
+
     setError(null);
     setSubmitting(true);
     try {
@@ -287,6 +310,7 @@ function DashboardInner() {
         clipLength,
         aspectRatio,
         maxClips: 10,
+        ...(video.durationSecs && video.durationSecs > 0 ? { durationSecs: video.durationSecs } : {}),
       };
       if (uploadedS3Key) {
         body.s3Key = uploadedS3Key;
@@ -302,7 +326,7 @@ function DashboardInner() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Failed to create job");
+        throw new Error(data.message ?? data.error ?? "Failed to create job");
       }
 
       const { projectId } = await res.json();
@@ -550,6 +574,16 @@ function DashboardInner() {
       {video && (
         <div className="flex flex-col items-center gap-6 mt-8 w-full max-w-2xl">
 
+          {/* Plan limit — only show when we know the video is too long */}
+          {maxVideoLengthMins != null && video.durationSecs && video.durationSecs > maxVideoLengthMins * 60 && (
+            <div className="w-full flex items-center gap-3 rounded-2xl border border-yellow-500/40 bg-yellow-500/15 px-5 py-3.5">
+              <AlertCircle className="h-4 w-4 text-yellow-300 shrink-0" />
+              <p className="text-[13px] text-yellow-200 font-medium">
+                This video exceeds your plan's {maxVideoLengthMins}-minute limit.
+              </p>
+            </div>
+          )}
+
           {/* Meta row */}
           <div className="flex items-center gap-4 text-[12.5px] text-white/40">
             {video.durationSecs && video.durationSecs > 0 ? (
@@ -672,14 +706,23 @@ function DashboardInner() {
             </div>
           </div>
 
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 mb-8"
-          >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {submitting ? "Creating job…" : "Get clips in 1 click"}
-          </button>
+          {maxVideoLengthMins != null && video.durationSecs && video.durationSecs > maxVideoLengthMins * 60 ? (
+            <a
+              href="/dashboard/billing"
+              className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] flex items-center justify-center gap-2 mb-8"
+            >
+              Upgrade your plan to continue →
+            </a>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-8"
+            >
+              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {submitting ? "Creating job…" : "Get clips"}
+            </button>
+          )}
         </div>
       )}
     </div>

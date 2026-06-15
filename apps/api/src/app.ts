@@ -11,6 +11,7 @@ import paymentRoutes from "./routes/payment.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
 import exportRoutes from "./routes/export.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
+import videoMetaRoutes from "./routes/video-meta.routes.js";
 import errorHandler from "./middlewares/error.js";
 import expressWinston from "express-winston";
 import { winstonLogger } from "./utils/logger.js";
@@ -59,7 +60,8 @@ app.use("/api/credits",   creditsRoutes);
 app.use("/api/plans",     planRoutes);
 app.use("/api/payments",  paymentRoutes);
 app.use("/api/exports",   exportRoutes);
-app.use("/api/uploads",  uploadRoutes);
+app.use("/api/uploads",    uploadRoutes);
+app.use("/api/video-meta", videoMetaRoutes);
 
 // ── Error handler ───────────────────────────────────────────────────────────
 app.use(errorHandler);

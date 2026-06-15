@@ -42,14 +42,15 @@ function thumbnailFromUrl(url: string): string | null {
 // ── Validation schemas ──────────────────────────────────────────────────────
 
 const CreateJobSchema = z.object({
-  url:         z.string().url("Must be a valid URL").optional(),
-  s3Key:       z.string().optional(),
-  query:       z.string().max(500).default(""),
-  clipModel:   z.string().default("Auto"),
-  genre:       z.string().default("Auto"),
-  clipLength:  z.string().default("Auto (0m-3m)"),
-  aspectRatio: z.string().default("9:16"),
-  maxClips:    z.number().int().min(1).max(20).default(10),
+  url:          z.string().url("Must be a valid URL").optional(),
+  s3Key:        z.string().optional(),
+  query:        z.string().max(500).default(""),
+  clipModel:    z.string().default("Auto"),
+  genre:        z.string().default("Auto"),
+  clipLength:   z.string().default("Auto (0m-3m)"),
+  aspectRatio:  z.string().default("9:16"),
+  maxClips:     z.number().int().min(1).max(20).default(10),
+  durationSecs: z.number().min(0).optional(),
 }).refine(data => data.url || data.s3Key, {
   message: "Either url or s3Key is required",
 });

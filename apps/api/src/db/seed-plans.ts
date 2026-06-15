@@ -21,7 +21,7 @@ const PLANS = [
     yearlyPrice: 0,
     credits: 250,
     creditCostPerMin: 2,
-    maxVideoLengthMins: 60,
+    maxVideoLengthMins: 45,
     maxClipsPerJob: 10,
     maxExportResolution: "720p",
     teamSeats: 1,
@@ -30,7 +30,7 @@ const PLANS = [
     features: [
       "250 credits / month",
       "~2 hrs of AI clipping",
-      "60 min max per video",
+      "45 min max per video",
       "10 clips per video",
       "720p export",
       "AI Captions & Reframe",
