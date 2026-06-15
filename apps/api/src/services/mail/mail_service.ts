@@ -1,13 +1,14 @@
 import nodemailer from 'nodemailer';
-import { 
-  MailServiceConfig, 
-  AnalysisCompleteOptions, 
-  AnalysisErrorOptions, 
-  WelcomeOptions, 
-  PasswordResetOptions, 
-  MarketingOptions, 
+import { logger } from '../../utils/logger.js';
+import {
+  MailServiceConfig,
+  AnalysisCompleteOptions,
+  AnalysisErrorOptions,
+  WelcomeOptions,
+  PasswordResetOptions,
+  MarketingOptions,
   CustomMailOptions,
-  TeamInviteOptions 
+  TeamInviteOptions
 } from './types.js';
 import { 
   analysisCompleteTemplate, 
@@ -29,8 +30,6 @@ export class MailService {
     const authUser = config.auth?.user || process.env.SMTP_USER || '';
     const authPass = config.auth?.pass || process.env.SMTP_PASS || '';
 
-    console.log(authUser, authPass, "auth user and pass")
-    
     // Use auth user as from address if provided, otherwise use config.from or env fallback
     const fromAddress = config.auth?.user || process.env.SMTP_USER || '';
 
@@ -90,7 +89,7 @@ export class MailService {
     try {
       await this.transporter.sendMail(mailOptions);
     } catch (error) {
-      console.error('Failed to send email:', error);
+      logger.error('Failed to send email', { to, subject, error });
       throw new Error(`Failed to send email: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -148,7 +147,7 @@ export class MailService {
       await this.transporter.verify();
       return true;
     } catch (error) {
-      console.error('Mail service connection failed:', error);
+      logger.error('Mail service connection failed', error);
       return false;
     }
   }
@@ -166,16 +165,16 @@ const defaultConfig: MailServiceConfig = {
   rateLimitPerMinute: parseInt(process.env.MAIL_RATE_LIMIT || '10'),
 };
 
-console.log("📧 Mail service config:", {
+logger.info("Mail service initialising", {
   host: defaultConfig.host,
   port: defaultConfig.port,
   secure: defaultConfig.secure,
   hasSmtpUser: !!process.env.SMTP_USER,
-  hasSmtpPass: !!process.env.SMTP_PASS
+  hasSmtpPass: !!process.env.SMTP_PASS,
 });
 
 export const mailService = new MailService(defaultConfig);
-console.log("📧 MailService instance created successfully");
+logger.info("Mail service ready");
 
 // Export types for convenience
 export * from './types.js';

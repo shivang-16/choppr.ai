@@ -34,7 +34,7 @@ router.get("/", async (req: Request, res: Response) => {
 
       // "approxDurationMs":"12345678"
       const msMatch = html.match(/"approxDurationMs":"(\d+)"/);
-      if (msMatch) {
+      if (msMatch?.[1]) {
         const durationSecs = Math.floor(parseInt(msMatch[1]) / 1000);
         res.json({ durationSecs });
         return;
@@ -42,7 +42,7 @@ router.get("/", async (req: Request, res: Response) => {
 
       // itemprop="duration" content="PT1H2M3S"
       const isoMatch = html.match(/itemprop="duration"\s+content="([^"]+)"/);
-      if (isoMatch) {
+      if (isoMatch?.[1]) {
         res.json({ durationSecs: parseIsoDuration(isoMatch[1]) });
         return;
       }

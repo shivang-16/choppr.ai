@@ -37,7 +37,6 @@ export const checkFeatureAccess = (
       // Extract additional data if extractor function is provided
       const additionalData = options?.additionalDataExtractor ? options.additionalDataExtractor(req) : {};
 
-      console.log(additionalData, "here is teh additional data")
       // Check feature access
       const result: FeatureCheckResult = await FeatureAccessChecker.checkFeatureAccess(
         req, 

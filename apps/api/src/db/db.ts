@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { logger } from "../utils/logger.js";
 
 const MONGODB_URI = process.env.CHOPPR_DB;
 
@@ -9,9 +10,9 @@ const connectDB = async () => {
         }
 
         await mongoose.connect(MONGODB_URI);
-        console.log("MongoDB connected database");
+        logger.info("MongoDB connected");
     } catch (error) {
-        console.error("MongoDB connection error:", error);
+        logger.error("MongoDB connection error", error);
         process.exit(1);
     }
 };
