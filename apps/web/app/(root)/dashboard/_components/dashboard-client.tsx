@@ -115,25 +115,24 @@ async function fetchVideoMeta(url: string, apiFetch: (u: string, o?: RequestInit
   const platform = getPlatformInfo(url);
   const ytId = extractYouTubeId(url);
   if (ytId) {
-    try {
-      const [oembedRes, metaRes] = await Promise.all([
-        fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`),
-        apiFetch(`${API_URL}/api/video-meta?url=${encodeURIComponent(url)}`),
-      ]);
-      const title = oembedRes.ok ? (await oembedRes.json()).title ?? "YouTube Video" : "YouTube Video";
-      const durationSecs: number | null = metaRes.ok ? (await metaRes.json()).durationSecs : null;
-      const dur = durationSecs && durationSecs > 0
-        ? `${Math.floor(durationSecs / 3600) > 0 ? Math.floor(durationSecs / 3600) + ":" : ""}${String(Math.floor((durationSecs % 3600) / 60)).padStart(2, "0")}:${String(durationSecs % 60).padStart(2, "0")}`
-        : "0:00";
-      return {
-        url,
-        thumbnail: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
-        title,
-        duration: dur,
-        durationSecs: durationSecs ?? undefined,
-        platform,
-      };
-    } catch {}
+    const [oembedRes, metaRes] = await Promise.all([
+      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`),
+      apiFetch(`${API_URL}/api/video-meta?url=${encodeURIComponent(url)}`),
+    ]);
+    const title = oembedRes.ok ? (await oembedRes.json()).title ?? "YouTube Video" : "YouTube Video";
+    if (!metaRes.ok) throw new Error("Failed to fetch video metadata. Please try again.");
+    const metaJson = await metaRes.json();
+    const durationSecs: number | null = metaJson.durationSecs ?? null;
+    if (!durationSecs || durationSecs <= 0) throw new Error("Could not load video metadata. Please try again.");
+    const dur = `${Math.floor(durationSecs / 3600) > 0 ? Math.floor(durationSecs / 3600) + ":" : ""}${String(Math.floor((durationSecs % 3600) / 60)).padStart(2, "0")}:${String(durationSecs % 60).padStart(2, "0")}`;
+    return {
+      url,
+      thumbnail: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+      title,
+      duration: dur,
+      durationSecs,
+      platform,
+    };
   }
   // Non-YouTube: no real thumbnail available before processing
   let hostname = url;
@@ -207,8 +206,10 @@ function DashboardInner() {
       new URL(trimmed);
       const meta = await fetchVideoMeta(trimmed, apiFetch);
       setVideo(meta);
-    } catch {
-      setError("Please enter a valid video URL.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Please enter a valid video URL.");
+      setInputUrl("");
+      setVideo(null);
     } finally {
       setLoading(false);
     }
