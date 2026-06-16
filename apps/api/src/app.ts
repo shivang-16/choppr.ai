@@ -15,19 +15,29 @@ import videoMetaRoutes from "./routes/video-meta.routes.js";
 import errorHandler from "./middlewares/error.js";
 import expressWinston from "express-winston";
 import { winstonLogger } from "./utils/logger.js";
+import { requestContextMiddleware } from "./middlewares/requestContext.js";
 
 config({ path: "./.env" });
 
 const app: express.Application = express();
 
-  app.use(
-    expressWinston.logger({
-      winstonInstance: winstonLogger,
-      meta: false,
-      expressFormat: true,
-      colorize: true,
-    })
-  );
+app.use(requestContextMiddleware);
+
+app.use(
+  expressWinston.logger({
+    winstonInstance: winstonLogger,
+    meta: true,
+    msg: "{{req.method}} {{req.url}} {{res.statusCode}} {{res.responseTime}}ms",
+    dynamicMeta: (req, res) => ({
+      userEmail: (req as any).user?.email ?? null,
+      userId: (req as any).user?._id ?? null,
+      statusCode: res.statusCode,
+      responseTimeMs: (res as any).responseTime ?? null,
+    }),
+    expressFormat: false,
+    colorize: process.env.NODE_ENV !== "production",
+  })
+);
 
 // ── Middleware ──────────────────────────────────────────────────────────────
 const allowedOrigins = [

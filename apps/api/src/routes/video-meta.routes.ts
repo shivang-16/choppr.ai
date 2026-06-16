@@ -92,20 +92,35 @@ router.get("/", async (req: Request, res: Response) => {
   // Try locally first — keeps the agent free for heavy processing
   try {
     const meta = await fetchMetaLocal(url);
+    logger.info("Video metadata fetched locally", {
+      url,
+      durationSecs: meta.durationSecs,
+      title: meta.title,
+    });
     res.json(meta);
     return;
   } catch (localErr) {
     logger.warn("video-meta: local yt-dlp failed, falling back to agent", {
-      error: String(localErr),
+      url,
+      error: localErr instanceof Error ? localErr.message : String(localErr),
+      stack: localErr instanceof Error ? localErr.stack : undefined,
     });
   }
 
   // Agent fallback
   try {
     const data = await fetchMetaViaAgent(url);
+    logger.info("Video metadata fetched via agent fallback", {
+      url,
+      durationSecs: data.durationSecs ?? null,
+    });
     res.json(data);
   } catch (e) {
-    logger.error("video-meta: agent fallback also failed", { error: String(e) });
+    logger.error("video-meta: agent fallback also failed", {
+      url,
+      error: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+    });
     res.json({ durationSecs: null });
   }
 });

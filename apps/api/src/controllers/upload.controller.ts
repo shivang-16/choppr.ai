@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { randomUUID } from "crypto";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { logger } from "../utils/logger.js";
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION ?? "us-east-1",
@@ -32,8 +33,15 @@ export async function presignUpload(req: Request, res: Response, next: NextFunct
 
     const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
 
+    logger.info("Upload presign issued", {
+      userId,
+      s3Key,
+      bucket: BUCKET,
+    });
+
     res.json({ uploadUrl, s3Key, bucket: BUCKET });
   } catch (err) {
+    logger.error("Upload presign failed", { error: err });
     next(err);
   }
 }

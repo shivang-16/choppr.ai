@@ -1,4 +1,5 @@
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
+import { logger } from "../utils/logger.js";
 
 const sqs = new SQSClient({
   region: process.env.AWS_REGION ?? "us-east-1",
@@ -33,4 +34,12 @@ export async function enqueueJob(payload: JobMessage): Promise<void> {
       MessageBody: JSON.stringify(payload),
     })
   );
+
+  logger.info("Job message sent to SQS", {
+    jobId: payload.jobId,
+    projectId: payload.projectId,
+    userId: payload.userId,
+    source: payload.s3Key ? "upload" : "url",
+    queueUrl,
+  });
 }

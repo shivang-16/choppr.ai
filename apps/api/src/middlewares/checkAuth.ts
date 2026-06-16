@@ -6,6 +6,7 @@ import User from "../model/user.model.js";
 import { createUser, CreateUserData } from "../queries/user.queries.js";
 import mongoose from "mongoose";
 import { logger } from "../utils/logger.js";
+import { attachUserToRequestContext } from "./requestContext.js";
 import { upsertMailerLiteSubscriber } from "../services/mail/mailerlite/upsert_subscriber.js";
 import jwt from "jsonwebtoken";
 import { grantSignupCredits } from "../services/credits.service.js";
@@ -86,8 +87,7 @@ export const baseAuth = async (
   res: Response,
   next: NextFunction
 ) => {
-  logger.info("baseAuth middleware execution started");
-  
+  logger.debug("baseAuth middleware started");
   // 1. Try Clerk Authentication
   try {
     const authObj = getAuth(req);
@@ -198,16 +198,22 @@ export const baseAuth = async (
       }
 
       req.user = user; // attach full user object for downstream handlers
+      attachUserToRequestContext(req);
 
-
-      logger.info(`User authenticated successfully via Clerk: ${user.email}`);
+      logger.info("User authenticated", {
+        username: user.username,
+        ssoProvider: user.ssoProvider,
+      });
       return next();
     }
   } catch (err) {
-    logger.warn(`Clerk auth failed or skipped, trying extension auth. Error: ${err}`);
+    logger.warn("Clerk auth failed", {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
   }
 
-  logger.error("Authentication failed: No valid credentials found");
+  logger.error("Authentication failed: no valid credentials");
   res.status(401).json({ message: "Unauthorized" });
 };
 

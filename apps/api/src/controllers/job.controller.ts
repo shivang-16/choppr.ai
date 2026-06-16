@@ -5,6 +5,7 @@ import { Job } from "../model/job.model.js";
 import { Project } from "../model/project.model.js";
 import { enqueueJob } from "../services/sqs.js";
 import { checkBalance, MIN_CREDITS_TO_START } from "../services/credits.service.js";
+import { logger } from "../utils/logger.js";
 
 function titleFromUrl(url: string): string {
   try {
@@ -62,6 +63,10 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
     const parsed = CreateJobSchema.safeParse(req.body);
     if (!parsed.success) {
       const issues = parsed.error.issues;
+      logger.warn("Create job validation failed", {
+        issues,
+        body: req.body,
+      });
       res.status(400).json({ error: issues[0]?.message ?? "Invalid input" });
       return;
     }
@@ -76,6 +81,11 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
     // Gate: user must have at least MIN_CREDITS_TO_START credits
     const { ok, balance } = await checkBalance(userId);
     if (!ok) {
+      logger.warn("Job rejected: insufficient credits", {
+        userId,
+        balance,
+        minRequired: MIN_CREDITS_TO_START,
+      });
       res.status(402).json({
         error: "insufficient_credits",
         message: `You need at least ${MIN_CREDITS_TO_START} credits to start a job. Your balance: ${balance}.`,
@@ -112,11 +122,26 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
       }),
     ]);
 
-    // 2. Push to SQS with all clip settings
+  // 2. Push to SQS with all clip settings
     await enqueueJob({ jobId, userId, url: url ?? "", s3Key: s3Key ?? "", query, projectId, clipModel, genre, clipLength, aspectRatio, maxClips });
+
+    logger.info("Job created and enqueued", {
+      jobId,
+      projectId,
+      userId,
+      source: s3Key ? "upload" : "url",
+      url: url ?? null,
+      s3Key: s3Key ?? null,
+      clipModel,
+      genre,
+      clipLength,
+      aspectRatio,
+      maxClips,
+    });
 
     res.status(201).json({ jobId, projectId, status: "pending" });
   } catch (err) {
+    logger.error("Create job failed", { error: err });
     next(err);
   }
 }
@@ -130,11 +155,13 @@ export async function getJob(req: Request, res: Response, next: NextFunction) {
 
     const job = await Job.findById(jobId).lean();
     if (!job) {
+      logger.warn("Job not found", { jobId, userId });
       res.status(404).json({ error: "Job not found" });
       return;
     }
     // Only the owner can see their job
     if (job.userId !== userId) {
+      logger.warn("Job access denied", { jobId, userId, ownerId: job.userId });
       res.status(403).json({ error: "Forbidden" });
       return;
     }

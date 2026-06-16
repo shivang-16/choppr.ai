@@ -2,6 +2,7 @@ import winston from "winston";
 import { Logtail } from "@logtail/node";
 import { LogtailTransport } from "@logtail/winston";
 import { config } from "dotenv";
+import { getRequestContext } from "./requestContext.js";
 
 config();
 
@@ -44,8 +45,41 @@ winston.addColors({
   silly: "grey",
 });
 
+// Inject per-request context (user email, requestId, etc.) into every log line.
+const requestContextFormat = winston.format((info) => {
+  const ctx = getRequestContext();
+  if (ctx.requestId) info.requestId = ctx.requestId;
+  if (ctx.method) info.method = ctx.method;
+  if (ctx.path) info.path = ctx.path;
+  if (ctx.userId) info.userId = ctx.userId;
+  if (ctx.userEmail) info.userEmail = ctx.userEmail;
+  return info;
+});
+
 class Logger {
   private winstonLogger: winston.Logger;
+
+  private enrichMeta(meta?: Record<string, unknown>): Record<string, unknown> {
+    const ctx = getRequestContext();
+    const base: Record<string, unknown> = {};
+
+    if (ctx.requestId) base.requestId = ctx.requestId;
+    if (ctx.method) base.method = ctx.method;
+    if (ctx.path) base.path = ctx.path;
+    if (ctx.userId) base.userId = ctx.userId;
+    if (ctx.userEmail) base.userEmail = ctx.userEmail;
+
+    if (!meta) return base;
+    if (meta instanceof Error) {
+      return {
+        ...base,
+        error: meta.message,
+        stack: meta.stack,
+      };
+    }
+
+    return { ...base, ...meta };
+  }
 
   constructor() {
     // Create transports array
@@ -104,6 +138,7 @@ class Logger {
       format: winston.format.combine(
         winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
         winston.format.errors({ stack: true }),
+        requestContextFormat(),
         winston.format.json()
       ),
       transports,
@@ -112,36 +147,36 @@ class Logger {
 
   // Standard Winston log level methods
   error(message: string, meta?: any): void {
-    this.winstonLogger.error(message, meta);
+    this.winstonLogger.error(message, this.enrichMeta(meta));
   }
 
   warn(message: string, meta?: any): void {
-    this.winstonLogger.warn(message, meta);
+    this.winstonLogger.warn(message, this.enrichMeta(meta));
   }
 
   info(message: string, meta?: any): void {
-    this.winstonLogger.info(message, meta);
+    this.winstonLogger.info(message, this.enrichMeta(meta));
   }
 
   http(message: string, meta?: any): void {
-    this.winstonLogger.http(message, meta);
+    this.winstonLogger.http(message, this.enrichMeta(meta));
   }
 
   verbose(message: string, meta?: any): void {
-    this.winstonLogger.verbose(message, meta);
+    this.winstonLogger.verbose(message, this.enrichMeta(meta));
   }
 
   debug(message: string, meta?: any): void {
-    this.winstonLogger.debug(message, meta);
+    this.winstonLogger.debug(message, this.enrichMeta(meta));
   }
 
   silly(message: string, meta?: any): void {
-    this.winstonLogger.silly(message, meta);
+    this.winstonLogger.silly(message, this.enrichMeta(meta));
   }
 
   // Generic log method
   log(level: string, message: string, meta?: any): void {
-    this.winstonLogger.log(level, message, meta);
+    this.winstonLogger.log(level, message, this.enrichMeta(meta));
   }
 
   // Get the underlying Winston logger instance for express-winston

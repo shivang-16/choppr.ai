@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { Export } from "../model/export.model.js";
+import { logger } from "../utils/logger.js";
 
 const TrackItemSchema = z.object({
   id:             z.string(),
@@ -44,6 +45,9 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
   try {
     const parsed = CreateExportSchema.safeParse(req.body);
     if (!parsed.success) {
+      logger.warn("Create export validation failed", {
+        issues: parsed.error.issues,
+      });
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
       return;
     }
@@ -99,13 +103,30 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
         throw new Error(`Worker rejected export: ${workerRes.status} ${text}`);
       }
     } catch (workerErr: any) {
+      logger.error("Export worker request failed", {
+        exportId,
+        projectId,
+        userId,
+        workerUrl,
+        error: workerErr?.message ?? String(workerErr),
+      });
       // Worker unreachable or rejected — mark export failed immediately
       await Export.findByIdAndUpdate(exportId, { status: "failed", error: workerErr.message });
       throw workerErr;
     }
 
+    logger.info("Export accepted by worker", {
+      exportId,
+      projectId,
+      userId,
+      aspectRatio,
+      captionStyle,
+      trackCount: tracks.length,
+    });
+
     res.status(201).json({ exportId, status: "pending" });
   } catch (err) {
+    logger.error("Create export failed", { error: err });
     next(err);
   }
 }

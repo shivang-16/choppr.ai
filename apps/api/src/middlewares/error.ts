@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { winstonLogger } from "../utils/logger.js";
+import { logger } from "../utils/logger.js";
 
 export interface err extends Error {
   statusCode: number;
@@ -20,12 +20,22 @@ const errorMiddleware = (
   res: Response,
   next: NextFunction,
 ) => {
-  // Use err.statusCode instead of statusCode
   err.statusCode = err.statusCode ?? 500;
   err.message = err.message || "Internal server error";
 
+  const meta = {
+    statusCode: err.statusCode,
+    method: req.method,
+    path: req.originalUrl || req.path,
+    body: req.method !== "GET" ? sanitizeBody(req.body) : undefined,
+    query: Object.keys(req.query).length ? req.query : undefined,
+    stack: err.stack,
+  };
+
   if (err.statusCode >= 500) {
-    winstonLogger.error(`[${req.method} ${req.path}] ${err.message}`, { stack: err.stack });
+    logger.error(`Request failed: ${err.message}`, meta);
+  } else {
+    logger.warn(`Client error: ${err.message}`, meta);
   }
 
   res.status(err.statusCode).json({
@@ -33,5 +43,14 @@ const errorMiddleware = (
     message: err.message,
   });
 };
+
+function sanitizeBody(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+  const copy = { ...(body as Record<string, unknown>) };
+  for (const key of ["password", "token", "secret", "authorization"]) {
+    if (key in copy) copy[key] = "[redacted]";
+  }
+  return copy;
+}
 
 export default errorMiddleware;
