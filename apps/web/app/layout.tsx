@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Work_Sans, Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
-
+import { Analytics } from "@vercel/analytics/next"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,8 +43,7 @@ export default function RootLayout({
         className={`${workSans.variable} ${geistSans.variable} ${geistMono.variable} ${inter.variable} output-scrollbar min-h-screen antialiased`}
       >
         <Providers>{children}</Providers>
-        {/* <Analytics />
-        <SpeedInsights /> */}
+        <Analytics /> 
         {/* <Toaster richColors closeButton position="top-center" /> */}
       </body>
     </html>
