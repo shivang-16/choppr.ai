@@ -332,7 +332,7 @@ const STAGES = [
   { key: "downloading",  label: "Grabbing your video",    sub: "Pulling in the source so we can work on it" },
   { key: "transcribing", label: "Listening to the audio", sub: "Turning speech into text to find the good bits" },
   { key: "analyzing",    label: "Finding the best moments", sub: "AI is scanning for highlights worth clipping" },
-  { key: "clipping",     label: "Making your clips",      sub: "Almost there — cutting and saving your clips" },
+  { key: "clipping",     label: "Making your clips",      sub: "Almost there, cutting and saving your clips" },
 ];
 
 const STATUS_TO_IDX: Record<string, number> = {
