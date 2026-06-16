@@ -221,9 +221,16 @@ export default function JobPage() {
             ) : (
               <Loader2 className="h-5 w-5 text-white/50 animate-spin shrink-0" />
             )}
-            <h1 className="text-[16px] font-semibold text-white">
-              {job ? STATUS_LABELS[job.status] ?? job.status : "Loading…"}
-            </h1>
+            <div className="flex flex-col gap-0.5">
+              <h1 className="text-[16px] font-semibold text-white">
+                {job ? STATUS_LABELS[job.status] ?? job.status : "Loading…"}
+              </h1>
+              {job?.status === "transcribing" && (
+                <p className="text-[11px] text-white/35">
+                  This step can take a while, longer videos take more time.
+                </p>
+              )}
+            </div>
             {(isClipping || isDone) && totalClips > 0 && (
               <span className="ml-auto text-[13px] text-white/40">
                 {clips.length} / {totalClips} clips ready
@@ -266,6 +273,12 @@ export default function JobPage() {
           {/* Empty done state */}
           {isDone && clips.length === 0 && (
             <p className="text-[13px] text-white/35">No clips found. Try a different query.</p>
+          )}
+
+          {!isDone && !isFailed && (
+            <p className="text-[12px] text-white/30 mt-1">
+              Feel free to leave, your job will keep running in the background.
+            </p>
           )}
 
           <p className="text-[10px] text-white/15 font-mono mt-2">Job ID: {jobId}</p>

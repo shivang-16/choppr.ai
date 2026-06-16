@@ -1,14 +1,12 @@
 import { Router, Request, Response } from "express";
-import { execFile } from "child_process";
 import { existsSync } from "fs";
 import { readFile, writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { promisify } from "util";
+import { youtubeDl as ytDlpExec } from "youtube-dl-exec";
 import { baseAuth } from "../middlewares/checkAuth.js";
 import { logger } from "../utils/logger.js";
 
-const execFileAsync = promisify(execFile);
 const router = Router();
 router.use(baseAuth);
 
@@ -16,7 +14,7 @@ router.use(baseAuth);
 const STORAGE_STATE_PATH = join(process.cwd(), ".youtube_auth_state.json");
 
 /**
- * Convert Playwright storage-state cookies to Netscape/Netscape HTTP Cookie File
+ * Convert Playwright storage-state cookies to Netscape HTTP Cookie File
  * format that yt-dlp understands. Mirrors the Python logic in cookie_refresher.py.
  */
 function cookiesToNetscape(cookies: Array<Record<string, any>>): string {
@@ -35,9 +33,9 @@ function cookiesToNetscape(cookies: Array<Record<string, any>>): string {
 }
 
 /**
- * Fetch video metadata directly on this server using yt-dlp + saved YouTube
- * cookies. No Playwright refresh — just reuse whatever the agent last wrote.
- * Throws if .youtube_auth_state.json is missing or yt-dlp is not on PATH.
+ * Fetch video metadata directly on this server using youtube-dl-exec (bundles
+ * yt-dlp) + saved YouTube cookies. No Playwright refresh, no agent hop.
+ * Throws if .youtube_auth_state.json is missing.
  */
 async function fetchMetaLocal(url: string) {
   if (!existsSync(STORAGE_STATE_PATH)) {
@@ -51,12 +49,13 @@ async function fetchMetaLocal(url: string) {
   await writeFile(tmpFile, cookiesToNetscape(cookies));
 
   try {
-    const { stdout } = await execFileAsync(
-      "yt-dlp",
-      ["--cookies", tmpFile, "-J", "--no-playlist", "--no-warnings", url],
-      { timeout: 30_000 },
-    );
-    const info        = JSON.parse(stdout) as Record<string, any>;
+    const info = await ytDlpExec(url, {
+      cookies:    tmpFile,
+      dumpSingleJson: true,
+      noPlaylist: true,
+      noWarnings: true,
+    }) as Record<string, any>;
+
     const rawDuration = parseFloat(String(info.duration ?? "0"));
     return {
       durationSecs: rawDuration > 0 ? Math.floor(rawDuration) : null,
