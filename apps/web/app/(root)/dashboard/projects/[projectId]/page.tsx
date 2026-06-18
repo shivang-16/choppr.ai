@@ -473,41 +473,41 @@ export default function ProjectDetailPage() {
   });
 
   return (
-    <div className="flex min-h-screen bg-[#0a0a0a]">
+    <div className="flex min-h-screen bg-[#0a0a0a] overflow-x-hidden">
       <Sidebar />
       <Topbar />
-      <main className="md:ml-14 mt-12 flex-1 flex flex-col px-6 py-10 pb-24 md:pb-10">
-        <div className="max-w-5xl w-full mx-auto flex flex-col gap-6 flex-1">
+      <main className="ml-0 md:ml-14 mt-12 flex-1 flex flex-col px-3 sm:px-6 py-5 md:py-10 pb-28 md:pb-10 overflow-x-hidden">
+        <div className="max-w-5xl w-full mx-auto flex flex-col gap-4 md:gap-6 flex-1">
 
           {/* Back + header */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={() => router.push("/dashboard/projects")}
-              className="cursor-pointer flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-white/40 hover:text-white transition-colors"
+              className="cursor-pointer shrink-0 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-white/40 hover:text-white transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
             <div className="flex-1 min-w-0">
-              <h1 className="text-[16px] font-semibold text-white truncate">
+              <h1 className="text-[15px] md:text-[16px] font-semibold text-white truncate">
                 {loading ? "Loading…" : project?.title ?? "Project"}
               </h1>
               {project?.sourceUrl && (
-                <p className="text-[11px] text-white/25 truncate">{project.sourceUrl}</p>
+                <p className="text-[10px] md:text-[11px] text-white/25 truncate">{project.sourceUrl}</p>
               )}
             </div>
             {project && !["done", "failed"].includes(project.status) ? (
-              <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/40">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Processing…
+              <div className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] md:text-[12px] text-white/40">
+                <Loader2 className="h-3 w-3 md:h-3.5 md:w-3.5 animate-spin" />
+                <span className="hidden sm:inline">Processing…</span>
               </div>
             ) : (
               <button
                 onClick={handleRetry}
                 disabled={retrying}
-                className="cursor-pointer flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
+                className="shrink-0 cursor-pointer flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] md:text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
               >
-                <RotateCcw className={`h-3.5 w-3.5 ${retrying ? "animate-spin" : ""}`} />
-                {retrying ? "Retrying…" : "Retry"}
+                <RotateCcw className={`h-3 w-3 md:h-3.5 md:w-3.5 ${retrying ? "animate-spin" : ""}`} />
+                <span className="hidden sm:inline">{retrying ? "Retrying…" : "Retry"}</span>
               </button>
             )}
           </div>
@@ -535,12 +535,12 @@ export default function ProjectDetailPage() {
           {originalClips.length > 0 && (() => {
             const ar = project?.aspectRatio ?? "9:16";
             const gridCols = ar === "16:9"
-              ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3"
+              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
               : ar === "1:1"
               ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
               : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5";
             return (
-              <div className={`grid ${gridCols} gap-3`}>
+              <div className={`grid ${gridCols} gap-2 sm:gap-3`}>
                 {originalClips.map((clip: any) => {
                   const edited = editedByParent[clip._id] ?? [];
                   const slides = [clip, ...edited];

@@ -4,8 +4,8 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
 import {
-  ArrowLeft, Download, Play, Pause, Volume2, VolumeX,
-  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle,
+  ArrowLeft, Play, Pause, Volume2, VolumeX,
+  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X,
 } from "lucide-react";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -13,6 +13,17 @@ import { cn } from "@/lib/utils";
 import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_components/caption-renderer";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return mobile;
+}
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const TABS = [
@@ -78,7 +89,283 @@ const TRANSLATE_LANGS = [
   { code: "pt", label: "Portuguese" },
 ];
 
+// ── Shared edit panel (desktop sidebar + mobile drawer) ─────────────────────
+interface EditPanelProps {
+  activeTab: string;
+  captionStyle: CaptionStyle;
+  setCaptionStyle: (s: CaptionStyle) => void;
+  captionWords: CaptionWord[];
+  captionFontSize: number;
+  setCaptionFontSize: (n: number) => void;
+  captionLang: string;
+  activeLang: string;
+  translating: boolean;
+  handleTranslate: (lang: string) => void;
+  speed: number;
+  setSpeed: (n: number) => void;
+  trimStart: number;
+  setTrimStart: (n: number) => void;
+  effectiveTrimEnd: number;
+  setTrimEnd: (n: number) => void;
+  duration: number;
+  fmt: (s: number) => string;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  brightness: number;
+  setBrightness: (n: number) => void;
+  contrast: number;
+  setContrast: (n: number) => void;
+  saturation: number;
+  setSaturation: (n: number) => void;
+  exportPhase: "idle" | "exporting" | "done" | "error";
+  exportProgress: number;
+  exportUrl: string | null;
+  handleExport: () => void;
+  setExportPhase: (p: "idle" | "exporting" | "done" | "error") => void;
+  setExportUrl: (u: string | null) => void;
+  styleGridMaxHeight?: number | string;
+}
+
+function EditPanelContent({
+  activeTab, captionStyle, setCaptionStyle, captionWords, captionFontSize, setCaptionFontSize,
+  captionLang, activeLang, translating, handleTranslate,
+  speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
+  brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
+  exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
+  styleGridMaxHeight = 360,
+}: EditPanelProps) {
+  return (
+    <>
+      {activeTab === "captions" && (
+        <div className="flex flex-col gap-5">
+          <div className="flex items-center justify-between">
+            <p className="text-[12px] font-medium text-white/70">Animation style</p>
+            <span className="text-[10px] text-white/25">
+              {captionWords.length > 0 ? `${captionWords.length} words` : "No captions yet"}
+            </span>
+          </div>
+
+          <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: styleGridMaxHeight }}>
+            <div className="grid grid-cols-2 gap-2 pr-0.5">
+              {CAPTION_STYLES.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setCaptionStyle(s.id)}
+                  className={cn(
+                    "flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition-all",
+                    captionStyle === s.id ? "border-white/40 bg-white/8" : "border-white/8 bg-white/3 hover:border-white/16"
+                  )}
+                >
+                  <div className="h-8 w-9 rounded-lg bg-[#1a1a1a] flex items-center justify-center shrink-0 overflow-hidden">
+                    {s.preview
+                      ? <span className={cn("leading-none text-center block truncate px-0.5", s.previewClass)}>{s.preview}</span>
+                      : <span className="text-white/20 text-[11px]">⊘</span>
+                    }
+                  </div>
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="text-[10px] font-semibold text-white/80 leading-tight truncate">{s.label}</span>
+                    <span className="text-[8px] text-white/30 leading-tight truncate">{s.desc}</span>
+                  </div>
+                  {captionStyle === s.id && <Check className="h-3 w-3 text-white/60 shrink-0" />}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] text-white/50">Font size</span>
+              <span className="text-[11px] font-semibold text-white/60">{captionFontSize}px</span>
+            </div>
+            <input
+              type="range" min={14} max={72} step={2}
+              value={captionFontSize}
+              onChange={e => setCaptionFontSize(Number(e.target.value))}
+              className="w-full accent-white cursor-pointer"
+            />
+            <div className="flex justify-between text-[10px] text-white/20">
+              <span>14px</span><span>72px</span>
+            </div>
+          </div>
+
+          <div className="h-px bg-white/6" />
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Languages className="h-3.5 w-3.5 text-white/40" />
+              <p className="text-[12px] font-medium text-white/70">Translate captions</p>
+              {translating && <Loader2 className="h-3 w-3 animate-spin text-white/40 ml-auto" />}
+            </div>
+            {captionLang && (
+              <p className="text-[10px] text-white/25">
+                Current language: <span className="text-white/45">{captionLang}</span>
+              </p>
+            )}
+            <div className="grid grid-cols-3 gap-1.5 mt-1">
+              {TRANSLATE_LANGS.map(l => (
+                <button
+                  key={l.code}
+                  onClick={() => handleTranslate(l.code)}
+                  disabled={translating || l.code === activeLang}
+                  className={cn(
+                    "rounded-lg border py-1.5 text-[10px] font-medium transition-all disabled:opacity-40",
+                    activeLang === l.code
+                      ? "border-white/30 bg-white/10 text-white/80"
+                      : "border-white/8 text-white/35 hover:border-white/20 hover:text-white/60"
+                  )}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "speed" && (
+        <div className="flex flex-col gap-4">
+          <p className="text-[12px] font-medium text-white/70">Playback speed</p>
+          <div className="grid grid-cols-3 gap-2">
+            {SPEED_PRESETS.map(s => (
+              <button key={s} onClick={() => setSpeed(s)}
+                className={cn("rounded-xl border py-2.5 text-[13px] font-semibold transition-all",
+                  speed === s ? "border-white/40 bg-white/10 text-white" : "border-white/8 text-white/35 hover:text-white/60"
+                )}>
+                {s}×
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between">
+              <span className="text-[12px] text-white/50">Custom</span>
+              <span className="text-[12px] font-semibold text-white/70">{speed}×</span>
+            </div>
+            <input type="range" min={0.25} max={3} step={0.05} value={speed}
+              onChange={e => setSpeed(Number(e.target.value))}
+              className="w-full accent-white cursor-pointer" />
+            <div className="flex justify-between text-[10px] text-white/20">
+              <span>0.25×</span><span>1×</span><span>3×</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "trim" && (
+        <div className="flex flex-col gap-4">
+          <p className="text-[12px] font-medium text-white/70">Trim clip</p>
+          {[
+            { label: "Start", value: trimStart, set: setTrimStart, other: effectiveTrimEnd, isStart: true },
+            { label: "End",   value: effectiveTrimEnd, set: (v: number) => setTrimEnd(Math.max(v, trimStart + 0.5)), other: trimStart, isStart: false },
+          ].map(({ label, value, set, other, isStart }) => (
+            <div key={label} className="flex flex-col gap-1.5">
+              <div className="flex justify-between text-[11px] text-white/40">
+                <span>{label}</span><span>{fmt(value)}</span>
+              </div>
+              <input type="range" min={0} max={duration} step={0.1} value={value}
+                onChange={e => {
+                  const v = Number(e.target.value);
+                  set(isStart ? Math.min(v, other - 0.5) : Math.max(v, other + 0.5));
+                  if (videoRef.current) videoRef.current.currentTime = v;
+                }}
+                className="w-full accent-white cursor-pointer" />
+            </div>
+          ))}
+          <div className="rounded-xl border border-white/8 bg-white/3 px-4 py-3 flex justify-between">
+            <span className="text-[12px] text-white/40">Duration after trim</span>
+            <span className="text-[13px] font-semibold text-white/70">{fmt(effectiveTrimEnd - trimStart)}</span>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "enhance" && (
+        <div className="flex flex-col gap-4">
+          <p className="text-[12px] font-medium text-white/70">Visual adjustments</p>
+          {[
+            { label: "Brightness", value: brightness, set: setBrightness, min: 50, max: 150 },
+            { label: "Contrast",   value: contrast,   set: setContrast,   min: 50, max: 150 },
+            { label: "Saturation", value: saturation, set: setSaturation, min: 0,  max: 200 },
+          ].map(({ label, value, set, min, max }) => (
+            <div key={label} className="flex flex-col gap-1.5">
+              <div className="flex justify-between text-[11px] text-white/40">
+                <span>{label}</span><span>{value}%</span>
+              </div>
+              <input type="range" min={min} max={max} step={1} value={value}
+                onChange={e => set(Number(e.target.value))}
+                className="w-full accent-white cursor-pointer" />
+            </div>
+          ))}
+          <button
+            onClick={() => { setBrightness(100); setContrast(100); setSaturation(100); }}
+            className="text-[11px] text-white/30 hover:text-white/60 transition-colors"
+          >
+            Reset to default
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ExportSection({
+  exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
+  compact = false,
+}: Pick<EditPanelProps, "exportPhase" | "exportProgress" | "exportUrl" | "handleExport" | "setExportPhase" | "setExportUrl"> & { compact?: boolean }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {exportPhase === "idle" && (
+        <button
+          onClick={handleExport}
+          className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+        >
+          Export clip
+        </button>
+      )}
+
+      {exportPhase === "exporting" && (
+        <>
+          <div className="flex items-center justify-between text-[11px] text-white/40 mb-1">
+            <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Rendering…</span>
+            <span>{exportProgress}%</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-white transition-all duration-500" style={{ width: `${exportProgress}%` }} />
+          </div>
+        </>
+      )}
+
+      {exportPhase === "done" && exportUrl && (
+        <>
+          <div className="flex items-center gap-2 text-[12px] text-green-400">
+            <CheckCircle className="h-4 w-4" /> Downloaded!
+          </div>
+          <button onClick={() => { setExportPhase("idle"); setExportUrl(null); }} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
+            Export again
+          </button>
+        </>
+      )}
+
+      {exportPhase === "error" && (
+        <>
+          <div className="flex items-center gap-2 text-[12px] text-red-400 mb-1">
+            <AlertCircle className="h-4 w-4" /> Export failed
+          </div>
+          <button
+            onClick={() => setExportPhase("idle")}
+            className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 transition-all"
+          >
+            Try again
+          </button>
+        </>
+      )}
+
+      {!compact && exportPhase === "idle" && (
+        <p className="text-[11px] text-white/20 text-center">Settings applied on export</p>
+      )}
+    </div>
+  );
+}
+
 export default function ClipRefinePage() {
+  const isMobile = useIsMobile();
   const { clipId }   = useParams<{ clipId: string }>();
   const sp           = useSearchParams();
   const router       = useRouter();
@@ -97,6 +384,8 @@ export default function ClipRefinePage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration]       = useState(0);
   const [activeTab, setActiveTab]     = useState("captions");
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [drawerMounted, setDrawerMounted] = useState(false);
 
   // Caption state
   const [captionStyle, setCaptionStyle]   = useState<CaptionStyle>("none");
@@ -300,36 +589,82 @@ export default function ClipRefinePage() {
 
   const filterStyle = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
 
+  const editPanelProps: EditPanelProps = {
+    activeTab, captionStyle, setCaptionStyle, captionWords, captionFontSize, setCaptionFontSize,
+    captionLang, activeLang, translating, handleTranslate,
+    speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
+    brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
+    exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
+  };
+
+  const handleMobileTab = (id: string) => {
+    if (activeTab === id && mobileDrawerOpen) {
+      setMobileDrawerOpen(false);
+    } else {
+      setActiveTab(id);
+      if (!drawerMounted) setDrawerMounted(true);
+      setMobileDrawerOpen(true);
+    }
+  };
+
+  const closeDrawer = () => setMobileDrawerOpen(false);
+
+  const activeTabLabel = TABS.find(t => t.id === activeTab)?.label ?? "";
+
+  // Height breakdown on mobile:
+  //   system nav (MobileBottomBar): fixed bottom-0, h-12 = 48px
+  //   bottom strip (tabs + export):  fixed bottom-12, ~96px
+  //   total reserved at bottom:      ~144px = 9rem
+  const MOBILE_STRIP_BOTTOM = "3rem";      // = bottom-12, above system nav
+  const MOBILE_DRAWER_BOTTOM = "9rem";     // strip top edge = 48 + 96 = 144px
+
   return (
     <div className="flex min-h-screen bg-[#0a0a0a]">
       <Sidebar />
       <Topbar />
 
-      <main className="ml-14 mt-12 flex-1 flex overflow-hidden" style={{ height: "calc(100vh - 48px)" }}>
+      <main
+        className={cn(
+          "mt-12 flex-1 flex overflow-hidden",
+          isMobile ? "flex-col ml-0 pb-[9rem]" : "flex-row ml-14 pb-0"
+        )}
+        style={{ height: "calc(100vh - 48px)" }}
+      >
 
-        {/* ── LEFT: Video ── */}
-        <div className="flex flex-col flex-1 bg-black items-center justify-center relative border-r border-white/6">
+        {/* ── Video preview ── */}
+        <div className={cn(
+          "flex flex-col flex-1 min-h-0 bg-black items-center justify-center relative",
+          !isMobile && "border-r border-white/6"
+        )}>
           <button
             onClick={() => router.back()}
-            className="absolute top-4 left-4 z-10 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-[12px] text-white/50 hover:text-white transition-colors backdrop-blur-sm"
+            className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 text-[11px] text-white/50 hover:text-white transition-colors backdrop-blur-sm"
           >
-            <ArrowLeft className="h-3.5 w-3.5" /> Back
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Back</span>
           </button>
 
-          <div className="absolute top-4 right-4 z-10 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-3 py-1.5 backdrop-blur-sm">
-            <span className="text-[11px] text-white/40">Clip #{index}</span>
-            <span className="text-[11px] text-white/20">·</span>
-            <span className="text-[11px] font-semibold text-white/70">Score {score}</span>
+          <div className="absolute top-3 right-3 z-10 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1 backdrop-blur-sm">
+            <span className="text-[10px] text-white/40">Clip #{index}</span>
+            <span className="text-[10px] text-white/20">·</span>
+            <span className="text-[10px] font-semibold text-white/70">Score {score}</span>
           </div>
 
-          <div className="relative flex items-center justify-center w-full h-full px-8 py-16">
+          <div className={cn(
+            "relative flex items-center justify-center w-full h-full",
+            isMobile ? "px-3 py-3" : "px-8 py-16"
+          )}>
             {src ? (
               <div
-                className="relative rounded-2xl overflow-hidden shadow-2xl shadow-black/80"
+                className="relative rounded-xl md:rounded-2xl overflow-hidden shadow-2xl shadow-black/80 w-full h-full max-w-full"
                 style={{
                   aspectRatio: aspectRatio === "16:9" ? "16/9" : aspectRatio === "1:1" ? "1/1" : "9/16",
-                  maxHeight: "calc(100vh - 200px)",
-                  maxWidth: aspectRatio === "16:9" ? "min(780px, 100%)" : aspectRatio === "1:1" ? "min(560px, 100%)" : "min(380px, 100%)",
+                  maxHeight: "100%",
+                  maxWidth: aspectRatio === "16:9"
+                    ? "min(780px, 100%)"
+                    : aspectRatio === "1:1"
+                      ? "min(560px, 100%)"
+                      : "min(380px, 100%)",
                 }}
               >
                 <video
@@ -350,10 +685,8 @@ export default function ClipRefinePage() {
                   onPause={() => setPlaying(false)}
                 />
 
-                {/* Caption canvas overlay */}
                 <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} />
 
-                {/* Play/pause tap */}
                 <div className="absolute inset-0 flex items-center justify-center cursor-pointer" onClick={togglePlay}>
                   {!playing && (
                     <div className="h-14 w-14 flex items-center justify-center rounded-full bg-black/50 border border-white/20 backdrop-blur-sm">
@@ -368,30 +701,30 @@ export default function ClipRefinePage() {
           </div>
 
           {/* Playback controls */}
-          <div className="absolute bottom-0 left-0 right-0 px-6 pb-5 flex flex-col gap-2">
+          <div className={cn(
+            "shrink-0 w-full flex flex-col gap-2",
+            isMobile ? "px-4 pb-3" : "absolute bottom-0 left-0 right-0 px-6 pb-5"
+          )}>
             <input
               type="range" min={0} max={duration || 1} step={0.01} value={currentTime}
               onChange={e => { const t = Number(e.target.value); setCurrentTime(t); if (videoRef.current) videoRef.current.currentTime = t; }}
               className="w-full accent-white cursor-pointer h-1"
             />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <button onClick={togglePlay} className="h-8 w-8 flex items-center justify-center rounded-full bg-white text-black hover:bg-white/90 transition-colors">
-                  {playing ? <Pause className="h-3.5 w-3.5 fill-black" /> : <Play className="h-3.5 w-3.5 fill-black ml-0.5" />}
-                </button>
-                <button onClick={() => setMuted(m => !m)} className="text-white/40 hover:text-white transition-colors">
-                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                </button>
-                <span className="text-[11px] font-mono text-white/35">{fmt(currentTime)} / {fmt(duration)}</span>
-                {speed !== 1 && <span className="text-[10px] font-semibold text-white/50 bg-white/8 px-1.5 py-0.5 rounded">{speed}×</span>}
-              </div>
+            <div className="flex items-center gap-3">
+              <button onClick={togglePlay} className="h-8 w-8 flex items-center justify-center rounded-full bg-white text-black hover:bg-white/90 transition-colors">
+                {playing ? <Pause className="h-3.5 w-3.5 fill-black" /> : <Play className="h-3.5 w-3.5 fill-black ml-0.5" />}
+              </button>
+              <button onClick={() => setMuted(m => !m)} className="text-white/40 hover:text-white transition-colors">
+                {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </button>
+              <span className="text-[11px] font-mono text-white/35">{fmt(currentTime)} / {fmt(duration)}</span>
+              {speed !== 1 && <span className="text-[10px] font-semibold text-white/50 bg-white/8 px-1.5 py-0.5 rounded">{speed}×</span>}
             </div>
           </div>
         </div>
 
-        {/* ── RIGHT: Edit panel ── */}
-        <div className="w-[320px] shrink-0 flex flex-col bg-[#0f0f0f] overflow-hidden">
-          {/* Tabs */}
+        {/* ── Desktop: right edit panel ── */}
+        {!isMobile && <div className="flex w-[320px] shrink-0 flex-col bg-[#0f0f0f] overflow-hidden">
           <div className="flex border-b border-white/6">
             {TABS.map(({ id, icon: Icon, label }) => (
               <button
@@ -408,236 +741,111 @@ export default function ClipRefinePage() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
-
-            {/* ── Captions ── */}
-            {activeTab === "captions" && (
-              <div className="flex flex-col gap-5">
-                <div className="flex items-center justify-between">
-                  <p className="text-[12px] font-medium text-white/70">Animation style</p>
-                  <span className="text-[10px] text-white/25">
-                    {captionWords.length > 0 ? `${captionWords.length} words` : "No captions yet"}
-                  </span>
-                </div>
-
-                {/* Scrollable style grid — fixed height so translation stays visible */}
-                <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: 360 }}>
-                  <div className="grid grid-cols-2 gap-2 pr-0.5">
-                    {CAPTION_STYLES.map(s => (
-                      <button
-                        key={s.id}
-                        onClick={() => setCaptionStyle(s.id)}
-                        className={cn(
-                          "flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition-all",
-                          captionStyle === s.id ? "border-white/40 bg-white/8" : "border-white/8 bg-white/3 hover:border-white/16"
-                        )}
-                      >
-                        <div className="h-8 w-9 rounded-lg bg-[#1a1a1a] flex items-center justify-center shrink-0 overflow-hidden">
-                          {s.preview
-                            ? <span className={cn("leading-none text-center block truncate px-0.5", s.previewClass)}>{s.preview}</span>
-                            : <span className="text-white/20 text-[11px]">⊘</span>
-                          }
-                        </div>
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <span className="text-[10px] font-semibold text-white/80 leading-tight truncate">{s.label}</span>
-                          <span className="text-[8px] text-white/30 leading-tight truncate">{s.desc}</span>
-                        </div>
-                        {captionStyle === s.id && <Check className="h-3 w-3 text-white/60 shrink-0" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Font size slider */}
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] text-white/50">Font size</span>
-                    <span className="text-[11px] font-semibold text-white/60">{captionFontSize}px</span>
-                  </div>
-                  <input
-                    type="range" min={14} max={72} step={2}
-                    value={captionFontSize}
-                    onChange={e => setCaptionFontSize(Number(e.target.value))}
-                    className="w-full accent-white cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] text-white/20">
-                    <span>14px</span><span>72px</span>
-                  </div>
-                </div>
-
-                <div className="h-px bg-white/6" />
-
-                {/* Translation */}
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <Languages className="h-3.5 w-3.5 text-white/40" />
-                    <p className="text-[12px] font-medium text-white/70">Translate captions</p>
-                    {translating && <Loader2 className="h-3 w-3 animate-spin text-white/40 ml-auto" />}
-                  </div>
-                  {captionLang && (
-                    <p className="text-[10px] text-white/25">
-                      Current language: <span className="text-white/45">{captionLang}</span>
-                    </p>
-                  )}
-                  <div className="grid grid-cols-3 gap-1.5 mt-1">
-                    {TRANSLATE_LANGS.map(l => (
-                      <button
-                        key={l.code}
-                        onClick={() => handleTranslate(l.code)}
-                        disabled={translating || l.code === activeLang}
-                        className={cn(
-                          "rounded-lg border py-1.5 text-[10px] font-medium transition-all disabled:opacity-40",
-                          activeLang === l.code
-                            ? "border-white/30 bg-white/10 text-white/80"
-                            : "border-white/8 text-white/35 hover:border-white/20 hover:text-white/60"
-                        )}
-                      >
-                        {l.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Speed ── */}
-            {activeTab === "speed" && (
-              <div className="flex flex-col gap-4">
-                <p className="text-[12px] font-medium text-white/70">Playback speed</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {SPEED_PRESETS.map(s => (
-                    <button key={s} onClick={() => setSpeed(s)}
-                      className={cn("rounded-xl border py-2.5 text-[13px] font-semibold transition-all",
-                        speed === s ? "border-white/40 bg-white/10 text-white" : "border-white/8 text-white/35 hover:text-white/60"
-                      )}>
-                      {s}×
-                    </button>
-                  ))}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <div className="flex justify-between">
-                    <span className="text-[12px] text-white/50">Custom</span>
-                    <span className="text-[12px] font-semibold text-white/70">{speed}×</span>
-                  </div>
-                  <input type="range" min={0.25} max={3} step={0.05} value={speed}
-                    onChange={e => setSpeed(Number(e.target.value))}
-                    className="w-full accent-white cursor-pointer" />
-                  <div className="flex justify-between text-[10px] text-white/20">
-                    <span>0.25×</span><span>1×</span><span>3×</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Trim ── */}
-            {activeTab === "trim" && (
-              <div className="flex flex-col gap-4">
-                <p className="text-[12px] font-medium text-white/70">Trim clip</p>
-                {[
-                  { label: "Start", value: trimStart, set: setTrimStart, other: effectiveTrimEnd, isStart: true },
-                  { label: "End",   value: effectiveTrimEnd, set: (v: number) => setTrimEnd(Math.max(v, trimStart + 0.5)), other: trimStart, isStart: false },
-                ].map(({ label, value, set, other, isStart }) => (
-                  <div key={label} className="flex flex-col gap-1.5">
-                    <div className="flex justify-between text-[11px] text-white/40">
-                      <span>{label}</span><span>{fmt(value)}</span>
-                    </div>
-                    <input type="range" min={0} max={duration} step={0.1} value={value}
-                      onChange={e => {
-                        const v = Number(e.target.value);
-                        set(isStart ? Math.min(v, other - 0.5) : Math.max(v, other + 0.5));
-                        if (videoRef.current) videoRef.current.currentTime = v;
-                      }}
-                      className="w-full accent-white cursor-pointer" />
-                  </div>
-                ))}
-                <div className="rounded-xl border border-white/8 bg-white/3 px-4 py-3 flex justify-between">
-                  <span className="text-[12px] text-white/40">Duration after trim</span>
-                  <span className="text-[13px] font-semibold text-white/70">{fmt(effectiveTrimEnd - trimStart)}</span>
-                </div>
-              </div>
-            )}
-
-            {/* ── Enhance ── */}
-            {activeTab === "enhance" && (
-              <div className="flex flex-col gap-4">
-                <p className="text-[12px] font-medium text-white/70">Visual adjustments</p>
-                {[
-                  { label: "Brightness", value: brightness, set: setBrightness, min: 50, max: 150 },
-                  { label: "Contrast",   value: contrast,   set: setContrast,   min: 50, max: 150 },
-                  { label: "Saturation", value: saturation, set: setSaturation, min: 0,  max: 200 },
-                ].map(({ label, value, set, min, max }) => (
-                  <div key={label} className="flex flex-col gap-1.5">
-                    <div className="flex justify-between text-[11px] text-white/40">
-                      <span>{label}</span><span>{value}%</span>
-                    </div>
-                    <input type="range" min={min} max={max} step={1} value={value}
-                      onChange={e => set(Number(e.target.value))}
-                      className="w-full accent-white cursor-pointer" />
-                  </div>
-                ))}
-                <button
-                  onClick={() => { setBrightness(100); setContrast(100); setSaturation(100); }}
-                  className="text-[11px] text-white/30 hover:text-white/60 transition-colors"
-                >
-                  Reset to default
-                </button>
-              </div>
-            )}
+            <EditPanelContent {...editPanelProps} />
           </div>
 
-          {/* Export */}
-          <div className="p-4 border-t border-white/6 flex flex-col gap-2">
-            {exportPhase === "idle" && (
-              <button
-                onClick={handleExport}
-                className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
-              >
-                Export clip
-              </button>
-            )}
+          <div className="p-4 border-t border-white/6">
+            <ExportSection
+              exportPhase={exportPhase}
+              exportProgress={exportProgress}
+              exportUrl={exportUrl}
+              handleExport={handleExport}
+              setExportPhase={setExportPhase}
+              setExportUrl={setExportUrl}
+            />
+          </div>
+        </div>}
+      </main>
 
-            {exportPhase === "exporting" && (
-              <>
-                <div className="flex items-center justify-between text-[11px] text-white/40 mb-1">
-                  <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Rendering…</span>
-                  <span>{exportProgress}%</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-white/10">
-                  <div className="h-full rounded-full bg-white transition-all duration-500" style={{ width: `${exportProgress}%` }} />
-                </div>
-              </>
-            )}
+      {/* ── MOBILE ONLY — outside <main> ── */}
 
-            {exportPhase === "done" && exportUrl && (
-              <>
-                <div className="flex items-center gap-2 text-[12px] text-green-400">
-                  <CheckCircle className="h-4 w-4" /> Downloaded!
-                </div>
-                <button onClick={() => { setExportPhase("idle"); setExportUrl(null); }} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
-                  Export again
-                </button>
-              </>
-            )}
+      {/* Dimmed backdrop */}
+      {isMobile && mobileDrawerOpen && (
+        <button
+          type="button"
+          aria-label="Close panel"
+          className="fixed inset-0 z-[45] bg-black/50"
+          onClick={closeDrawer}
+        />
+      )}
 
-            {exportPhase === "error" && (
-              <>
-                <div className="flex items-center gap-2 text-[12px] text-red-400 mb-1">
-                  <AlertCircle className="h-4 w-4" /> Export failed
-                </div>
-                <button
-                  onClick={() => setExportPhase("idle")}
-                  className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 transition-all"
-                >
-                  Try again
-                </button>
-              </>
-            )}
+      {/* Bottom drawer */}
+      {isMobile && drawerMounted && (
+        <div
+          className={cn(
+            "fixed left-0 right-0 z-[55] flex flex-col",
+            "bg-[#111] rounded-t-[20px] border-t border-white/10 shadow-[0_-12px_48px_rgba(0,0,0,0.8)]",
+            "transition-transform duration-300 ease-out",
+            !mobileDrawerOpen && "pointer-events-none"
+          )}
+          style={{
+            bottom: MOBILE_DRAWER_BOTTOM,
+            maxHeight: "min(60vh, calc(100vh - 16rem))",
+            transform: mobileDrawerOpen
+              ? "translateY(0)"
+              : `translateY(calc(100% + ${MOBILE_DRAWER_BOTTOM}))`,
+          }}
+        >
+          {/* Drag handle pill */}
+          <div className="flex justify-center pt-3 pb-0 shrink-0">
+            <div className="h-[3px] w-9 rounded-full bg-white/25" />
+          </div>
 
-            {exportPhase === "idle" && (
-              <p className="text-[11px] text-white/20 text-center">Settings applied on export</p>
-            )}
+          {/* Header: title + close */}
+          <div className="flex items-center justify-between px-4 pt-2 pb-2 shrink-0">
+            <p className="text-[13px] font-semibold text-white">{activeTabLabel}</p>
+            <button
+              onClick={closeDrawer}
+              className="h-7 w-7 flex items-center justify-center rounded-full bg-white/8 text-white/40 hover:text-white transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {/* Scrollable edit content */}
+          <div className="flex-1 overflow-y-auto px-4 pb-4 no-scrollbar min-h-0">
+            <EditPanelContent {...editPanelProps} styleGridMaxHeight={200} />
           </div>
         </div>
-      </main>
+      )}
+
+      {/* ── Mobile bottom strip (tab icons + export button) ── */}
+      {isMobile && <div
+        className="fixed left-0 right-0 z-50 bg-[#0a0a0a]"
+        style={{ bottom: MOBILE_STRIP_BOTTOM }}
+      >
+        {/* Tab row */}
+        <div className="flex items-stretch border-b border-white/6">
+          {TABS.map(({ id, icon: Icon, label }) => (
+            <button
+              key={id}
+              onClick={() => handleMobileTab(id)}
+              className={cn(
+                "flex-1 flex flex-col items-center justify-center gap-0.5 h-11 text-[9px] font-medium transition-all",
+                activeTab === id && mobileDrawerOpen
+                  ? "text-white bg-white/8"
+                  : "text-white/40 active:bg-white/5"
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Export — compact, no helper text */}
+        <div className="px-4 py-2">
+          <ExportSection
+            exportPhase={exportPhase}
+            exportProgress={exportProgress}
+            exportUrl={exportUrl}
+            handleExport={handleExport}
+            setExportPhase={setExportPhase}
+            setExportUrl={setExportUrl}
+            compact
+          />
+        </div>
+      </div>}
     </div>
   );
 }
