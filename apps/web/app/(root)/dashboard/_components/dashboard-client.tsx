@@ -385,7 +385,7 @@ function DashboardInner() {
   };
 
   return (
-    <div className="flex flex-col items-center w-full px-6 py-10 min-h-screen">
+    <div className="flex flex-col items-center w-full px-6 py-10">
 
       {/* ── Payment success banner ── */}
       {paymentSuccess && (
