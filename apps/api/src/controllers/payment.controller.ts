@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { Plan } from "../model/plan.model.js";
+import { UserCredits } from "../model/user-credits.model.js";
 import { createSubscriptionCheckout } from "../services/dodo.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -26,11 +27,25 @@ export async function createCheckout(req: Request, res: Response, next: NextFunc
     const user = req.user;
     if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    // Look up plan from DB
+    // Look up requested plan from DB
     const plan = await Plan.findOne({ slug: planId }).lean();
     if (!plan || !plan.active) {
       res.status(404).json({ error: "Plan not found" });
       return;
+    }
+
+    // Block downgrades — look up the user's current plan and compare order
+    const credits = await UserCredits.findById(user._id).lean();
+    const currentPlanSlug = credits?.plan ?? "free";
+    if (currentPlanSlug !== "free") {
+      const currentPlan = await Plan.findOne({ slug: currentPlanSlug }).lean();
+      if (currentPlan && plan.order < currentPlan.order) {
+        res.status(400).json({
+          error: "downgrade_not_supported",
+          message: `You are already on the ${currentPlan.name} plan. Downgrades are not supported. Please contact support if you need to change plans.`,
+        });
+        return;
+      }
     }
 
     // Pick the correct Dodo product ID based on billing interval

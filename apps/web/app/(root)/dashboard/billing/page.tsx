@@ -80,9 +80,11 @@ function BillingContent() {
   }
 
   // Split free from paid plans
-  const freePlan   = data?.plans.find((p) => p.slug === "free");
-  const paidPlans  = data?.plans.filter((p) => p.slug !== "free") ?? [];
-  const currentId  = data?.currentPlanId ?? "free";
+  const freePlan    = data?.plans.find((p) => p.slug === "free");
+  const paidPlans   = data?.plans.filter((p) => p.slug !== "free") ?? [];
+  const currentId   = data?.currentPlanId ?? "free";
+  const currentPlan = data?.plans.find((p) => p.slug === currentId);
+  const currentOrder = currentPlan?.order ?? 0;
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
@@ -177,9 +179,10 @@ function BillingContent() {
               const price = billing === "yearly"
                 ? formatPrice(plan.yearlyPrice)
                 : formatPrice(plan.monthlyPrice);
-              const monthlyPrice = formatPrice(plan.monthlyPrice);
-              const yearlyPrice  = formatPrice(plan.yearlyPrice);
-              const current      = currentId === plan.slug;
+              const monthlyPrice  = formatPrice(plan.monthlyPrice);
+              const yearlyPrice   = formatPrice(plan.yearlyPrice);
+              const current       = currentId === plan.slug;
+              const isDowngrade   = plan.order < currentOrder;
 
               return (
                 <div
@@ -236,19 +239,25 @@ function BillingContent() {
                     </a>
                   ) : (
                     <button
-                      disabled={current || checkingOut === plan.slug}
-                      onClick={() => !current && handleUpgrade(plan.slug)}
+                      disabled={current || isDowngrade || checkingOut === plan.slug}
+                      onClick={() => !current && !isDowngrade && handleUpgrade(plan.slug)}
                       className={cn(
                         "w-full rounded-xl py-2.5 text-[13px] font-semibold transition-all flex items-center justify-center gap-2",
-                        current
-                          ? "border border-white/8 bg-transparent text-white/25 cursor-default"
+                        current || isDowngrade
+                          ? "border border-white/8 bg-transparent text-white/25 cursor-not-allowed"
                           : plan.popular
                           ? "bg-indigo-500 hover:bg-indigo-400 text-white"
                           : "border border-white/12 bg-white/5 hover:bg-white/10 text-white"
                       )}
                     >
                       {checkingOut === plan.slug && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      {current ? "Current plan" : checkingOut === plan.slug ? "Redirecting…" : plan.cta}
+                      {current
+                        ? "Current plan"
+                        : isDowngrade
+                        ? "Not available"
+                        : checkingOut === plan.slug
+                        ? "Redirecting…"
+                        : plan.cta}
                     </button>
                   )}
 
