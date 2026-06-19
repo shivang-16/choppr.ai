@@ -28,6 +28,8 @@ const CaptionWordSchema = z.object({
   end:   z.number(),
 });
 
+const BACKGROUND_FILLS = ["blur", "black", "white", "none"] as const;
+
 const CreateExportSchema = z.object({
   projectId:      z.string(),
   tracks:         z.array(TrackSchema),
@@ -36,6 +38,7 @@ const CreateExportSchema = z.object({
   captionStyle:   z.string().default("none"),
   captionMap:     z.record(z.string(), z.array(CaptionWordSchema)).default({}),
   aspectRatio:    z.string().default("9:16"),
+  backgroundFill: z.enum(BACKGROUND_FILLS).default("blur"),
   originalClipId: z.string().optional(),
 });
 
@@ -58,17 +61,18 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionMap, aspectRatio, originalClipId } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionMap, aspectRatio, backgroundFill, originalClipId } = parsed.data;
     const exportId = randomUUID();
 
     await Export.create({
-      _id:          exportId,
+      _id:            exportId,
       userId,
       projectId,
-      status:       "pending",
-      progress:     0,
+      status:         "pending",
+      progress:       0,
       captionStyle,
       aspectRatio,
+      backgroundFill,
     });
 
     const workerUrl = process.env.WORKER_URL;
@@ -93,6 +97,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
           captionStyle,
           captionMap,
           aspectRatio,
+          backgroundFill,
           originalClipId: originalClipId ?? null,
         }),
         signal: AbortSignal.timeout(10_000), // 10s to get the 202 ack
@@ -120,6 +125,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       projectId,
       userId,
       aspectRatio,
+      backgroundFill,
       captionStyle,
       trackCount: tracks.length,
     });

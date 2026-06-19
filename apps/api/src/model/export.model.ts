@@ -3,18 +3,19 @@ import mongoose, { Schema } from "mongoose";
 export type ExportStatus = "pending" | "rendering" | "done" | "failed";
 
 export interface IExport {
-  _id:          string;
-  userId:       string;
-  projectId:    string;
-  status:       ExportStatus;
-  progress:     number;
-  s3Key?:       string;
-  s3Url?:       string;
-  error?:       string;
-  captionStyle: string;
-  aspectRatio:  string;
-  createdAt:    Date;
-  updatedAt:    Date;
+  _id:            string;
+  userId:         string;
+  projectId:      string;
+  status:         ExportStatus;
+  progress:       number;
+  s3Key?:         string;
+  s3Url?:         string;
+  error?:         string;
+  captionStyle:   string;
+  aspectRatio:    string;
+  backgroundFill: string;
+  createdAt:      Date;
+  updatedAt:      Date;
 }
 
 const ExportSchema = new Schema<IExport>(
@@ -27,8 +28,9 @@ const ExportSchema = new Schema<IExport>(
     s3Key:        { type: String },
     s3Url:        { type: String },
     error:        { type: String },
-    captionStyle: { type: String, default: "none" },
-    aspectRatio:  { type: String, default: "9:16" },
+    captionStyle:   { type: String, default: "none" },
+    aspectRatio:    { type: String, default: "9:16" },
+    backgroundFill: { type: String, enum: ["blur", "black", "white", "none"], default: "blur" },
   },
   { timestamps: true, _id: false }
 );

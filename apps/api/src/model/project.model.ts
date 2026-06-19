@@ -1,5 +1,7 @@
 import mongoose, { Schema } from "mongoose";
 
+export type BackgroundFill = "blur" | "black" | "white" | "none";
+
 export interface IProject {
   _id: string;
   userId: string;
@@ -11,6 +13,7 @@ export interface IProject {
   status: "pending" | "processing" | "done" | "failed";
   error?: string;
   aspectRatio?: string;
+  backgroundFill?: BackgroundFill;
   jobId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -27,7 +30,8 @@ const ProjectSchema = new Schema<IProject>(
     totalClips:    { type: Number, default: 0 },
     status:        { type: String, enum: ["pending", "processing", "done", "failed"], default: "pending" },
     error:         { type: String },
-    aspectRatio:   { type: String, default: "9:16" },
+    aspectRatio:    { type: String, default: "9:16" },
+    backgroundFill: { type: String, enum: ["blur", "black", "white", "none"], default: "blur" },
     jobId:         { type: String, required: true, index: true },
   },
   { timestamps: true, _id: false }

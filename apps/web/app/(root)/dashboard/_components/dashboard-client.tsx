@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useApiFetch } from "@/lib/apiFetch";
-import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
+import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -183,6 +183,21 @@ function DashboardInner() {
   const [genre, setGenre] = useState("Auto");
   const [clipLength, setClipLength] = useState("Short (0-60s)");
   const [aspectRatio, setAspectRatio] = useState("9:16");
+  const [backgroundFill, setBackgroundFill] = useState("blur");
+  const [bgInfoOpen, setBgInfoOpen] = useState(false);
+  const bgInfoRef = useRef<HTMLDivElement>(null);
+
+  // Close background info popover on outside click
+  useEffect(() => {
+    if (!bgInfoOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (bgInfoRef.current && !bgInfoRef.current.contains(e.target as Node)) {
+        setBgInfoOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [bgInfoOpen]);
   const [maxClips, setMaxClips] = useState(10);
   const [prompt, setPrompt] = useState("");
 
@@ -329,6 +344,7 @@ function DashboardInner() {
         genre,
         clipLength,
         aspectRatio,
+        backgroundFill,
         maxClips,
         ...(video.durationSecs && video.durationSecs > 0 ? { durationSecs: video.durationSecs } : {}),
       };
@@ -705,10 +721,7 @@ function DashboardInner() {
 
             {/* Prompt */}
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[12px] text-white/50">Include specific moments</span>
-                <span className="text-[12px] text-white/25">Not sure how to prompt? <span className="underline cursor-pointer">learn more</span></span>
-              </div>
+              <span className="text-[12px] text-white/50">Include specific moments</span>
               <input
                 type="text"
                 value={prompt}
@@ -733,6 +746,63 @@ function DashboardInner() {
                   )}
                 >
                   □ {r}
+                </button>
+              ))}
+            </div>
+
+            {/* Background fill */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Label + info button */}
+              <div className="relative flex items-center gap-1.5" ref={bgInfoRef}>
+                <span className="text-[12px] text-white/50">Background</span>
+                <button
+                  onClick={() => setBgInfoOpen((o) => !o)}
+                  className="text-white/30 hover:text-white/60 transition-colors"
+                  aria-label="Background fill info"
+                >
+                  <Info size={13} />
+                </button>
+
+                {/* Popover */}
+                {bgInfoOpen && (
+                  <div className="absolute left-0 bottom-full mb-2 z-50 w-64 rounded-xl border border-white/10 bg-[#1a1a1a] p-3 shadow-lg">
+                    <p className="text-[11px] font-medium text-white/80 mb-2">Background fill modes</p>
+                    <ul className="flex flex-col gap-2">
+                      {[
+                        { label: "Blurry BG", desc: "A blurred copy of your video fills the empty space — polished, no dead space." },
+                        { label: "Black",     desc: "Solid black bars on the sides or top/bottom — classic letterbox look." },
+                        { label: "White",     desc: "Same as black but white — great for screen recordings or tutorial content." },
+                        { label: "Crop",      desc: "Center-crops the video to fill the frame — no bars, but edges may be cut off." },
+                      ].map(({ label, desc }) => (
+                        <li key={label}>
+                          <span className="text-[11px] font-semibold text-white/70">{label} — </span>
+                          <span className="text-[11px] text-white/40">{desc}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {(
+                [
+                  { id: "blur",  label: "Blurry BG" },
+                  { id: "black", label: "Black" },
+                  { id: "white", label: "White" },
+                  { id: "none",  label: "Crop" },
+                ] as const
+              ).map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setBackgroundFill(id)}
+                  className={cn(
+                    "px-3 py-1 rounded-lg border text-[12px] transition-colors",
+                    backgroundFill === id
+                      ? "border-white/30 bg-white/10 text-white"
+                      : "border-white/8 text-white/35 hover:text-white/60"
+                  )}
+                >
+                  {label}
                 </button>
               ))}
             </div>
