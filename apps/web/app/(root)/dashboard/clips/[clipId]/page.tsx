@@ -533,6 +533,7 @@ export default function ClipRefinePage() {
           volumes:      { [clipId]: 100 },
           speeds:       { [clipId]: speed },
           captionStyle,
+          captionFontSize,
           captionMap:     captionWords.length ? { [clipId]: captionWords } : {},
           aspectRatio,
           originalClipId: clipId,

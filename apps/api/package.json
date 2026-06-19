@@ -21,6 +21,7 @@
     "@clerk/express": "^2.1.22",
     "@logtail/node": "^0.5.8",
     "@logtail/winston": "^0.5.8",
+    "@napi-rs/canvas": "^1.0.0",
     "cors": "^2.8.6",
     "crypto": "^1.0.1",
     "dodopayments": "^2.36.0",

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { Export } from "../model/export.model.js";
+import { runExportPipeline } from "../services/export-pipeline.service.js";
 import { logger } from "../utils/logger.js";
 
 const TrackItemSchema = z.object({
@@ -36,6 +37,7 @@ const CreateExportSchema = z.object({
   volumes:        z.record(z.string(), z.number()).default({}),
   speeds:         z.record(z.string(), z.number()).default({}),
   captionStyle:   z.string().default("none"),
+  captionFontSize: z.number().min(8).max(200).default(28),
   captionMap:     z.record(z.string(), z.array(CaptionWordSchema)).default({}),
   aspectRatio:    z.string().default("9:16"),
   backgroundFill: z.enum(BACKGROUND_FILLS).default("blur"),
@@ -61,7 +63,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionMap, aspectRatio, backgroundFill, originalClipId } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionMap, aspectRatio, backgroundFill, originalClipId } = parsed.data;
     const exportId = randomUUID();
 
     await Export.create({
@@ -75,59 +77,20 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       backgroundFill,
     });
 
-    const workerUrl = process.env.WORKER_URL;
-    if (!workerUrl) throw new Error("WORKER_URL env variable is not set");
-
-    const secret = process.env.INTERNAL_API_SECRET ?? "";
-
-    try {
-      const workerRes = await fetch(`${workerUrl}/internal/export`, {
-        method:  "POST",
-        headers: {
-          "Content-Type":      "application/json",
-          "X-Internal-Secret": secret,
-        },
-        body: JSON.stringify({
-          exportId,
-          projectId,
-          userId,
-          tracks,
-          volumes,
-          speeds,
-          captionStyle,
-          captionMap,
-          aspectRatio,
-          backgroundFill,
-          originalClipId: originalClipId ?? null,
-        }),
-        signal: AbortSignal.timeout(10_000), // 10s to get the 202 ack
-      });
-
-      if (!workerRes.ok) {
-        const text = await workerRes.text().catch(() => "");
-        throw new Error(`Worker rejected export: ${workerRes.status} ${text}`);
-      }
-    } catch (workerErr: any) {
-      logger.error("Export worker request failed", {
-        exportId,
-        projectId,
-        userId,
-        workerUrl,
-        error: workerErr?.message ?? String(workerErr),
-      });
-      // Worker unreachable or rejected — mark export failed immediately
-      await Export.findByIdAndUpdate(exportId, { status: "failed", error: workerErr.message });
-      throw workerErr;
-    }
-
-    logger.info("Export accepted by worker", {
-      exportId,
-      projectId,
-      userId,
-      aspectRatio,
-      backgroundFill,
-      captionStyle,
+    logger.info("Export pipeline starting", {
+      exportId, projectId, userId, aspectRatio, backgroundFill, captionStyle,
       trackCount: tracks.length,
+    });
+
+    // Fire-and-forget: run the pipeline in the background, return immediately
+    runExportPipeline({
+      exportId, projectId, userId, tracks, volumes, speeds,
+      captionStyle, captionFontSize, captionMap, aspectRatio, backgroundFill,
+      originalClipId: originalClipId ?? null,
+    }).catch((err) => {
+      logger.error("Export pipeline crashed", {
+        exportId, error: err?.message ?? String(err),
+      });
     });
 
     res.status(201).json({ exportId, status: "pending" });
