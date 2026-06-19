@@ -72,17 +72,18 @@ export async function retryProject(req: Request, res: Response, next: NextFuncti
     const isS3Upload = job.url?.startsWith("s3://");
     const s3Key = isS3Upload ? job.url.replace("s3://", "") : "";
     await enqueueJob({
-      jobId:       job._id,
-      projectId:   project._id as string,
+      jobId:          job._id,
+      projectId:      project._id as string,
       userId,
-      url:         isS3Upload ? "" : (job.url ?? ""),
+      url:            isS3Upload ? "" : (job.url ?? ""),
       s3Key,
-      query:       job.query ?? "",
-      clipModel:   "Auto",
-      genre:       "Auto",
-      clipLength:  "Auto (0m-3m)",
-      aspectRatio: "9:16",
-      maxClips:    10,
+      query:          job.query ?? "",
+      clipModel:      "Auto",
+      genre:          "Auto",
+      clipLength:     "Auto (0m-3m)",
+      aspectRatio:    (project as any).aspectRatio    ?? "9:16",
+      backgroundFill: (project as any).backgroundFill ?? "blur",
+      maxClips:       10,
     });
 
     res.json({ ok: true });
