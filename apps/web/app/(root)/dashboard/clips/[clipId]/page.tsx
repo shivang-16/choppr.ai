@@ -14,6 +14,42 @@ import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_compone
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+/**
+ * Open the exported video in a new tab AND force a download to the local machine.
+ * The `download` attribute is ignored for cross-origin URLs (S3), so we fetch
+ * the file as a blob and download via an object URL. Falls back to a direct
+ * anchor click if the blob fetch is blocked (e.g. CORS).
+ */
+async function openAndDownload(url: string, filename: string) {
+  // Open the exported video in a new tab
+  window.open(url, "_blank", "noopener,noreferrer");
+
+  // Force a real local download
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob    = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a       = document.createElement("a");
+    a.href        = blobUrl;
+    a.download    = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
+  } catch {
+    // Fallback: best-effort direct download (may open instead of saving)
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = filename;
+    a.target   = "_blank";
+    a.rel      = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+}
+
 function useIsMobile() {
   const [mobile, setMobile] = useState(false);
   useEffect(() => {
@@ -97,6 +133,8 @@ interface EditPanelProps {
   captionWords: CaptionWord[];
   captionFontSize: number;
   setCaptionFontSize: (n: number) => void;
+  captionPosY: number;
+  setCaptionPosY: (n: number) => void;
   captionLang: string;
   activeLang: string;
   translating: boolean;
@@ -127,6 +165,7 @@ interface EditPanelProps {
 
 function EditPanelContent({
   activeTab, captionStyle, setCaptionStyle, captionWords, captionFontSize, setCaptionFontSize,
+  captionPosY, setCaptionPosY,
   captionLang, activeLang, translating, handleTranslate,
   speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
   brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
@@ -184,6 +223,24 @@ function EditPanelContent({
             />
             <div className="flex justify-between text-[10px] text-white/20">
               <span>14px</span><span>72px</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] text-white/50">Vertical position</span>
+              <span className="text-[11px] font-semibold text-white/60">
+                {captionPosY === 0 ? "Default" : `${captionPosY > 0 ? "+" : ""}${captionPosY}`}
+              </span>
+            </div>
+            <input
+              type="range" min={-100} max={100} step={5}
+              value={captionPosY}
+              onChange={e => setCaptionPosY(Number(e.target.value))}
+              className="w-full accent-white cursor-pointer"
+            />
+            <div className="flex justify-between text-[10px] text-white/20">
+              <span>Higher</span><span>Lower</span>
             </div>
           </div>
 
@@ -335,7 +392,23 @@ function ExportSection({
       {exportPhase === "done" && exportUrl && (
         <>
           <div className="flex items-center gap-2 text-[12px] text-green-400">
-            <CheckCircle className="h-4 w-4" /> Downloaded!
+            <CheckCircle className="h-4 w-4" /> Export ready!
+          </div>
+          <div className="flex gap-2">
+            <a
+              href={exportUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 rounded-2xl border border-white/15 py-3 text-center text-[13px] font-semibold text-white hover:bg-white/8 transition-all"
+            >
+              Open
+            </a>
+            <button
+              onClick={() => openAndDownload(exportUrl, "clip.mp4")}
+              className="flex-1 rounded-2xl bg-white py-3 text-[13px] font-semibold text-black hover:bg-white/90 transition-all"
+            >
+              Download
+            </button>
           </div>
           <button onClick={() => { setExportPhase("idle"); setExportUrl(null); }} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
             Export again
@@ -392,6 +465,7 @@ export default function ClipRefinePage() {
   const [captionWords, setCaptionWords]   = useState<CaptionWord[]>([]);
   const [captionLang, setCaptionLang]     = useState("");
   const [captionFontSize, setCaptionFontSize] = useState(28);
+  const [captionPosY, setCaptionPosY]         = useState(0);
   const [translating, setTranslating]     = useState(false);
   const [activeLang, setActiveLang]       = useState("");
 
@@ -432,6 +506,7 @@ export default function ClipRefinePage() {
         if (s) {
           if (s.captionStyle)          setCaptionStyle(s.captionStyle);
           if (s.captionFontSize != null) setCaptionFontSize(s.captionFontSize);
+          if (s.captionPosY != null) setCaptionPosY(s.captionPosY);
           if (s.speed      != null) setSpeed(s.speed);
           if (s.trimStart  != null) setTrimStart(s.trimStart);
           if (s.trimEnd    != null) setTrimEnd(s.trimEnd);
@@ -474,8 +549,8 @@ export default function ClipRefinePage() {
   // Auto-save whenever any setting changes (captionWords saved too so translation persists)
   useEffect(() => {
     if (!clipId) return;
-    saveSettings({ captionStyle, captionFontSize, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation });
-  }, [captionStyle, captionFontSize, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation]);
+    saveSettings({ captionStyle, captionFontSize, captionPosY, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation });
+  }, [captionStyle, captionFontSize, captionPosY, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation]);
 
   const handleTranslate = async (lang: string) => {
     if (!lang || lang === activeLang || translating) return;
@@ -534,6 +609,7 @@ export default function ClipRefinePage() {
           speeds:       { [clipId]: speed },
           captionStyle,
           captionFontSize,
+          captionPosY,
           captionMap:     captionWords.length ? { [clipId]: captionWords } : {},
           aspectRatio,
           brightness,
@@ -559,11 +635,8 @@ export default function ClipRefinePage() {
             clearInterval(exportPollRef.current!);
             setExportUrl(data.s3Url);
             setExportPhase("done");
-            // Auto-download
-            const a = document.createElement("a");
-            a.href = data.s3Url;
-            a.download = `clip-${index}.mp4`;
-            a.click();
+            // Open the exported video in a new tab + force a local download.
+            openAndDownload(data.s3Url, `clip-${index}.mp4`);
           } else if (data.status === "failed") {
             clearInterval(exportPollRef.current!);
             setExportPhase("error");
@@ -595,6 +668,7 @@ export default function ClipRefinePage() {
 
   const editPanelProps: EditPanelProps = {
     activeTab, captionStyle, setCaptionStyle, captionWords, captionFontSize, setCaptionFontSize,
+    captionPosY, setCaptionPosY,
     captionLang, activeLang, translating, handleTranslate,
     speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
     brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
@@ -689,7 +763,7 @@ export default function ClipRefinePage() {
                   onPause={() => setPlaying(false)}
                 />
 
-                <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} />
+                <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} posOffset={captionPosY} />
 
                 <div className="absolute inset-0 flex items-center justify-center cursor-pointer" onClick={togglePlay}>
                   {!playing && (

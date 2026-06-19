@@ -15,6 +15,7 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { spawn }        from "child_process";
 import { renderCaptionFrame, MOTION_STYLES, CaptionWord, CaptionStyle } from "./caption-renderer.js";
+import { ensureFontsRegistered } from "../utils/fonts.js";
 import { logger }       from "../utils/logger.js";
 
 const FPS               = 10;
@@ -27,6 +28,7 @@ export interface OverlayParams {
   height:       number;
   durationSecs: number;
   fontSize?:    number; // logical font size from the editor (default 28)
+  posOffset?:   number; // vertical offset in % of height (- = up, + = down)
   outputPath:   string; // destination .mov file
 }
 
@@ -43,8 +45,10 @@ export interface OverlayParams {
  * file rather than piping to stdout.
  */
 export async function renderCaptionToFile(params: OverlayParams): Promise<void> {
+  ensureFontsRegistered();
   const { words, width, height, durationSecs, outputPath } = params;
   const fontSize    = params.fontSize ?? DEFAULT_FONT_SIZE;
+  const posOffset   = params.posOffset ?? 0;
   const style       = (params.style as CaptionStyle) ?? "bold-center";
   const isMotion    = MOTION_STYLES.has(style as CaptionStyle);
   const totalFrames = Math.ceil(durationSecs * FPS);
@@ -89,7 +93,7 @@ export async function renderCaptionToFile(params: OverlayParams): Promise<void> 
 
     if (needsRender) {
       ctx.clearRect(0, 0, width, height);
-      renderCaptionFrame(ctx, width, height, words, style as CaptionStyle, timeMs, fontSize, bounceStart);
+      renderCaptionFrame(ctx, width, height, words, style as CaptionStyle, timeMs, fontSize, bounceStart, posOffset);
       lastPng         = canvas.toBuffer("image/png");
       lastActiveStart = active?.start ?? null;
     }

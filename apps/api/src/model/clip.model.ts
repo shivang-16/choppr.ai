@@ -8,6 +8,8 @@ export interface ICaptionWord {
 
 export interface IEditSettings {
   captionStyle:     string;
+  captionFontSize?: number;
+  captionPosY?:     number;
   captionLang:      string;
   captionWords?:    { word: string; start: number; end: number }[];
   speed:            number;
@@ -58,6 +60,8 @@ const ClipSchema = new Schema<IClip>(
     editSettings: {
       type: {
         captionStyle:  { type: String, default: "none" },
+        captionFontSize: { type: Number, default: 28 },
+        captionPosY:   { type: Number, default: 0 },
         captionLang:   { type: String, default: "" },
         captionWords:  { type: [{ word: String, start: Number, end: Number }], default: undefined },
         speed:         { type: Number, default: 1.0 },

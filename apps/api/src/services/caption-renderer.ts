@@ -6,6 +6,8 @@
  * Uses @napi-rs/canvas which exposes the same Canvas 2D API as the browser.
  */
 
+import { CAPTION_FONT_STACK } from "../utils/fonts.js";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type CaptionStyle =
@@ -116,6 +118,7 @@ export function renderCaptionFrame(
   timeMs:      number,        // current time in milliseconds
   fontSize:    number,        // logical font size (default 28)
   bounceStart: Record<string, number>, // mutable, keyed by word.start string
+  posOffset:   number = 0,    // vertical offset in % of height (- = up, + = down)
 ): void {
   if (style === "none" || words.length === 0) return;
 
@@ -131,13 +134,19 @@ export function renderCaptionFrame(
   const baseRef = canvasW >= 1920 ? 1920 : 1080;
   const fs      = fontSize * (canvasW / baseRef);
   const cx      = canvasW / 2;
-  const cy      = canvasH * cfg.yRatio;
+  // posOffset is normalized -100..100: 0 = style default, -100 = top, +100 = bottom.
+  const SAFE_TOP = 0.06, SAFE_BOTTOM = 0.96;
+  const base     = cfg.yRatio;
+  const frac     = posOffset >= 0
+    ? base + (posOffset / 100) * (SAFE_BOTTOM - base)
+    : base + (posOffset / 100) * (base - SAFE_TOP);
+  const cy       = canvasH * frac;
 
   const windowWords = cfg.showAll
     ? words.slice(Math.max(0, activeIdx - 2), Math.min(words.length, activeIdx + 3))
     : [active];
 
-  ctx.font = `${cfg.weight} ${fs}px system-ui,-apple-system,sans-serif`;
+  ctx.font = `${cfg.weight} ${fs}px ${CAPTION_FONT_STACK}`;
 
   const measured = windowWords.map((w, wi) => ({
     ...w,
@@ -168,7 +177,7 @@ export function renderCaptionFrame(
     if (style === "solo-box"      && isA) wfs = fs * 1.6;
     if (style === "solo-gradient" && isA) wfs = fs * 1.8;
     if (style === "solo-shake"    && isA) wfs = fs * 1.8;
-    ctx.font = `${cfg.weight} ${wfs}px system-ui,-apple-system,sans-serif`;
+    ctx.font = `${cfg.weight} ${wfs}px ${CAPTION_FONT_STACK}`;
 
     // Y animation
     let drawY = cy;

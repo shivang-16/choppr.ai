@@ -38,6 +38,7 @@ const CreateExportSchema = z.object({
   speeds:         z.record(z.string(), z.number()).default({}),
   captionStyle:   z.string().default("none"),
   captionFontSize: z.number().min(8).max(200).default(28),
+  captionPosY:    z.number().min(-100).max(100).default(0),
   captionMap:     z.record(z.string(), z.array(CaptionWordSchema)).default({}),
   aspectRatio:    z.string().default("9:16"),
   backgroundFill: z.enum(BACKGROUND_FILLS).default("blur"),
@@ -66,7 +67,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId } = parsed.data;
     const exportId = randomUUID();
 
     await Export.create({
@@ -88,7 +89,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
     // Fire-and-forget: run the pipeline in the background, return immediately
     runExportPipeline({
       exportId, projectId, userId, tracks, volumes, speeds,
-      captionStyle, captionFontSize, captionMap, aspectRatio, backgroundFill,
+      captionStyle, captionFontSize, captionPosY, captionMap, aspectRatio, backgroundFill,
       brightness, contrast, saturation,
       originalClipId: originalClipId ?? null,
     }).catch((err) => {

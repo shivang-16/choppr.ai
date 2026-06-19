@@ -49,6 +49,7 @@ interface Props {
   style:       CaptionStyle;
   fontSize?:   number;
   aspectRatio?: string;
+  posOffset?:  number; // vertical offset in % of height (- = up, + = down)
 }
 
 const CFG: Record<CaptionStyle, {
@@ -103,7 +104,7 @@ const GOLD    = ["#FFD700","#FFA500","#FFD700","#FFFACD","#FFD700"];
 // Purple-pink gradient for gradient-pop
 const PURPLE_POP = ["#A855F7","#EC4899","#F97316","#EAB308","#A855F7"];
 
-export default function CaptionRenderer({ videoRef, words, style, fontSize = 28, aspectRatio = "9:16" }: Props) {
+export default function CaptionRenderer({ videoRef, words, style, fontSize = 28, aspectRatio = "9:16", posOffset = 0 }: Props) {
   const canvasW = aspectRatio === "16:9" ? 1920 : 1080;
   const canvasH = aspectRatio === "16:9" ? 1080 : aspectRatio === "1:1" ? 1080 : 1920;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -135,7 +136,14 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 28,
       const baseRef = aspectRatio === "16:9" ? 1920 : 1080;
       const fs      = fontSize * (cw / baseRef);
       const cx     = cw / 2;
-      const cy     = ch * cfg.yRatio;
+      // posOffset is normalized -100..100: 0 = style default, -100 = top, +100 = bottom.
+      // Interpolate across the full safe area, asymmetrically around the default.
+      const SAFE_TOP = 0.06, SAFE_BOTTOM = 0.96;
+      const base     = cfg.yRatio;
+      const frac     = posOffset >= 0
+        ? base + (posOffset / 100) * (SAFE_BOTTOM - base)
+        : base + (posOffset / 100) * (base - SAFE_TOP);
+      const cy       = ch * frac;
 
       // Window of words to display
       const windowWords = cfg.showAll
@@ -276,7 +284,7 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 28,
 
     draw();
     return () => cancelAnimationFrame(rafRef.current);
-  }, [videoRef, words, style, fontSize]);
+  }, [videoRef, words, style, fontSize, posOffset, aspectRatio]);
 
   if (style === "none") return null;
 

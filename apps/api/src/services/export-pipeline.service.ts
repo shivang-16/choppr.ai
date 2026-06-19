@@ -64,6 +64,7 @@ export interface ExportPipelineParams {
   speeds:         Record<string, number>;
   captionStyle:   string;
   captionFontSize?: number;
+  captionPosY?:   number; // vertical offset in % of height (- = up, + = down)
   captionMap:     Record<string, { word: string; start: number; end: number }[]>;
   aspectRatio:    string;
   backgroundFill: string;
@@ -182,7 +183,7 @@ async function updateExport(exportId: string, fields: Record<string, unknown>) {
 export async function runExportPipeline(params: ExportPipelineParams): Promise<void> {
   const {
     exportId, projectId, userId, tracks, volumes, speeds,
-    captionStyle, captionFontSize, aspectRatio, backgroundFill,
+    captionStyle, captionFontSize, captionPosY, aspectRatio, backgroundFill,
     brightness = 100, contrast = 100, saturation = 100, originalClipId,
   } = params;
 
@@ -344,6 +345,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
           height:       targetH,
           durationSecs: totalDuration,
           fontSize:     captionFontSize ?? 28,
+          posOffset:    captionPosY ?? 0,
           outputPath:   overlayPath,
         });
 
