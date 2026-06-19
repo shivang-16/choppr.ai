@@ -41,6 +41,9 @@ const CreateExportSchema = z.object({
   captionMap:     z.record(z.string(), z.array(CaptionWordSchema)).default({}),
   aspectRatio:    z.string().default("9:16"),
   backgroundFill: z.enum(BACKGROUND_FILLS).default("blur"),
+  brightness:     z.number().min(0).max(400).default(100),
+  contrast:       z.number().min(0).max(400).default(100),
+  saturation:     z.number().min(0).max(400).default(100),
   originalClipId: z.string().optional(),
 });
 
@@ -63,7 +66,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionMap, aspectRatio, backgroundFill, originalClipId } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId } = parsed.data;
     const exportId = randomUUID();
 
     await Export.create({
@@ -86,6 +89,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
     runExportPipeline({
       exportId, projectId, userId, tracks, volumes, speeds,
       captionStyle, captionFontSize, captionMap, aspectRatio, backgroundFill,
+      brightness, contrast, saturation,
       originalClipId: originalClipId ?? null,
     }).catch((err) => {
       logger.error("Export pipeline crashed", {

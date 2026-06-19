@@ -536,6 +536,9 @@ export default function ClipRefinePage() {
           captionFontSize,
           captionMap:     captionWords.length ? { [clipId]: captionWords } : {},
           aspectRatio,
+          brightness,
+          contrast,
+          saturation,
           originalClipId: clipId,
         }),
       });

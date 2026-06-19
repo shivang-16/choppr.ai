@@ -67,6 +67,9 @@ export interface ExportPipelineParams {
   captionMap:     Record<string, { word: string; start: number; end: number }[]>;
   aspectRatio:    string;
   backgroundFill: string;
+  brightness?:    number; // CSS percent, 100 = unchanged
+  contrast?:      number; // CSS percent, 100 = unchanged
+  saturation?:    number; // CSS percent, 100 = unchanged
   originalClipId?: string | null;
 }
 
@@ -103,6 +106,28 @@ function buildReframeFilter(w: number, h: number, fill: string): string {
     `[fg]scale=${w}:${h}:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2[fg_scaled];` +
     `[blurred][fg_scaled]overlay=(W-w)/2:(H-h)/2[out]`
   );
+}
+
+/**
+ * Build an FFmpeg color-enhancement chain that mirrors the browser preview's
+ * CSS `filter: brightness(b%) contrast(c%) saturate(s%)`.
+ *
+ * • CSS brightness multiplies each RGB channel → colorchannelmixer (exact match)
+ * • CSS contrast / saturate pivot the same way as the eq filter
+ * Returns "" when all values are at their 100% defaults (no-op).
+ */
+function buildEnhanceFilter(brightnessPct: number, contrastPct: number, saturationPct: number): string {
+  const parts: string[] = [];
+  if (Math.round(brightnessPct) !== 100) {
+    const b = (brightnessPct / 100).toFixed(4);
+    parts.push(`colorchannelmixer=rr=${b}:gg=${b}:bb=${b}`);
+  }
+  if (Math.round(contrastPct) !== 100 || Math.round(saturationPct) !== 100) {
+    const c = (contrastPct / 100).toFixed(4);
+    const s = (saturationPct / 100).toFixed(4);
+    parts.push(`eq=contrast=${c}:saturation=${s}`);
+  }
+  return parts.join(",");
 }
 
 /** Build a chained atempo filter string (supports speeds outside [0.5, 2.0]). */
@@ -157,8 +182,11 @@ async function updateExport(exportId: string, fields: Record<string, unknown>) {
 export async function runExportPipeline(params: ExportPipelineParams): Promise<void> {
   const {
     exportId, projectId, userId, tracks, volumes, speeds,
-    captionStyle, captionFontSize, aspectRatio, backgroundFill, originalClipId,
+    captionStyle, captionFontSize, aspectRatio, backgroundFill,
+    brightness = 100, contrast = 100, saturation = 100, originalClipId,
   } = params;
+
+  const enhanceFilter = buildEnhanceFilter(brightness, contrast, saturation);
 
   const [targetW, targetH] = ASPECT_DIMS[aspectRatio] ?? [1080, 1920];
   const tmpDir = join(tmpdir(), `export_${exportId}`);
@@ -211,19 +239,22 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
       const reframeRaw = buildReframeFilter(targetW, targetH, backgroundFill);
       const reframe    = reframeRaw.replace("[out]", "[reframed]");
 
+      // Post-reframe chain: color enhancement (brightness/contrast/saturation)
+      // then speed (setpts). Ordered to match the browser preview.
+      const postParts: string[] = [];
+      if (enhanceFilter) postParts.push(enhanceFilter);
+      if (Math.abs(spd - 1.0) > 0.01) postParts.push(`setpts=${(1.0 / spd).toFixed(6)}*PTS`);
+      if (postParts.length === 0) postParts.push("null");
+      const videoFilter = `${reframe};[reframed]${postParts.join(",")}[vout]`;
+
       let ffArgs: string[];
       if (muted || vol === 0) {
-        // Silent segment: generate silent audio from lavfi source (no filter_complex needed for audio)
-        const atempo = buildAtempo(spd);
-        const videoFilterComplex =
-          Math.abs(spd - 1.0) > 0.01
-            ? `${reframe};[reframed]setpts=${(1.0 / spd).toFixed(6)}*PTS[vout]`
-            : `${reframe};[reframed]null[vout]`;
+        // Silent segment: generate silent audio from a lavfi source.
         ffArgs = [
           "-y",
           "-ss", String(trimIn), "-t", String(duration), "-i", local,
           "-f", "lavfi", "-t", String(duration), "-i", "anullsrc=r=44100:cl=stereo",
-          "-filter_complex", videoFilterComplex,
+          "-filter_complex", videoFilter,
           "-map", "[vout]", "-map", "1:a",
           "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
           "-c:a", "aac", "-b:a", "128k",
@@ -234,10 +265,6 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
       } else {
         const atempo      = buildAtempo(spd);
         const audioFilter = `[0:a]volume=${vol.toFixed(3)},${atempo}[aout]`;
-        const videoFilter =
-          Math.abs(spd - 1.0) > 0.01
-            ? `${reframe};[reframed]setpts=${(1.0 / spd).toFixed(6)}*PTS[vout]`
-            : `${reframe};[reframed]null[vout]`;
         ffArgs = [
           "-y",
           "-ss", String(trimIn), "-t", String(duration), "-i", local,
