@@ -9,6 +9,7 @@ import { logger } from "../utils/logger.js";
 import { attachUserToRequestContext } from "./requestContext.js";
 import jwt from "jsonwebtoken";
 import { grantSignupCredits } from "../services/credits.service.js";
+import { sendWelcomeEmail } from "../services/mail/index.js";
 
 declare global {
   namespace Express {
@@ -95,8 +96,6 @@ export const baseAuth = async (
       userId,
       sessionId: (authObj as any).sessionId ?? null,
       hasToken: !!(req.headers.authorization),
-      authHeader: req.headers.authorization ?? null,
-      clerkPublishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? "NOT SET",
     });
 
     if (userId) {
@@ -182,7 +181,17 @@ export const baseAuth = async (
           logger.error(`Failed to grant signup credits to ${user!._id}: ${err}`);
         });
 
-    
+        logger.info("Scheduling welcome email for new user", {
+          userId: user._id,
+          email: user.email,
+        });
+
+        sendWelcomeEmail({
+          to: user.email,
+          firstName: user.firstName,
+        }).catch((err) => {
+          logger.error(`Failed to send welcome email to ${user!.email}: ${err}`);
+        });
       } else {
         logger.info(`User found in DB: ${user.username}`);
       }
