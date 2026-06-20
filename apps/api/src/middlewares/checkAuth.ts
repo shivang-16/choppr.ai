@@ -7,7 +7,6 @@ import { createUser, CreateUserData } from "../queries/user.queries.js";
 import mongoose from "mongoose";
 import { logger } from "../utils/logger.js";
 import { attachUserToRequestContext } from "./requestContext.js";
-import { upsertMailerLiteSubscriber } from "../services/mail/mailerlite/upsert_subscriber.js";
 import jwt from "jsonwebtoken";
 import { grantSignupCredits } from "../services/credits.service.js";
 
@@ -183,16 +182,7 @@ export const baseAuth = async (
           logger.error(`Failed to grant signup credits to ${user!._id}: ${err}`);
         });
 
-        // Upsert user to MailerLite
-        if (user.email) {
-          upsertMailerLiteSubscriber(
-            user.email,
-            user.firstName || "",
-            user.lastName || ""
-          ).catch(() => {
-            logger.warn("Failed to upsert user to MailerLite");
-          });
-        }
+    
       } else {
         logger.info(`User found in DB: ${user.username}`);
       }
