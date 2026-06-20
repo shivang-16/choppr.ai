@@ -30,7 +30,7 @@ export const welcomeEmailHtml = (_options: WelcomeEmailOptions) => {
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#ffffff;padding:32px 16px 40px 16px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:420px;text-align:left;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:500px;text-align:left;">
             <tr>
               <td style="padding:0;font-size:14px;line-height:1.5;color:#202124;">
                 <p style="margin:0 0 22px 0;">Hello!</p>
