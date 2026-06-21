@@ -22,6 +22,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Export }            from "../model/export.model.js";
 import { Clip }              from "../model/clip.model.js";
 import { renderCaptionToFile } from "./caption-overlay.service.js";
+import { renderStickersToBuffer, type PlacedSticker } from "./sticker-renderer.js";
 import { logger }            from "../utils/logger.js";
 
 // ── AWS ───────────────────────────────────────────────────────────────────────
@@ -64,14 +65,15 @@ export interface ExportPipelineParams {
   speeds:         Record<string, number>;
   captionStyle:   string;
   captionFontSize?: number;
-  captionPosY?:   number; // vertical offset in % of height (- = up, + = down)
+  captionPosY?:   number;
   captionMap:     Record<string, { word: string; start: number; end: number }[]>;
   aspectRatio:    string;
   backgroundFill: string;
-  brightness?:    number; // CSS percent, 100 = unchanged
-  contrast?:      number; // CSS percent, 100 = unchanged
-  saturation?:    number; // CSS percent, 100 = unchanged
+  brightness?:    number;
+  contrast?:      number;
+  saturation?:    number;
   originalClipId?: string | null;
+  stickers?:      PlacedSticker[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -185,6 +187,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     exportId, projectId, userId, tracks, volumes, speeds,
     captionStyle, captionFontSize, captionPosY, aspectRatio, backgroundFill,
     brightness = 100, contrast = 100, saturation = 100, originalClipId,
+    stickers = [],
   } = params;
 
   const enhanceFilter = buildEnhanceFilter(brightness, contrast, saturation);
@@ -297,9 +300,33 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     ], "concat");
     await updateExport(exportId, { progress: 70 });
 
-    // ── 5. Caption overlay ───────────────────────────────────────────────────
+    // ── 5. Sticker overlay (applied first so captions sit on top) ────────────
     let finalOut = concatOut;
 
+    if (stickers.length > 0) {
+      logger.info(`[export:${exportId}] Compositing ${stickers.length} sticker(s)...`);
+
+      const stickerPng  = renderStickersToBuffer(stickers, targetW, targetH);
+      const stickerPath = join(tmpDir, "stickers.png");
+      await fsp.writeFile(stickerPath, stickerPng);
+
+      const stickerOut = join(tmpDir, "with_stickers.mp4");
+      await runFFmpeg([
+        "-y",
+        "-i", concatOut,
+        "-loop", "1", "-i", stickerPath,
+        "-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1[vout]",
+        "-map", "[vout]", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "copy", "-movflags", "+faststart",
+        stickerOut,
+      ], "sticker-composite");
+
+      finalOut = stickerOut;
+      logger.info(`[export:${exportId}] Stickers composited`);
+    }
+
+    // ── 6. Caption overlay (on top of stickers) ──────────────────────────────
     if (captionStyle && captionStyle !== "none") {
       // Load captions from DB (prefer translated captionWords over original captions)
       const captionMap: Record<string, { word: string; start: number; end: number }[]> = {};
@@ -350,11 +377,9 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
         });
 
         const captionOut = join(tmpDir, "captioned.mp4");
-        // QTRLE .mov carries a real ARGB alpha plane, so a plain overlay
-        // composites the captions transparently over the base video.
         await runFFmpeg([
           "-y",
-          "-i", concatOut,
+          "-i", finalOut,
           "-i", overlayPath,
           "-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1[vout]",
           "-map", "[vout]", "-map", "0:a?",
@@ -370,7 +395,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
 
     await updateExport(exportId, { progress: 88 });
 
-    // ── 6. Upload to S3 ──────────────────────────────────────────────────────
+    // ── 7. Upload to S3 ──────────────────────────────────────────────────────
     logger.info(`[export:${exportId}] Uploading to S3...`);
     const s3Key  = `exports/${exportId}/final.mp4`;
     const fileBuf = await fsp.readFile(finalOut);

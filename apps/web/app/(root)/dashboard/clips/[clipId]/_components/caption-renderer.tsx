@@ -294,7 +294,7 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 28,
       width={canvasW}
       height={canvasH}
       className="absolute inset-0 w-full h-full pointer-events-none"
-      style={{ objectFit: "contain" }}
+      style={{ objectFit: "contain", zIndex: 2 }}
     />
   );
 }

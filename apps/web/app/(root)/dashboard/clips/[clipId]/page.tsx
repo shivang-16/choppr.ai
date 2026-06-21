@@ -5,12 +5,13 @@ import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
 import {
   ArrowLeft, Play, Pause, Volume2, VolumeX,
-  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X,
+  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers,
 } from "lucide-react";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
 import { cn } from "@/lib/utils";
 import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_components/caption-renderer";
+import BackgroundRenderer, { STICKERS, type PlacedSticker, type ImageSegmenterRef } from "./_components/background-renderer";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -63,10 +64,11 @@ function useIsMobile() {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: "captions", icon: Captions,  label: "Captions" },
-  { id: "speed",    icon: Gauge,     label: "Speed" },
-  { id: "trim",     icon: Scissors,  label: "Trim" },
-  { id: "enhance",  icon: Sparkles,  label: "Enhance" },
+  { id: "captions",    icon: Captions,  label: "Captions" },
+  { id: "stickers",    icon: Layers,    label: "Stickers" },
+  { id: "speed",       icon: Gauge,     label: "Speed" },
+  { id: "trim",        icon: Scissors,  label: "Trim" },
+  { id: "enhance",     icon: Sparkles,  label: "Enhance" },
 ];
 
 // ── Caption styles ────────────────────────────────────────────────────────────
@@ -125,6 +127,25 @@ const TRANSLATE_LANGS = [
   { code: "pt", label: "Portuguese" },
 ];
 
+// ── Sticker preview thumbnail (renders on a tiny canvas) ─────────────────────
+function StickerPreview({ stickerId, size }: { stickerId: string; size: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const def = STICKERS.find(s => s.id === stickerId);
+    if (!def) return;
+    ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    ctx.translate(size / 2, size / 2);
+    def.draw(ctx, size * 0.9, 0);
+    ctx.restore();
+  }, [stickerId, size]);
+  return <canvas ref={canvasRef} width={size} height={size} className="shrink-0" />;
+}
+
 // ── Shared edit panel (desktop sidebar + mobile drawer) ─────────────────────
 interface EditPanelProps {
   activeTab: string;
@@ -161,6 +182,10 @@ interface EditPanelProps {
   setExportPhase: (p: "idle" | "exporting" | "done" | "error") => void;
   setExportUrl: (u: string | null) => void;
   styleGridMaxHeight?: number | string;
+  // Background overlay
+  placedStickers: PlacedSticker[];
+  setPlacedStickers: (s: PlacedSticker[]) => void;
+  segmentationReady: boolean;
 }
 
 function EditPanelContent({
@@ -171,6 +196,7 @@ function EditPanelContent({
   brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
   exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
   styleGridMaxHeight = 360,
+  placedStickers, setPlacedStickers, segmentationReady,
 }: EditPanelProps) {
   return (
     <>
@@ -278,8 +304,100 @@ function EditPanelContent({
         </div>
       )}
 
-      {activeTab === "speed" && (
+      {activeTab === "stickers" && (
         <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <p className="text-[12px] font-medium text-white/70">Stickers</p>
+            {placedStickers.length > 0 && (
+              <span className={cn(
+                "flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full",
+                segmentationReady
+                  ? "bg-emerald-500/15 text-emerald-400"
+                  : "bg-white/8 text-white/30"
+              )}>
+                <span className={cn("h-1.5 w-1.5 rounded-full", segmentationReady ? "bg-emerald-400" : "bg-white/30 animate-pulse")} />
+                {segmentationReady ? "Behind person" : "Loading AI…"}
+              </span>
+            )}
+          </div>
+
+          <p className="text-[10px] text-white/30">Tap to add. Stickers appear behind the person.</p>
+
+          <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: styleGridMaxHeight }}>
+            <div className="grid grid-cols-2 gap-2 pr-0.5">
+              {STICKERS.map(s => {
+                const isPlaced = placedStickers.some(ps => ps.stickerId === s.id);
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      if (isPlaced) {
+                        setPlacedStickers(placedStickers.filter(ps => ps.stickerId !== s.id));
+                      } else {
+                        setPlacedStickers([...placedStickers, {
+                          stickerId: s.id,
+                          x: 0.15 + Math.random() * 0.7,
+                          y: 0.15 + Math.random() * 0.7,
+                          scale: 1,
+                        }]);
+                      }
+                    }}
+                    className={cn(
+                      "flex flex-col items-center gap-1.5 rounded-xl border py-3 px-2 transition-all",
+                      isPlaced ? "border-white/40 bg-white/10" : "border-white/8 bg-white/3 hover:border-white/16"
+                    )}
+                  >
+                    <StickerPreview stickerId={s.id} size={40} />
+                    <span className="text-[10px] text-white/50 truncate w-full text-center">{s.label}</span>
+                    {isPlaced && <Check className="h-3 w-3 text-white/50" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {placedStickers.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="h-px bg-white/6" />
+              <p className="text-[10px] font-medium text-white/50">Placed ({placedStickers.length})</p>
+              {placedStickers.map((ps, i) => {
+                const def = STICKERS.find(s => s.id === ps.stickerId);
+                return (
+                  <div key={ps.stickerId} className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/3 px-2 py-1.5">
+                    <StickerPreview stickerId={ps.stickerId} size={24} />
+                    <span className="text-[10px] text-white/60 flex-1">{def?.label}</span>
+                    <input
+                      type="range" min={0.3} max={2} step={0.1}
+                      value={ps.scale}
+                      onChange={e => {
+                        const updated = [...placedStickers];
+                        updated[i] = { ...ps, scale: Number(e.target.value) };
+                        setPlacedStickers(updated);
+                      }}
+                      className="w-16 accent-white cursor-pointer"
+                      title="Size"
+                    />
+                    <button
+                      onClick={() => setPlacedStickers(placedStickers.filter((_, j) => j !== i))}
+                      className="text-white/30 hover:text-red-400 transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                onClick={() => setPlacedStickers([])}
+                className="text-[11px] text-white/30 hover:text-white/60 transition-colors"
+              >
+                Remove all
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "speed" && (        <div className="flex flex-col gap-4">
           <p className="text-[12px] font-medium text-white/70">Playback speed</p>
           <div className="grid grid-cols-3 gap-2">
             {SPEED_PRESETS.map(s => (
@@ -477,11 +595,20 @@ export default function ClipRefinePage() {
   const [contrast, setContrast]       = useState(100);
   const [saturation, setSaturation]   = useState(100);
 
+  // Background overlay
+  const [placedStickers, setPlacedStickers]     = useState<PlacedSticker[]>([]);
+  const [segmentationReady, setSegmentationReady] = useState(false);
+  const segmenterRef = useRef<ImageSegmenterRef | null>(null);
+
   // Export state
   const [exportPhase, setExportPhase]       = useState<"idle" | "exporting" | "done" | "error">("idle");
   const [exportProgress, setExportProgress] = useState(0);
   const [exportUrl, setExportUrl]           = useState<string | null>(null);
   const exportPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Sticker drag state — using refs so no stale closures
+  const dragRef = useRef<{ idx: number; rectLeft: number; rectTop: number; rectW: number; rectH: number } | null>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
 
   // Load project aspect ratio
   useEffect(() => {
@@ -616,6 +743,7 @@ export default function ClipRefinePage() {
           contrast,
           saturation,
           originalClipId: clipId,
+          stickers: placedStickers,
         }),
       });
 
@@ -653,6 +781,36 @@ export default function ClipRefinePage() {
     if (videoRef.current) videoRef.current.playbackRate = speed;
   }, [speed]);
 
+  // Load MediaPipe segmentation lazily when user picks an overlay
+  useEffect(() => {
+    if (placedStickers.length === 0 || segmenterRef.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { ImageSegmenter, FilesetResolver } = await import("@mediapipe/tasks-vision");
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
+        );
+        const seg = await ImageSegmenter.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
+            delegate: "GPU",
+          },
+          outputCategoryMask: true,
+          outputConfidenceMasks: false,
+          runningMode: "VIDEO",
+        });
+        if (!cancelled) {
+          segmenterRef.current = seg as unknown as ImageSegmenterRef;
+          setSegmentationReady(true);
+        }
+      } catch {
+        // GPU delegate might fail on some browsers — silently continue without segmentation
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [placedStickers.length]);
   const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
@@ -673,8 +831,8 @@ export default function ClipRefinePage() {
     speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
     brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
     exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
+    placedStickers, setPlacedStickers, segmentationReady,
   };
-
   const handleMobileTab = (id: string) => {
     if (activeTab === id && mobileDrawerOpen) {
       setMobileDrawerOpen(false);
@@ -734,7 +892,8 @@ export default function ClipRefinePage() {
           )}>
             {src ? (
               <div
-                className="relative rounded-xl md:rounded-2xl overflow-hidden shadow-2xl shadow-black/80 w-full h-full max-w-full"
+                ref={videoContainerRef}
+                className="relative rounded-xl md:rounded-2xl shadow-2xl shadow-black/80 w-full h-full max-w-full"
                 style={{
                   aspectRatio: aspectRatio === "16:9" ? "16/9" : aspectRatio === "1:1" ? "1/1" : "9/16",
                   maxHeight: "100%",
@@ -745,33 +904,99 @@ export default function ClipRefinePage() {
                       : "min(380px, 100%)",
                 }}
               >
-                <video
-                  ref={videoRef}
-                  src={src}
-                  muted={muted}
-                  playsInline
-                  loop
-                  className="w-full h-full object-cover"
-                  style={{ filter: filterStyle }}
-                  onTimeUpdate={() => setCurrentTime(videoRef.current?.currentTime ?? 0)}
-                  onLoadedMetadata={() => {
-                    const d = videoRef.current?.duration ?? 0;
-                    setDuration(d);
-                    setTrimEnd(d);
-                  }}
-                  onPlay={() => setPlaying(true)}
-                  onPause={() => setPlaying(false)}
-                />
-
-                <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} posOffset={captionPosY} />
-
-                <div className="absolute inset-0 flex items-center justify-center cursor-pointer" onClick={togglePlay}>
-                  {!playing && (
-                    <div className="h-14 w-14 flex items-center justify-center rounded-full bg-black/50 border border-white/20 backdrop-blur-sm">
-                      <Play className="h-6 w-6 fill-white text-white ml-1" />
-                    </div>
-                  )}
+                {/* Clip the video/canvas layers but NOT the drag handles */}
+                <div className="absolute inset-0 rounded-xl md:rounded-2xl overflow-hidden">
+                  <BackgroundRenderer
+                    videoRef={videoRef}
+                    placedStickers={placedStickers}
+                    segmentationReady={segmentationReady}
+                    segmenter={segmenterRef}
+                    filterStyle={filterStyle}
+                  />
+                  <video
+                    ref={videoRef}
+                    src={src}
+                    muted={muted}
+                    playsInline
+                    loop
+                    className="w-full h-full object-cover"
+                    style={{
+                      filter: filterStyle,
+                      opacity: placedStickers.length > 0 && segmentationReady ? 0 : 1,
+                    }}
+                    onTimeUpdate={() => setCurrentTime(videoRef.current?.currentTime ?? 0)}
+                    onLoadedMetadata={() => {
+                      const d = videoRef.current?.duration ?? 0;
+                      setDuration(d);
+                      setTrimEnd(d);
+                    }}
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
+                  />
+                  <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} posOffset={captionPosY} />
+                  {/* Play/pause tap target — only active when NO drag in progress */}
+                  <div
+                    className="absolute inset-0 flex items-center justify-center cursor-pointer"
+                    style={{ zIndex: 3 }}
+                    onClick={(e) => {
+                      if (dragRef.current) return;
+                      togglePlay();
+                    }}
+                  >
+                    {!playing && (
+                      <div className="h-14 w-14 flex items-center justify-center rounded-full bg-black/50 border border-white/20 backdrop-blur-sm pointer-events-none">
+                        <Play className="h-6 w-6 fill-white text-white ml-1" />
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {/* Draggable sticker handles — outside overflow-hidden so they can be dragged freely */}
+                {placedStickers.map((ps, i) => (
+                  <div
+                    key={ps.stickerId}
+                    className="absolute cursor-grab active:cursor-grabbing touch-none select-none"
+                    style={{
+                      left: `${ps.x * 100}%`,
+                      top: `${ps.y * 100}%`,
+                      transform: "translate(-50%, -50%)",
+                      zIndex: 10,
+                    }}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const rect = videoContainerRef.current?.getBoundingClientRect();
+                      if (!rect) return;
+                      dragRef.current = {
+                        idx: i,
+                        rectLeft: rect.left,
+                        rectTop: rect.top,
+                        rectW: rect.width,
+                        rectH: rect.height,
+                      };
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    }}
+                    onPointerMove={(e) => {
+                      if (!dragRef.current) return;
+                      const { idx, rectLeft, rectTop, rectW, rectH } = dragRef.current;
+                      const nx = Math.max(0.04, Math.min(0.96, (e.clientX - rectLeft) / rectW));
+                      const ny = Math.max(0.04, Math.min(0.96, (e.clientY - rectTop) / rectH));
+                      setPlacedStickers(prev => {
+                        const updated = [...prev];
+                        const cur = updated[idx];
+                        if (!cur) return prev;
+                        updated[idx] = { ...cur, x: nx, y: ny };
+                        return updated;
+                      });
+                    }}
+                    onPointerUp={() => { dragRef.current = null; }}
+                  >
+                    <div className="relative pointer-events-none">
+                      <StickerPreview stickerId={ps.stickerId} size={Math.round(48 * ps.scale)} />
+                      <div className="absolute -inset-1 rounded-lg border border-dashed border-white/40" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <p className="text-white/20 text-[13px]">No clip source found.</p>

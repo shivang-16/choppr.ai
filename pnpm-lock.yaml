@@ -151,6 +151,9 @@ importers:
       '@dodopayments/nextjs':
         specifier: ^0.3.6
         version: 0.3.6(next@15.5.19(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(zod@4.4.3)
+      '@mediapipe/tasks-vision':
+        specifier: ^0.10.35
+        version: 0.10.35
       '@repo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -960,6 +963,9 @@ packages:
     resolution: {integrity: sha512-nL08rAGiKJC4blEBfe4z8sYN4d3G9FCWKlsp8zjcsu42Bj7345hHsgyEfftnhhPWyfmF+5q+i1XucQhjNRSbYQ==}
     peerDependencies:
       winston: '>=3.2.1'
+
+  '@mediapipe/tasks-vision@0.10.35':
+    resolution: {integrity: sha512-HOvadwVRE6JC+45nyYhmnywnr5h/J8KZvOeUNVOG9q/0875pZgItznFB9bRTvLc264YSJqiZ1NsIpCStJw/egg==}
 
   '@mongodb-js/saslprep@1.4.11':
     resolution: {integrity: sha512-o9rAHc0IpIjuPSxRutWpE1F62x7n+4mVS4rCNHkzhIUMQcc18bb6xEq5wd2NdN0WjepIyXIppRshYI2kQDOZVA==}
@@ -4149,6 +4155,8 @@ snapshots:
       '@logtail/types': 0.5.8
       winston: 3.19.0
       winston-transport: 4.9.0
+
+  '@mediapipe/tasks-vision@0.10.35': {}
 
   '@mongodb-js/saslprep@1.4.11':
     dependencies:

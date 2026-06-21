@@ -29,6 +29,13 @@ const CaptionWordSchema = z.object({
   end:   z.number(),
 });
 
+const StickerSchema = z.object({
+  stickerId: z.string(),
+  x:         z.number().min(0).max(1),
+  y:         z.number().min(0).max(1),
+  scale:     z.number().min(0.1).max(5),
+});
+
 const BACKGROUND_FILLS = ["blur", "black", "white", "none"] as const;
 
 const CreateExportSchema = z.object({
@@ -46,6 +53,7 @@ const CreateExportSchema = z.object({
   contrast:       z.number().min(0).max(400).default(100),
   saturation:     z.number().min(0).max(400).default(100),
   originalClipId: z.string().optional(),
+  stickers:       z.array(StickerSchema).default([]),
 });
 
 // ── POST /api/exports ───────────────────────────────────────────────────────
@@ -67,7 +75,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId, stickers } = parsed.data;
     const exportId = randomUUID();
 
     await Export.create({
@@ -92,6 +100,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       captionStyle, captionFontSize, captionPosY, captionMap, aspectRatio, backgroundFill,
       brightness, contrast, saturation,
       originalClipId: originalClipId ?? null,
+      stickers,
     }).catch((err) => {
       logger.error("Export pipeline crashed", {
         exportId, error: err?.message ?? String(err),
