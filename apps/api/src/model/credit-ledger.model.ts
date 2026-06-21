@@ -14,6 +14,7 @@ export type LedgerType =
   | "grant_topup"          // one-time credit purchase
   | "grant_admin"          // manual grant by admin
   | "job_cost"             // deducted when a job completes (negative)
+  | "export_cost"          // deducted when a video export completes (negative)
   | "refund_job_failed";   // refund when a job fails (positive)
 
 export type CreditBucket = "subscription" | "topup";
@@ -43,6 +44,7 @@ const creditLedgerSchema = new Schema<ICreditLedger>(
         "grant_topup",
         "grant_admin",
         "job_cost",
+        "export_cost",
         "refund_job_failed",
       ],
       required: true,

@@ -6,6 +6,9 @@ import { Plan } from "../model/plan.model.js";
 // Cost per minute of source video for AI clipping — matches plan.creditCostPerMin
 export const CREDITS_PER_MINUTE = 2;
 
+// Flat cost per video export
+export const CREDITS_PER_EXPORT = 2;
+
 // User must have at least this many credits to start a job (1 min worth)
 export const MIN_CREDITS_TO_START = CREDITS_PER_MINUTE;
 
@@ -234,6 +237,68 @@ export async function deductJobCredits(
           session, userId, -fromTopup, "topup", "job_cost",
           balanceAfter,
           { jobId, jobDurationMins: durationMins, note: `Job ${jobId} — topup bucket` }
+        );
+      }
+    });
+
+    return { deducted, balanceAfter };
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
+ * Atomically deduct credits for a video export.
+ * Flat cost: CREDITS_PER_EXPORT (default 1).
+ * Drains subscriptionCredits first, then topupCredits.
+ */
+export async function deductExportCredits(
+  userId: string,
+  exportId: string
+): Promise<{ deducted: number; balanceAfter: number }> {
+  const totalCost = CREDITS_PER_EXPORT;
+
+  const session = await mongoose.startSession();
+  try {
+    let deducted     = 0;
+    let balanceAfter = 0;
+
+    await session.withTransaction(async () => {
+      const doc = await UserCredits.findById(userId).session(session);
+      if (!doc) throw new Error(`UserCredits not found for user ${userId}`);
+
+      const fromSub   = Math.min(doc.subscriptionCredits, totalCost);
+      const remaining = totalCost - fromSub;
+      const fromTopup = Math.min(doc.topupCredits, remaining);
+      deducted        = fromSub + fromTopup;
+
+      await UserCredits.updateOne(
+        { _id: userId },
+        {
+          $inc: {
+            subscriptionCredits: -fromSub,
+            topupCredits:        -fromTopup,
+            totalCredits:        -deducted,
+            lifetimeSpent:       deducted,
+          },
+        },
+        { session }
+      );
+
+      balanceAfter = doc.totalCredits - deducted;
+
+      if (fromSub > 0) {
+        await writeLedger(
+          session, userId, -fromSub, "subscription", "export_cost",
+          balanceAfter + fromTopup,
+          { jobId: exportId, note: `Export ${exportId} — ${fromSub} credit(s)` }
+        );
+      }
+      if (fromTopup > 0) {
+        await writeLedger(
+          session, userId, -fromTopup, "topup", "export_cost",
+          balanceAfter,
+          { jobId: exportId, note: `Export ${exportId} — topup bucket` }
         );
       }
     });

@@ -749,6 +749,11 @@ export default function ClipRefinePage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        if (err.error === "insufficient_credits") {
+          alert(err.message ?? "Insufficient credits to export. Please upgrade your plan or purchase credits.");
+          setExportPhase("idle");
+          return;
+        }
         throw new Error(err.error ?? "Export failed");
       }
 

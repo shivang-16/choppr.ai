@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { Export } from "../model/export.model.js";
 import { runExportPipeline } from "../services/export-pipeline.service.js";
+import { checkBalance, deductExportCredits, CREDITS_PER_EXPORT } from "../services/credits.service.js";
 import { logger } from "../utils/logger.js";
 
 const TrackItemSchema = z.object({
@@ -75,6 +76,18 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
+    // Gate: user must have enough credits for the export
+    const { ok, balance } = await checkBalance(userId);
+    if (!ok || balance < CREDITS_PER_EXPORT) {
+      logger.warn("Export rejected: insufficient credits", { userId, balance, required: CREDITS_PER_EXPORT });
+      res.status(402).json({
+        error: "insufficient_credits",
+        message: `You need at least ${CREDITS_PER_EXPORT} credit(s) to export. Your balance: ${balance}.`,
+        balance,
+      });
+      return;
+    }
+
     const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId, stickers } = parsed.data;
     const exportId = randomUUID();
 
@@ -101,6 +114,16 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       brightness, contrast, saturation,
       originalClipId: originalClipId ?? null,
       stickers,
+    }).then(async () => {
+      // Deduct credits only on successful export
+      try {
+        const { deducted, balanceAfter } = await deductExportCredits(userId, exportId);
+        logger.info("Export credits deducted", { exportId, userId, deducted, balanceAfter });
+      } catch (creditErr: any) {
+        logger.error("Failed to deduct export credits (export still succeeded)", {
+          exportId, userId, error: creditErr?.message,
+        });
+      }
     }).catch((err) => {
       logger.error("Export pipeline crashed", {
         exportId, error: err?.message ?? String(err),
