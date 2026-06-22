@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { Plan } from "../model/plan.model.js";
+import { TopupPack } from "../model/topup-pack.model.js";
 import { UserCredits } from "../model/user-credits.model.js";
-import { createSubscriptionCheckout } from "../services/dodo.service.js";
+import { createSubscriptionCheckout, createOneTimeCheckout } from "../services/dodo.service.js";
 import { logger } from "../utils/logger.js";
 
 const CheckoutSchema = z.object({
@@ -80,6 +81,67 @@ export async function createCheckout(req: Request, res: Response, next: NextFunc
     if (err?.status || err?.statusCode) {
       logger.error("Dodo API error body:", JSON.stringify(err?.body ?? err?.error ?? {}));
     }
+    next(err);
+  }
+}
+
+// ── GET /api/payments/topup-packs ───────────────────────────────────────────
+
+/**
+ * Returns all active credit top-up packs (publicly readable for authenticated users).
+ */
+export async function listTopupPacks(req: Request, res: Response, next: NextFunction) {
+  try {
+    const packs = await TopupPack.find({ active: true }).sort({ order: 1 }).lean();
+    res.json(packs);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── POST /api/payments/topup-checkout ───────────────────────────────────────
+
+const TopupCheckoutSchema = z.object({
+  packSlug: z.string(),
+});
+
+/**
+ * Creates a Dodo one-time checkout session for a credit top-up pack.
+ * Frontend redirects the user to the returned checkoutUrl.
+ */
+export async function createTopupCheckout(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = TopupCheckoutSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+      return;
+    }
+
+    const { packSlug } = parsed.data;
+    const user = req.user;
+    if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    const pack = await TopupPack.findOne({ slug: packSlug, active: true }).lean();
+    if (!pack) {
+      res.status(404).json({ error: "Top-up pack not found" });
+      return;
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
+
+    const { checkoutUrl } = await createOneTimeCheckout({
+      userId:       user._id,
+      userEmail:    user.email,
+      productId:    pack.dodoProductId,
+      topupCredits: pack.credits,
+      successUrl:   `${frontendUrl}/dashboard/billing?success=1&topup=${pack.slug}`,
+      cancelUrl:    `${frontendUrl}/dashboard/billing?cancelled=1`,
+    });
+
+    logger.info(`Topup checkout created for user ${user._id} pack=${packSlug} credits=${pack.credits}`);
+    res.json({ checkoutUrl });
+  } catch (err: any) {
+    logger.error("Topup checkout error:", err?.message ?? err);
     next(err);
   }
 }

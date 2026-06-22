@@ -19,9 +19,40 @@ export function getDodoClient(): DodoPayments {
   return _client;
 }
 
-// ── Checkout session ─────────────────────────────────────────────────────────
+// ── Checkout sessions ────────────────────────────────────────────────────────
 
 export type BillingInterval = "monthly" | "yearly";
+
+/**
+ * Create a Dodo Payments one-time checkout session (used for credit top-ups).
+ * Returns the checkout URL to redirect the user to.
+ */
+export async function createOneTimeCheckout(opts: {
+  userId: string;
+  userEmail: string;
+  productId: string;     // Dodo one-time product ID
+  topupCredits: number;  // credits to grant on payment.succeeded webhook
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ checkoutUrl: string }> {
+  const client = getDodoClient();
+
+  const session = await client.checkoutSessions.create({
+    product_cart: [{ product_id: opts.productId, quantity: 1 }],
+    return_url: opts.successUrl,
+    customer: { email: opts.userEmail },
+    metadata: {
+      userId:        opts.userId,
+      topupCredits:  String(opts.topupCredits),
+    },
+  });
+
+  if (!session.checkout_url) {
+    throw new Error(`Dodo did not return a checkout URL. Session: ${JSON.stringify(session)}`);
+  }
+
+  return { checkoutUrl: session.checkout_url };
+}
 
 /**
  * Create a Dodo Payments subscription checkout session.

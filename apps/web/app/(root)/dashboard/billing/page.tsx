@@ -3,19 +3,19 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
-import { Check, Zap, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Check, Zap, Loader2, CheckCircle, XCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 // Shape returned by GET /api/plans/me
 type Plan = {
-  _id: string;   // MongoDB ObjectId
-  slug: string;  // stable identifier: "free" | "core" | "growth" | "scale"
+  _id: string;
+  slug: string;
   name: string;
   description: string;
-  monthlyPrice: number;   // cents
-  yearlyPrice: number;    // cents
+  monthlyPrice: number;
+  yearlyPrice: number;
   credits: number;
   maxVideoLengthMins: number | null;
   maxClipsPerJob: number | null;
@@ -36,6 +36,15 @@ type MyPlanResponse = {
   cycleEnd: string | null;
 };
 
+type TopupPack = {
+  _id: string;
+  slug: string;
+  name: string;
+  credits: number;
+  price: number; // cents
+  order: number;
+};
+
 function formatPrice(cents: number) {
   return cents === 0 ? 0 : cents / 100;
 }
@@ -45,9 +54,11 @@ function BillingContent() {
   const [data, setData] = useState<MyPlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
+  const [topupPacks, setTopupPacks] = useState<TopupPack[]>([]);
   const searchParams = useSearchParams();
   const paymentSuccess = searchParams.get("success") === "1";
   const paymentCancelled = searchParams.get("cancelled") === "1";
+  const topupSuccess = searchParams.get("topup");
   const apiFetch = useApiFetch();
 
   useEffect(() => {
@@ -55,6 +66,10 @@ function BillingContent() {
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
+    apiFetch(`${API_URL}/api/payments/topup-packs`)
+      .then((r) => r.ok ? r.json() : [])
+      .then(setTopupPacks)
+      .catch(() => {});
   }, []);
 
   async function handleUpgrade(planId: string) {
@@ -79,12 +94,36 @@ function BillingContent() {
     }
   }
 
+  async function handleTopup(packSlug: string) {
+    setCheckingOut(`topup-${packSlug}`);
+    try {
+      const res = await apiFetch(`${API_URL}/api/payments/topup-checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packSlug }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.message ?? json.error ?? "Something went wrong");
+        return;
+      }
+      window.location.href = json.checkoutUrl;
+    } catch {
+      alert("Could not start checkout. Please try again.");
+    } finally {
+      setCheckingOut(null);
+    }
+  }
+
   // Split free from paid plans
   const freePlan    = data?.plans.find((p) => p.slug === "free");
   const paidPlans   = data?.plans.filter((p) => p.slug !== "free") ?? [];
   const currentId   = data?.currentPlanId ?? "free";
   const currentPlan = data?.plans.find((p) => p.slug === currentId);
   const currentOrder = currentPlan?.order ?? 0;
+
+  // Show topup section only when user is on Growth (highest paid subscription, order=2)
+  const showTopups = currentId === "growth" && topupPacks.length > 0;
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
@@ -107,7 +146,11 @@ function BillingContent() {
             <CheckCircle className="h-5 w-5 text-green-400 shrink-0" />
             <div>
               <p className="text-[13px] font-semibold text-green-300">Payment successful!</p>
-              <p className="text-[12px] text-green-400/70">Your credits have been added. It may take a moment to reflect.</p>
+              <p className="text-[12px] text-green-400/70">
+                {topupSuccess
+                  ? `Your top-up credits have been added. It may take a moment to reflect.`
+                  : `Your credits have been added. It may take a moment to reflect.`}
+              </p>
             </div>
           </div>
         )}
@@ -169,6 +212,57 @@ function BillingContent() {
           <div className="flex items-center gap-2 text-white/30 text-[13px]">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading plans…
+          </div>
+        )}
+
+        {/* ── Credit top-up packs (shown only on Growth plan) ── */}
+        {showTopups && (
+          <div className="w-full max-w-5xl flex flex-col gap-5">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <div className="flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[11px] text-indigo-300">
+                <Sparkles className="h-3 w-3" /> One-time credit top-ups
+              </div>
+              <h2 className="text-[22px] font-bold text-white">Need more credits?</h2>
+              <p className="text-[13px] text-white/40 max-w-sm">
+                Top-up credits never expire and stack on top of your monthly subscription.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              {topupPacks.map((pack) => {
+                const isLoading = checkingOut === `topup-${pack.slug}`;
+                const pricePerCredit = (pack.price / pack.credits / 100).toFixed(2);
+                return (
+                  <div
+                    key={pack.slug}
+                    className="flex flex-col gap-4 rounded-2xl border border-white/8 bg-[#0d0d0d] p-5"
+                  >
+                    {/* Name + price row */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col gap-0.5">
+                        <p className="text-[14px] font-bold text-white">{pack.name}</p>
+                        <p className="text-[11px] text-white/35">{pack.credits.toLocaleString()} credits</p>
+                      </div>
+                      <div className="flex flex-col items-end shrink-0">
+                        <span className="text-[20px] font-bold text-white leading-none">
+                          ${formatPrice(pack.price)}
+                        </span>
+                        <span className="text-[10px] text-white/30">${pricePerCredit} / cr</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleTopup(pack.slug)}
+                      disabled={!!checkingOut}
+                      className="w-full rounded-xl py-2 text-[13px] font-semibold transition-all flex items-center justify-center gap-1.5 border border-white/12 bg-white/5 hover:bg-white/10 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {isLoading ? "Redirecting…" : "Buy now"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
