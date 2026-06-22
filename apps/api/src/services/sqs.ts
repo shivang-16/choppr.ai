@@ -23,6 +23,7 @@ export interface JobMessage {
   aspectRatio:    string;   // "9:16" | "1:1" | "16:9"
   backgroundFill: string;   // "blur" | "black" | "white" | "none"
   maxClips:       number;
+  language?:      string;   // 2-letter ISO code (e.g. "hi", "en") — only set for uploads
 }
 
 export async function enqueueJob(payload: JobMessage): Promise<void> {

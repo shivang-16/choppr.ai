@@ -76,6 +76,8 @@ export default function ProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const apiFetch = useApiFetch();
 
   const fetchProjects = async () => {
@@ -89,12 +91,22 @@ export default function ProjectsPage() {
 
   useEffect(() => { fetchProjects(); }, []);
 
-  const handleDelete = async (e: React.MouseEvent, projectId: string) => {
+  const handleDeleteClick = (e: React.MouseEvent, projectId: string, title: string) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm("Delete this project and all its clips?")) return;
-    await apiFetch(`${API_URL}/api/projects/${projectId}`, { method: "DELETE" });
-    setProjects((p) => p.filter((x) => x._id !== projectId));
+    setDeleteTarget({ id: projectId, title });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`${API_URL}/api/projects/${deleteTarget.id}`, { method: "DELETE" });
+      setProjects((p) => p.filter((x) => x._id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -201,7 +213,7 @@ export default function ProjectsPage() {
 
                     {/* Delete button */}
                     <button
-                      onClick={(e) => handleDelete(e, project._id)}
+                      onClick={(e) => handleDeleteClick(e, project._id, project.title)}
                       className="absolute top-3 right-3 h-7 w-7 flex items-center justify-center rounded-lg bg-black/40 text-white/20 opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-400/10 transition-all"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -213,6 +225,37 @@ export default function ProjectsPage() {
           )}
         </div>
       </main>
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1a1a1a] p-6 shadow-2xl flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-[15px] font-semibold text-white">Delete project?</h2>
+              <p className="text-[13px] text-white/45 leading-snug">
+                <span className="text-white/70 font-medium">&ldquo;{deleteTarget.title}&rdquo;</span> and all its clips will be permanently deleted from storage. This cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="cursor-pointer px-4 py-2 rounded-xl text-[13px] text-white/50 hover:text-white border border-white/10 hover:border-white/20 transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="cursor-pointer flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 hover:border-red-500/40 transition-colors disabled:opacity-40"
+              >
+                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -55,6 +55,7 @@ const CreateJobSchema = z.object({
   backgroundFill: z.enum(BACKGROUND_FILLS).default("blur"),
   maxClips:       z.number().int().min(1).max(20).default(10),
   durationSecs:   z.number().min(0).optional(),
+  language:       z.string().optional(),
 }).refine(data => data.url || data.s3Key, {
   message: "Either url or s3Key is required",
 });
@@ -74,7 +75,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    const { url, s3Key, query, clipModel, genre, clipLength, aspectRatio, backgroundFill, maxClips, durationSecs } = parsed.data;
+    const { url, s3Key, query, clipModel, genre, clipLength, aspectRatio, backgroundFill, maxClips, durationSecs, language } = parsed.data;
     const userId = (req as any).user?._id ?? (req as any).auth?.userId;
     if (!userId) {
       res.status(401).json({ error: "Unauthorized" });
@@ -129,11 +130,12 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
         status:      "pending",
         progress:    0,
         projectId,
+        ...(s3Key ? { sourceVideoS3Key: s3Key } : {}),
       }),
     ]);
 
   // 2. Push to SQS with all clip settings
-    await enqueueJob({ jobId, userId, url: url ?? "", s3Key: s3Key ?? "", query, projectId, clipModel, genre, clipLength, aspectRatio, backgroundFill, maxClips });
+    await enqueueJob({ jobId, userId, url: url ?? "", s3Key: s3Key ?? "", query, projectId, clipModel, genre, clipLength, aspectRatio, backgroundFill, maxClips, ...(language ? { language } : {}) });
 
     logger.info("Job created and enqueued", {
       jobId,

@@ -188,6 +188,7 @@ function DashboardInner() {
   const [clipLength, setClipLength] = useState("Short (0-60s)");
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [backgroundFill, setBackgroundFill] = useState("blur");
+  const [language, setLanguage] = useState("auto");
   const [bgInfoOpen, setBgInfoOpen] = useState(false);
   const bgInfoRef = useRef<HTMLDivElement>(null);
   const [arInfoOpen, setArInfoOpen] = useState(false);
@@ -374,6 +375,7 @@ function DashboardInner() {
       };
       if (uploadedS3Key) {
         body.s3Key = uploadedS3Key;
+        if (language !== "auto") body.language = language;
       } else {
         body.url = video.url;
       }
@@ -405,6 +407,7 @@ function DashboardInner() {
     setError(null);
     setUploadedS3Key(null);
     setUploadProgress(null);
+    setLanguage("auto");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -741,6 +744,42 @@ function DashboardInner() {
                   ))}
                 </select>
               </label>
+              {uploadedS3Key && (
+                <label className="flex items-center gap-2 text-white/50">
+                  Language
+                  <select
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    className="bg-transparent text-white/80 border-b border-white/15 outline-none cursor-pointer"
+                  >
+                    {[
+                      { value: "auto",  label: "Auto-detect" },
+                      { value: "en",    label: "English" },
+                      { value: "hi",    label: "Hindi" },
+                      { value: "ta",    label: "Tamil" },
+                      { value: "te",    label: "Telugu" },
+                      { value: "kn",    label: "Kannada" },
+                      { value: "ml",    label: "Malayalam" },
+                      { value: "bn",    label: "Bengali" },
+                      { value: "mr",    label: "Marathi" },
+                      { value: "pa",    label: "Punjabi" },
+                      { value: "gu",    label: "Gujarati" },
+                      { value: "es",    label: "Spanish" },
+                      { value: "fr",    label: "French" },
+                      { value: "de",    label: "German" },
+                      { value: "pt",    label: "Portuguese" },
+                      { value: "ar",    label: "Arabic" },
+                      { value: "ru",    label: "Russian" },
+                      { value: "it",    label: "Italian" },
+                      { value: "zh",    label: "Chinese" },
+                      { value: "ja",    label: "Japanese" },
+                      { value: "ko",    label: "Korean" },
+                    ].map(({ value, label }) => (
+                      <option key={value} value={value} className="bg-[#111]">{label}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
 
             {/* Prompt */}

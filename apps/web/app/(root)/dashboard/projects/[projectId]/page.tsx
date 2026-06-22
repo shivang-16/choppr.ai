@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
-import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Wand2, Sparkles, ChevronLeft, ChevronRight, RotateCcw, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Wand2, Sparkles, ChevronLeft, ChevronRight, RotateCcw, AlertCircle, CheckCircle2, Trash2 } from "lucide-react";
 import { useRouter as _useRouter } from "next/navigation";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -120,7 +120,7 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
                 href={current?.s3Url}
                 download
                 onClick={(e) => e.stopPropagation()}
-                className="w-full flex items-center justify-center gap-1.5 rounded-full bg-white py-2.5 text-[13px] font-semibold text-black hover:bg-white/90 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-1.5 rounded-full bg-white py-2.5 text-[13px] font-semibold text-black hover:bg-red-500 hover:text-white transition-colors cursor-pointer"
               >
                 <Download className="h-3.5 w-3.5" />
                 Download
@@ -272,7 +272,7 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
               href={current.s3Url}
               download
               onClick={(e) => e.stopPropagation()}
-              className="w-full cursor-pointer flex items-center justify-center gap-1.5 rounded-xl bg-white py-2 text-[11px] font-semibold text-black hover:bg-white/90 active:scale-95 transition-all"
+              className="w-full cursor-pointer flex items-center justify-center gap-1.5 rounded-xl bg-white py-2 text-[11px] font-semibold text-black hover:bg-red-500 hover:text-white active:scale-95 transition-all"
             >
               <Download className="h-3 w-3" />
               Download
@@ -407,6 +407,8 @@ export default function ProjectDetailPage() {
   const [clips, setClips]               = useState<any[]>([]);
   const [loading, setLoading]           = useState(true);
   const [modal, setModal] = useState<{ slides: any[]; startIdx: number } | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting]         = useState(false);
   const apiFetch = useApiFetch();
 
   const handleRetry = () => {
@@ -417,6 +419,17 @@ export default function ProjectDetailPage() {
     if (project.aspectRatio)    params.set("aspectRatio", project.aspectRatio);
     if (project.backgroundFill) params.set("backgroundFill", project.backgroundFill);
     router.push(`/dashboard?${params.toString()}`);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!projectId) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`${API_URL}/api/projects/${projectId}`, { method: "DELETE" });
+      router.push("/dashboard/projects");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   useEffect(() => {
@@ -503,7 +516,15 @@ export default function ProjectDetailPage() {
                 <span>Retry</span>
               </button>
             )}
-          </div>
+            {project && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="shrink-0 cursor-pointer flex items-center justify-center h-8 w-8 rounded-lg border border-white/10 text-white/30 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-colors"
+                title="Delete project"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}          </div>
 
           {/* Loading */}
           {loading && (
@@ -584,6 +605,37 @@ export default function ProjectDetailPage() {
           onClose={() => setModal(null)}
           onUse={(clip) => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
         />
+      )}
+
+      {/* Delete confirmation modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1a1a1a] p-6 shadow-2xl flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-[15px] font-semibold text-white">Delete project?</h2>
+              <p className="text-[13px] text-white/45 leading-snug">
+                <span className="text-white/70 font-medium">&ldquo;{project?.title}&rdquo;</span> and all its clips will be permanently deleted from storage. This cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="cursor-pointer px-4 py-2 rounded-xl text-[13px] text-white/50 hover:text-white border border-white/10 hover:border-white/20 transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={deleting}
+                className="cursor-pointer flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25 hover:border-red-500/40 transition-colors disabled:opacity-40"
+              >
+                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
