@@ -309,7 +309,7 @@ function BillingContent() {
             {[
               {
                 q: "What counts as 1 credit?",
-                a: "1 minute of source video processed. AI clipping costs 2 credits/min. Captions or Reframe alone cost 1 credit/min.",
+                a: "AI clipping costs 2 credits per minute of source video. Exporting a clip costs 2 credits per export. Captions or reframe alone cost 1 credit/min.",
               },
               {
                 q: "Do unused credits roll over?",

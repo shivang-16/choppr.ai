@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils";
 import ChopprLogo from "@/components/choppr-logo";
 
 const FEATURES = [
-  { label: "AI Clipping", description: "Auto-find viral moments" },
-  { label: "AI Captioning", description: "Accurate captions in seconds" },
-  { label: "AI Reframe", description: "Smart crop for any aspect ratio" },
+  { label: "AI Clipping", description: "Auto-find viral moments", href: "/dashboard" },
+  { label: "AI Captioning", description: "Accurate captions in seconds", href: "/dashboard" },
+  { label: "AI Reframe", description: "Smart crop for any aspect ratio", href: "/dashboard" },
 ];
 
 export default function Navbar() {
@@ -49,15 +49,17 @@ export default function Navbar() {
               />
             </button>
             {showFeatures && (
-              <div className="absolute top-full left-0 mt-1 w-56 rounded-xl border border-white/10 bg-[#1a1a1a]/95 backdrop-blur-xl p-2 shadow-xl">
+              <div className="absolute top-full left-0 mt-1 w-56 rounded-xl border border-white/10 bg-[#141414] p-2 shadow-2xl z-50">
                 {FEATURES.map((f) => (
-                  <div
+                  <Link
                     key={f.label}
-                    className="rounded-lg px-3 py-2 hover:bg-white/6 transition-colors cursor-default"
+                    href={f.href}
+                    className="block rounded-lg px-3 py-2 hover:bg-white/8 transition-colors"
+                    onClick={() => setShowFeatures(false)}
                   >
-                    <p className="text-[13px] font-medium text-white/80">{f.label}</p>
-                    <p className="text-[11px] text-white/40">{f.description}</p>
-                  </div>
+                    <p className="text-[13px] font-medium text-white/90">{f.label}</p>
+                    <p className="text-[11px] text-white/45">{f.description}</p>
+                  </Link>
                 ))}
               </div>
             )}
@@ -76,7 +78,7 @@ export default function Navbar() {
 
           {/* Pricing */}
           <Link
-            href="/dashboard/billing"
+            href="/pricing"
             className={cn(
               "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
               "text-white/60 hover:text-white hover:bg-white/6"
