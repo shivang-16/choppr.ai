@@ -175,11 +175,11 @@ interface EditPanelProps {
   setContrast: (n: number) => void;
   saturation: number;
   setSaturation: (n: number) => void;
-  exportPhase: "idle" | "exporting" | "done" | "error";
+  exportPhase: "idle" | "exporting" | "done" | "error" | "no_credits";
   exportProgress: number;
   exportUrl: string | null;
   handleExport: () => void;
-  setExportPhase: (p: "idle" | "exporting" | "done" | "error") => void;
+  setExportPhase: (p: "idle" | "exporting" | "done" | "error" | "no_credits") => void;
   setExportUrl: (u: string | null) => void;
   styleGridMaxHeight?: number | string;
   // Background overlay
@@ -242,13 +242,13 @@ function EditPanelContent({
               <span className="text-[11px] font-semibold text-white/60">{captionFontSize}px</span>
             </div>
             <input
-              type="range" min={14} max={72} step={2}
+              type="range" min={14} max={90} step={2}
               value={captionFontSize}
               onChange={e => setCaptionFontSize(Number(e.target.value))}
               className="w-full accent-white cursor-pointer"
             />
             <div className="flex justify-between text-[10px] text-white/20">
-              <span>14px</span><span>72px</span>
+              <span>14px</span><span>90px</span>
             </div>
           </div>
 
@@ -548,6 +548,23 @@ function ExportSection({
         </>
       )}
 
+      {exportPhase === "no_credits" && (
+        <>
+          <div className="flex items-center gap-2 text-[12px] text-amber-400 mb-1">
+            <AlertCircle className="h-4 w-4" /> Not enough credits to export
+          </div>
+          <a
+            href="/pricing"
+            className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all text-center block"
+          >
+            Get more credits →
+          </a>
+          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
+            Cancel
+          </button>
+        </>
+      )}
+
       {!compact && exportPhase === "idle" && (
         <p className="text-[11px] text-white/20 text-center">Settings applied on export</p>
       )}
@@ -582,7 +599,7 @@ export default function ClipRefinePage() {
   const [captionStyle, setCaptionStyle]   = useState<CaptionStyle>("none");
   const [captionWords, setCaptionWords]   = useState<CaptionWord[]>([]);
   const [captionLang, setCaptionLang]     = useState("");
-  const [captionFontSize, setCaptionFontSize] = useState(28);
+  const [captionFontSize, setCaptionFontSize] = useState(50);
   const [captionPosY, setCaptionPosY]         = useState(0);
   const [translating, setTranslating]     = useState(false);
   const [activeLang, setActiveLang]       = useState("");
@@ -601,7 +618,7 @@ export default function ClipRefinePage() {
   const segmenterRef = useRef<ImageSegmenterRef | null>(null);
 
   // Export state
-  const [exportPhase, setExportPhase]       = useState<"idle" | "exporting" | "done" | "error">("idle");
+  const [exportPhase, setExportPhase]       = useState<"idle" | "exporting" | "done" | "error" | "no_credits">("idle");
   const [exportProgress, setExportProgress] = useState(0);
   const [exportUrl, setExportUrl]           = useState<string | null>(null);
   const exportPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -750,8 +767,7 @@ export default function ClipRefinePage() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         if (err.error === "insufficient_credits") {
-          alert(err.message ?? "Insufficient credits to export. Please upgrade your plan or purchase credits.");
-          setExportPhase("idle");
+          setExportPhase("no_credits");
           return;
         }
         throw new Error(err.error ?? "Export failed");

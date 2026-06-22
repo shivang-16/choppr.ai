@@ -60,7 +60,7 @@ const ClipSchema = new Schema<IClip>(
     editSettings: {
       type: {
         captionStyle:  { type: String, default: "none" },
-        captionFontSize: { type: Number, default: 28 },
+        captionFontSize: { type: Number, default: 50 },
         captionPosY:   { type: Number, default: 0 },
         captionLang:   { type: String, default: "" },
         captionWords:  { type: [{ word: String, start: Number, end: Number }], default: undefined },

@@ -104,7 +104,7 @@ const GOLD    = ["#FFD700","#FFA500","#FFD700","#FFFACD","#FFD700"];
 // Purple-pink gradient for gradient-pop
 const PURPLE_POP = ["#A855F7","#EC4899","#F97316","#EAB308","#A855F7"];
 
-export default function CaptionRenderer({ videoRef, words, style, fontSize = 28, aspectRatio = "9:16", posOffset = 0 }: Props) {
+export default function CaptionRenderer({ videoRef, words, style, fontSize = 50, aspectRatio = "9:16", posOffset = 0 }: Props) {
   const canvasW = aspectRatio === "16:9" ? 1920 : 1080;
   const canvasH = aspectRatio === "16:9" ? 1080 : aspectRatio === "1:1" ? 1080 : 1920;
   const canvasRef = useRef<HTMLCanvasElement>(null);

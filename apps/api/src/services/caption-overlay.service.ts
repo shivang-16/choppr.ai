@@ -19,7 +19,7 @@ import { ensureFontsRegistered } from "../utils/fonts.js";
 import { logger }       from "../utils/logger.js";
 
 const FPS               = 10;
-const DEFAULT_FONT_SIZE = 28; // same default as the browser CaptionRenderer
+const DEFAULT_FONT_SIZE = 50; // same default as the browser CaptionRenderer
 
 export interface OverlayParams {
   words:        CaptionWord[];

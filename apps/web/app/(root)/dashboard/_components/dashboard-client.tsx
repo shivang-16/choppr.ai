@@ -177,6 +177,10 @@ function DashboardInner() {
       .then((r) => r.ok ? r.json() : [])
       .then(setProjects)
       .catch(() => {});
+    apiFetch(`${API_URL}/api/credits`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.balance != null) setUserBalance(d.balance); })
+      .catch(() => {});
   }, []);
 
   const [clipModel, setClipModel] = useState("Auto");
@@ -186,6 +190,9 @@ function DashboardInner() {
   const [backgroundFill, setBackgroundFill] = useState("blur");
   const [bgInfoOpen, setBgInfoOpen] = useState(false);
   const bgInfoRef = useRef<HTMLDivElement>(null);
+  const [arInfoOpen, setArInfoOpen] = useState(false);
+  const arInfoRef = useRef<HTMLDivElement>(null);
+  const [userBalance, setUserBalance] = useState<number | null>(null);
 
   // Close background info popover on outside click
   useEffect(() => {
@@ -198,6 +205,18 @@ function DashboardInner() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [bgInfoOpen]);
+
+  // Close aspect ratio info popover on outside click
+  useEffect(() => {
+    if (!arInfoOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (arInfoRef.current && !arInfoRef.current.contains(e.target as Node)) {
+        setArInfoOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [arInfoOpen]);
   const [maxClips, setMaxClips] = useState(10);
   const [prompt, setPrompt] = useState("");
 
@@ -249,13 +268,18 @@ function DashboardInner() {
     }
   };
 
-  // Pre-populate URL from landing page hero (?url=...)
+  // Pre-populate URL from landing page hero (?url=...) or retry redirect
   useEffect(() => {
     const prefilledUrl = searchParams.get("url");
     if (prefilledUrl) {
       setInputUrl(prefilledUrl);
       handleFetch(prefilledUrl);
     }
+    // Pre-fill settings if redirected from retry
+    const paramAspectRatio    = searchParams.get("aspectRatio");
+    const paramBackgroundFill = searchParams.get("backgroundFill");
+    if (paramAspectRatio)    setAspectRatio(paramAspectRatio);
+    if (paramBackgroundFill) setBackgroundFill(paramBackgroundFill);
     // Auto-open file picker if redirected from landing page upload button
     if (searchParams.get("upload") === "1" && !uploadTriggeredRef.current) {
       uploadTriggeredRef.current = true;
@@ -727,25 +751,67 @@ function DashboardInner() {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="Example: find all the moments when someone scored"
-                className="w-full rounded-xl border border-white/8 bg-white/4 px-4 py-2.5 text-[13px] text-white placeholder:text-white/20 outline-none focus:border-white/20 transition-colors"
+                className="w-full rounded-xl border border-white/8 bg-white/4 px-4 py-2.5 text-[13px] text-white placeholder:text-white/35 outline-none focus:border-white/20 transition-colors"
               />
             </div>
 
             {/* Aspect ratio */}
-            <div className="flex items-center gap-3">
-              <span className="text-[12px] text-white/50">Choose aspect ratio</span>
-              {["9:16", "1:1", "16:9"].map((r) => (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative flex items-center gap-1.5" ref={arInfoRef}>
+                <span className="text-[12px] text-white/50">Choose aspect ratio</span>
+                <button
+                  onClick={() => setArInfoOpen((o) => !o)}
+                  className="text-white/30 hover:text-white/60 transition-colors"
+                  aria-label="Aspect ratio info"
+                >
+                  <Info size={13} />
+                </button>
+                {arInfoOpen && (
+                  <div className="absolute left-0 bottom-full mb-2 z-50 w-64 rounded-xl border border-white/10 bg-[#1a1a1a] p-3 shadow-lg">
+                    <p className="text-[11px] font-medium text-white/80 mb-2">Aspect ratio</p>
+                    <ul className="flex flex-col gap-2">
+                      {[
+                        { label: "9:16 – Vertical", desc: "Perfect for TikTok, Instagram Reels, and YouTube Shorts. Fills the full phone screen." },
+                        { label: "1:1 – Square",    desc: "Works great on Instagram feed and LinkedIn. Balanced for all platforms." },
+                        { label: "16:9 – Landscape", desc: "Classic widescreen format. Ideal for YouTube, Twitter/X, and presentations." },
+                      ].map(({ label, desc }) => (
+                        <li key={label}>
+                          <span className="text-[11px] font-semibold text-white/70">{label}: </span>
+                          <span className="text-[11px] text-white/40">{desc}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              {([
+                { r: "9:16",  icon: (
+                    <svg viewBox="0 0 10 18" className="h-3.5 w-2 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="1" y="1" width="8" height="16" rx="1.5" />
+                    </svg>
+                  )},
+                { r: "1:1",  icon: (
+                    <svg viewBox="0 0 14 14" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="1" y="1" width="12" height="12" rx="1.5" />
+                    </svg>
+                  )},
+                { r: "16:9", icon: (
+                    <svg viewBox="0 0 18 11" className="h-2 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="1" y="1" width="16" height="9" rx="1.5" />
+                    </svg>
+                  )},
+              ] as const).map(({ r, icon }) => (
                 <button
                   key={r}
                   onClick={() => setAspectRatio(r)}
                   className={cn(
-                    "px-3 py-1 rounded-lg border text-[12px] transition-colors",
+                    "flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[12px] transition-colors",
                     aspectRatio === r
                       ? "border-white/30 bg-white/10 text-white"
                       : "border-white/8 text-white/35 hover:text-white/60"
                   )}
                 >
-                  □ {r}
+                  {icon} {r}
                 </button>
               ))}
             </div>
@@ -769,13 +835,13 @@ function DashboardInner() {
                     <p className="text-[11px] font-medium text-white/80 mb-2">Background fill modes</p>
                     <ul className="flex flex-col gap-2">
                       {[
-                        { label: "Blurry BG", desc: "A blurred copy of your video fills the empty space — polished, no dead space." },
-                        { label: "Black",     desc: "Solid black bars on the sides or top/bottom — classic letterbox look." },
-                        { label: "White",     desc: "Same as black but white — great for screen recordings or tutorial content." },
-                        { label: "Crop",      desc: "Center-crops the video to fill the frame — no bars, but edges may be cut off." },
+                        { label: "Blurry BG", desc: "A blurred copy of your video fills the empty space - polished, no dead space." },
+                        { label: "Black",     desc: "Solid black bars on the sides or top/bottom - classic letterbox look." },
+                        { label: "White",     desc: "Same as black but white - great for screen recordings or tutorial content." },
+                        { label: "Crop",      desc: "Center-crops the video to fill the frame - no bars, but edges may be cut off." },
                       ].map(({ label, desc }) => (
                         <li key={label}>
-                          <span className="text-[11px] font-semibold text-white/70">{label} — </span>
+                          <span className="text-[11px] font-semibold text-white/70">{label}: </span>
                           <span className="text-[11px] text-white/40">{desc}</span>
                         </li>
                       ))}
@@ -815,16 +881,29 @@ function DashboardInner() {
             >
               Upgrade your plan to continue →
             </a>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-8"
-            >
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {submitting ? "Creating job…" : "Get clips"}
-            </button>
-          )}
+          ) : (() => {
+            const requiredCredits = video.durationSecs && video.durationSecs > 0
+              ? Math.ceil(video.durationSecs / 60) * 2
+              : 2;
+            const insufficientCredits = userBalance !== null && userBalance < requiredCredits;
+            return insufficientCredits ? (
+              <a
+                href="/pricing"
+                className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] flex items-center justify-center gap-2 mb-8"
+              >
+                Get more credits → ({userBalance}/{requiredCredits} credits)
+              </a>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-8"
+              >
+                {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {submitting ? "Creating job…" : "Get clips"}
+              </button>
+            );
+          })()}
         </div>
       )}
     </div>

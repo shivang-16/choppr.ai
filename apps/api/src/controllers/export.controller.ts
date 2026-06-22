@@ -45,7 +45,7 @@ const CreateExportSchema = z.object({
   volumes:        z.record(z.string(), z.number()).default({}),
   speeds:         z.record(z.string(), z.number()).default({}),
   captionStyle:   z.string().default("none"),
-  captionFontSize: z.number().min(8).max(200).default(28),
+  captionFontSize: z.number().min(8).max(200).default(50),
   captionPosY:    z.number().min(-100).max(100).default(0),
   captionMap:     z.record(z.string(), z.array(CaptionWordSchema)).default({}),
   aspectRatio:    z.string().default("9:16"),

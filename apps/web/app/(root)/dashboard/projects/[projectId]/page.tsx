@@ -330,9 +330,9 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
 const STAGES = [
   { key: "pending",      label: "Getting things ready",   sub: "Your video is up next hang tight!" },
   { key: "downloading",  label: "Grabbing your video",    sub: "Pulling in the source so we can work on it" },
-  { key: "transcribing", label: "Listening to the audio", sub: "Turning speech into text to find the good bits" },
+  { key: "transcribing", label: "Listening to the audio", sub: "Turning speech into text to find the good bits. This step usually takes some time." },
   { key: "analyzing",    label: "Finding the best moments", sub: "AI is scanning for highlights worth clipping" },
-  { key: "clipping",     label: "Making your clips",      sub: "Almost there, cutting and saving your clips" },
+  { key: "clipping",     label: "Making your clips",      sub: "Almost there, cutting and saving your clips. This step usually takes some time." },
 ];
 
 const STATUS_TO_IDX: Record<string, number> = {
@@ -390,7 +390,10 @@ function ProcessingView({ jobStatus }: { jobStatus?: string | null }) {
         })}
       </div>
 
-      <p className="text-[12px] text-white/20 text-center">This usually takes 3–10 minutes depending on video length</p>
+      <div className="flex flex-col gap-1 text-center">
+        <p className="text-[12px] text-white/45">This usually takes 3–10 minutes depending on video length</p>
+        <p className="text-[12px] text-white/45">You can leave this page, we&apos;ll keep working in the background.</p>
+      </div>
     </div>
   );
 }
@@ -404,25 +407,16 @@ export default function ProjectDetailPage() {
   const [clips, setClips]               = useState<any[]>([]);
   const [loading, setLoading]           = useState(true);
   const [modal, setModal] = useState<{ slides: any[]; startIdx: number } | null>(null);
-  const [retrying, setRetrying]         = useState(false);
   const apiFetch = useApiFetch();
 
-  const handleRetry = async () => {
-    if (retrying) return;
-    setRetrying(true);
-    try {
-      const res = await apiFetch(`${API_URL}/api/projects/${projectId}/retry`, { method: "POST" });
-      if (res.ok) {
-        const [projRes, clipsRes] = await Promise.all([
-          apiFetch(`${API_URL}/api/projects/${projectId}`),
-          apiFetch(`${API_URL}/api/projects/${projectId}/clips`),
-        ]);
-        if (projRes.ok)  setProject(await projRes.json());
-        if (clipsRes.ok) setClips(await clipsRes.json());
-      }
-    } finally {
-      setRetrying(false);
-    }
+  const handleRetry = () => {
+    if (!project?.sourceUrl) return;
+    // Skip re-queuing directly — redirect to dashboard so user can adjust settings and re-submit
+    const params = new URLSearchParams();
+    params.set("url", project.sourceUrl);
+    if (project.aspectRatio)    params.set("aspectRatio", project.aspectRatio);
+    if (project.backgroundFill) params.set("backgroundFill", project.backgroundFill);
+    router.push(`/dashboard?${params.toString()}`);
   };
 
   useEffect(() => {
@@ -503,11 +497,10 @@ export default function ProjectDetailPage() {
             ) : (
               <button
                 onClick={handleRetry}
-                disabled={retrying}
-                className="shrink-0 cursor-pointer flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] md:text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
+                className="shrink-0 cursor-pointer flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] md:text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors"
               >
-                <RotateCcw className={`h-3 w-3 md:h-3.5 md:w-3.5 ${retrying ? "animate-spin" : ""}`} />
-                <span className="hidden sm:inline">{retrying ? "Retrying…" : "Retry"}</span>
+                <RotateCcw className="h-3 w-3 md:h-3.5 md:w-3.5" />
+                <span>Retry</span>
               </button>
             )}
           </div>

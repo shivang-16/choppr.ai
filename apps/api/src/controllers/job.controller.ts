@@ -4,7 +4,7 @@ import { z } from "zod";
 import { Job } from "../model/job.model.js";
 import { Project } from "../model/project.model.js";
 import { enqueueJob } from "../services/sqs.js";
-import { checkBalance, MIN_CREDITS_TO_START } from "../services/credits.service.js";
+import { checkBalance, MIN_CREDITS_TO_START, CREDITS_PER_MINUTE } from "../services/credits.service.js";
 import { logger } from "../utils/logger.js";
 
 function titleFromUrl(url: string): string {
@@ -74,25 +74,31 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    const { url, s3Key, query, clipModel, genre, clipLength, aspectRatio, backgroundFill, maxClips } = parsed.data;
+    const { url, s3Key, query, clipModel, genre, clipLength, aspectRatio, backgroundFill, maxClips, durationSecs } = parsed.data;
     const userId = (req as any).user?._id ?? (req as any).auth?.userId;
     if (!userId) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
 
-    // Gate: user must have at least MIN_CREDITS_TO_START credits
+    // Gate: check the user has enough credits to cover the full video duration.
+    // If durationSecs is provided, compute the full cost; otherwise fall back to MIN_CREDITS_TO_START.
     const { ok, balance } = await checkBalance(userId);
-    if (!ok) {
+    const requiredCredits = durationSecs && durationSecs > 0
+      ? Math.max(MIN_CREDITS_TO_START, Math.ceil(durationSecs / 60) * CREDITS_PER_MINUTE)
+      : MIN_CREDITS_TO_START;
+
+    if (!ok || balance < requiredCredits) {
       logger.warn("Job rejected: insufficient credits", {
         userId,
         balance,
-        minRequired: MIN_CREDITS_TO_START,
+        requiredCredits,
       });
       res.status(402).json({
         error: "insufficient_credits",
-        message: `You need at least ${MIN_CREDITS_TO_START} credits to start a job. Your balance: ${balance}.`,
+        message: `You need ${requiredCredits} credits for this video (${Math.ceil((durationSecs ?? 0) / 60)} min). Your balance: ${balance}.`,
         balance,
+        requiredCredits,
       });
       return;
     }

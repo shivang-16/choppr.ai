@@ -371,7 +371,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
           width:        targetW,
           height:       targetH,
           durationSecs: totalDuration,
-          fontSize:     captionFontSize ?? 28,
+          fontSize:     captionFontSize ?? 50,
           posOffset:    captionPosY ?? 0,
           outputPath:   overlayPath,
         });
