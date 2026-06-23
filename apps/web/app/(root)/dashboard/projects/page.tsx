@@ -212,12 +212,23 @@ export default function ProjectsPage() {
                     </div>
 
                     {/* Delete button */}
-                    <button
-                      onClick={(e) => handleDeleteClick(e, project._id, project.title)}
-                      className="absolute top-3 right-3 h-7 w-7 flex items-center justify-center rounded-lg bg-black/40 text-white/20 opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-400/10 transition-all"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {(() => {
+                      const isProcessing = !["done", "failed"].includes(project.status);
+                      return (
+                        <button
+                          onClick={(e) => !isProcessing && handleDeleteClick(e, project._id, project.title)}
+                          disabled={isProcessing}
+                          title={isProcessing ? "Wait until processing completes" : "Delete project"}
+                          className={`absolute top-3 right-3 h-7 w-7 flex items-center justify-center rounded-lg bg-black/40 opacity-0 group-hover:opacity-100 transition-all
+                            ${isProcessing
+                              ? "text-white/15 cursor-not-allowed"
+                              : "text-white/20 hover:text-red-400 hover:bg-red-400/10 cursor-pointer"
+                            }`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      );
+                    })()}
                   </Link>
                 );
               })}

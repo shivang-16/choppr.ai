@@ -516,15 +516,23 @@ export default function ProjectDetailPage() {
                 <span>Retry</span>
               </button>
             )}
-            {project && (
-              <button
-                onClick={() => setShowDeleteModal(true)}
-                className="shrink-0 cursor-pointer flex items-center justify-center h-8 w-8 rounded-lg border border-white/10 text-white/30 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-colors"
-                title="Delete project"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            )}          </div>
+            {project && (() => {
+              const isProcessing = !["done", "failed"].includes(project.status);
+              return (
+                <button
+                  onClick={() => !isProcessing && setShowDeleteModal(true)}
+                  disabled={isProcessing}
+                  title={isProcessing ? "Wait until processing completes" : "Delete project"}
+                  className={`shrink-0 flex items-center justify-center h-8 w-8 rounded-lg border transition-colors
+                    ${isProcessing
+                      ? "border-white/6 text-white/15 cursor-not-allowed"
+                      : "cursor-pointer border-white/10 text-white/30 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10"
+                    }`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              );
+            })()}          </div>
 
           {/* Loading */}
           {loading && (
