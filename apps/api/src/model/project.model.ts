@@ -14,6 +14,12 @@ export interface IProject {
   error?: string;
   aspectRatio?: string;
   backgroundFill?: BackgroundFill;
+  // Clip generation settings
+  clipModel?: string;
+  genre?: string;
+  clipLength?: string;
+  maxClips?: number;
+  language?: string;
   jobId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -32,6 +38,11 @@ const ProjectSchema = new Schema<IProject>(
     error:         { type: String },
     aspectRatio:    { type: String, default: "9:16" },
     backgroundFill: { type: String, enum: ["blur", "black", "white", "none"], default: "blur" },
+    clipModel:     { type: String, default: "Auto" },
+    genre:         { type: String, default: "Auto" },
+    clipLength:    { type: String, default: "Auto (0m-3m)" },
+    maxClips:      { type: Number, default: 10 },
+    language:      { type: String },
     jobId:         { type: String, required: true, index: true },
   },
   { timestamps: true, _id: false }

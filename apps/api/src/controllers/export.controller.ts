@@ -98,8 +98,19 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       status:         "pending",
       progress:       0,
       captionStyle,
+      captionFontSize,
+      captionPosY,
       aspectRatio,
       backgroundFill,
+      brightness,
+      contrast,
+      saturation,
+      tracks,
+      volumes,
+      speeds,
+      captionMap,
+      stickers,
+      ...(originalClipId ? { originalClipId } : {}),
     });
 
     logger.info("Export pipeline starting", {

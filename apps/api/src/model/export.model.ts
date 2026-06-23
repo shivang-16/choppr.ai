@@ -3,19 +3,32 @@ import mongoose, { Schema } from "mongoose";
 export type ExportStatus = "pending" | "rendering" | "done" | "failed";
 
 export interface IExport {
-  _id:            string;
-  userId:         string;
-  projectId:      string;
-  status:         ExportStatus;
-  progress:       number;
-  s3Key?:         string;
-  s3Url?:         string;
-  error?:         string;
-  captionStyle:   string;
-  aspectRatio:    string;
-  backgroundFill: string;
-  createdAt:      Date;
-  updatedAt:      Date;
+  _id:             string;
+  userId:          string;
+  projectId:       string;
+  status:          ExportStatus;
+  progress:        number;
+  s3Key?:          string;
+  s3Url?:          string;
+  error?:          string;
+  // Style
+  captionStyle:    string;
+  captionFontSize: number;
+  captionPosY:     number;
+  aspectRatio:     string;
+  backgroundFill:  string;
+  brightness:      number;
+  contrast:        number;
+  saturation:      number;
+  // Timeline
+  tracks:          Record<string, unknown>[];
+  volumes:         Record<string, number>;
+  speeds:          Record<string, number>;
+  captionMap:      Record<string, { word: string; start: number; end: number }[]>;
+  stickers:        { stickerId: string; x: number; y: number; scale: number }[];
+  originalClipId?: string;
+  createdAt:       Date;
+  updatedAt:       Date;
 }
 
 const ExportSchema = new Schema<IExport>(
@@ -28,9 +41,20 @@ const ExportSchema = new Schema<IExport>(
     s3Key:        { type: String },
     s3Url:        { type: String },
     error:        { type: String },
-    captionStyle:   { type: String, default: "none" },
-    aspectRatio:    { type: String, default: "9:16" },
-    backgroundFill: { type: String, enum: ["blur", "black", "white", "none"], default: "blur" },
+    captionStyle:    { type: String, default: "none" },
+    captionFontSize: { type: Number, default: 50 },
+    captionPosY:     { type: Number, default: 0 },
+    aspectRatio:     { type: String, default: "9:16" },
+    backgroundFill:  { type: String, enum: ["blur", "black", "white", "none"], default: "blur" },
+    brightness:      { type: Number, default: 100 },
+    contrast:        { type: Number, default: 100 },
+    saturation:      { type: Number, default: 100 },
+    tracks:          { type: Schema.Types.Mixed, default: [] },
+    volumes:         { type: Schema.Types.Mixed, default: {} },
+    speeds:          { type: Schema.Types.Mixed, default: {} },
+    captionMap:      { type: Schema.Types.Mixed, default: {} },
+    stickers:        { type: Schema.Types.Mixed, default: [] },
+    originalClipId:  { type: String },
   },
   { timestamps: true, _id: false }
 );

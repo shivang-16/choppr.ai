@@ -636,7 +636,7 @@ export default function ClipRefinePage() {
       .catch(() => {});
   }, [projectId]);
 
-  // Load clip (settings + captions) on mount — single fetch to avoid race conditions
+  // Load clip captions on mount — always start fresh with original captions
   useEffect(() => {
     if (!clipId) return;
 
@@ -644,30 +644,6 @@ export default function ClipRefinePage() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return;
-
-        // Apply saved edit settings first
-        const s = data.editSettings;
-        if (s) {
-          if (s.captionStyle)          setCaptionStyle(s.captionStyle);
-          if (s.captionFontSize != null) setCaptionFontSize(s.captionFontSize);
-          if (s.captionPosY != null) setCaptionPosY(s.captionPosY);
-          if (s.speed      != null) setSpeed(s.speed);
-          if (s.trimStart  != null) setTrimStart(s.trimStart);
-          if (s.trimEnd    != null) setTrimEnd(s.trimEnd);
-          if (s.brightness != null) setBrightness(s.brightness);
-          if (s.contrast   != null) setContrast(s.contrast);
-          if (s.saturation != null) setSaturation(s.saturation);
-
-          // Use saved translated captions if present, else fall back to original
-          if (s.captionWords?.length) {
-            setCaptionWords(s.captionWords);
-            setCaptionLang(s.captionLang ?? "");
-            setActiveLang(s.captionLang ?? "");
-            return; // don't overwrite with original below
-          }
-        }
-
-        // No saved translation — use original captions from clip
         if (data.captions?.length) {
           setCaptionWords(data.captions);
           setCaptionLang(data.captionLang ?? "");
@@ -717,6 +693,26 @@ export default function ClipRefinePage() {
 
   const handleExport = async () => {
     if (!src || exportPhase === "exporting") return;
+
+    // If nothing has been changed from defaults, skip the pipeline entirely
+    // and directly download the original S3 clip — no credits consumed.
+    const isUnchanged =
+      captionStyle === "none" &&
+      speed === 1.0 &&
+      trimStart === 0 &&
+      (trimEnd === 0 || trimEnd >= duration) &&
+      brightness === 100 &&
+      contrast === 100 &&
+      saturation === 100 &&
+      placedStickers.length === 0;
+
+    if (isUnchanged) {
+      setExportPhase("done");
+      setExportUrl(src);
+      openAndDownload(src, `clip-${index}.mp4`);
+      return;
+    }
+
     setExportPhase("exporting");
     setExportProgress(0);
     setExportUrl(null);
