@@ -784,14 +784,37 @@ function DashboardInner() {
 
             {/* Prompt */}
             <div className="flex flex-col gap-1.5">
-              <span className="text-[12px] text-white/50">Include specific moments</span>
-              <input
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Example: find all the moments when someone scored"
-                className="w-full rounded-xl border border-white/8 bg-white/4 px-4 py-2.5 text-[13px] text-white placeholder:text-white/35 outline-none focus:border-white/20 transition-colors"
-              />
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] text-white/50">Include specific moments</span>
+                <span className={`text-[11px] tabular-nums transition-colors ${
+                  prompt.length >= 2000 ? "text-red-400" :
+                  prompt.length >= 1600 ? "text-amber-400" :
+                  "text-white/25"
+                }`}>
+                  {prompt.length}/2000
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <input
+                  type="text"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value.slice(0, 2000))}
+                  placeholder="Example: find all the moments when someone scored"
+                  className="w-full rounded-xl border border-white/8 bg-white/4 px-4 py-2.5 text-[13px] text-white placeholder:text-white/35 outline-none focus:border-white/20 transition-colors"
+                />
+                {prompt.length > 0 && (
+                  <div className="h-0.5 w-full rounded-full bg-white/8 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-150 ${
+                        prompt.length >= 2000 ? "bg-red-400" :
+                        prompt.length >= 1600 ? "bg-amber-400" :
+                        "bg-white/40"
+                      }`}
+                      style={{ width: `${(prompt.length / 2000) * 100}%` }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Aspect ratio */}

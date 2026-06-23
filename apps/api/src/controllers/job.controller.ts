@@ -47,7 +47,7 @@ const BACKGROUND_FILLS = ["blur", "black", "white", "none"] as const;
 const CreateJobSchema = z.object({
   url:            z.string().url("Must be a valid URL").optional(),
   s3Key:          z.string().optional(),
-  query:          z.string().max(500).default(""),
+  query:          z.string().max(2000).default(""),
   clipModel:      z.string().default("Auto"),
   genre:          z.string().default("Auto"),
   clipLength:     z.string().default("Auto (0m-3m)"),
