@@ -123,6 +123,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
         genre,
         clipLength,
         maxClips,
+        query,
         ...(language ? { language } : {}),
         jobId,
         totalClips:     0,

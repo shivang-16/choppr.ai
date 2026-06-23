@@ -20,6 +20,7 @@ export interface IProject {
   clipLength?: string;
   maxClips?: number;
   language?: string;
+  query?: string;
   jobId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -43,6 +44,7 @@ const ProjectSchema = new Schema<IProject>(
     clipLength:    { type: String, default: "Auto (0m-3m)" },
     maxClips:      { type: Number, default: 10 },
     language:      { type: String },
+    query:         { type: String, default: "" },
     jobId:         { type: String, required: true, index: true },
   },
   { timestamps: true, _id: false }
