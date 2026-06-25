@@ -543,27 +543,14 @@ function ExportSection({
 
       {exportPhase === "done" && exportUrl && (
         <>
-          <div className="flex items-center gap-2 text-[12px] text-green-400">
+          <div className="flex items-center gap-2 text-[12px] text-green-400 mb-1">
             <CheckCircle className="h-4 w-4" /> Export ready!
           </div>
-          <div className="flex gap-2">
-            <a
-              href={exportUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 rounded-2xl border border-white/15 py-3 text-center text-[13px] font-semibold text-white hover:bg-white/8 transition-all"
-            >
-              Open
-            </a>
-            <button
-              onClick={() => openAndDownload(exportUrl, "clip.mp4")}
-              className="flex-1 rounded-2xl bg-white py-3 text-[13px] font-semibold text-black hover:bg-white/90 transition-all"
-            >
-              Download
-            </button>
-          </div>
-          <button onClick={() => { setExportPhase("idle"); setExportUrl(null); }} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
-            Export again
+          <button
+            onClick={() => openAndDownload(exportUrl, "clip.mp4")}
+            className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+          >
+            Download
           </button>
         </>
       )}
@@ -628,7 +615,7 @@ export default function ClipRefinePage() {
   const [activeTab, setActiveTab]     = useState("captions");
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [drawerMounted, setDrawerMounted] = useState(false);
-  const [panelOpen, setPanelOpen]     = useState(false);
+  const [panelOpen, setPanelOpen]     = useState(true);
 
   const handleSidebarIconClick = (tabId: string) => {
     if (panelOpen && activeTab === tabId) {
@@ -638,6 +625,9 @@ export default function ClipRefinePage() {
       setPanelOpen(true);
     }
   };
+
+  // Close panel on mobile (isMobile resolves after hydration)
+  useEffect(() => { if (isMobile) setPanelOpen(false); }, [isMobile]);
 
   // Transcript panel resize
   const [transcriptWidth, setTranscriptWidth] = useState(300);
@@ -739,6 +729,11 @@ export default function ClipRefinePage() {
     if (!clipId) return;
     saveSettings({ captionStyle, captionFontSize, captionPosY, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation });
   }, [captionStyle, captionFontSize, captionPosY, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation]);
+
+  // Reset export button back to idle when user changes any setting after a successful export
+  useEffect(() => {
+    if (exportPhase === "done") { setExportPhase("idle"); setExportUrl(null); }
+  }, [captionStyle, captionFontSize, captionPosY, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers]);
 
   const handleTranslate = async (lang: string) => {
     if (!lang || lang === activeLang || translating) return;
@@ -1258,14 +1253,46 @@ export default function ClipRefinePage() {
                     <span>{label}</span>
                   </button>
                 ))}
-                <div className="mt-auto w-full px-2 pb-2">
-                  <button
-                    onClick={handleExport}
-                    className="w-full flex flex-col items-center gap-1 py-3 rounded-xl bg-white text-black text-[9px] font-semibold hover:bg-white/90 transition-colors"
-                  >
-                    <Download className="h-4 w-4" />
-                    Export
-                  </button>
+                <div className="mt-auto w-full px-2 pb-3 flex flex-col items-center gap-1">
+                  {/* Circular export/download button */}
+                  <div className="relative h-11 w-11">
+                    {/* Progress ring (visible while exporting) */}
+                    {exportPhase === "exporting" && (
+                      <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
+                        <circle cx="22" cy="22" r="19" fill="none" stroke="white" strokeOpacity="0.12" strokeWidth="3" />
+                        <circle
+                          cx="22" cy="22" r="19" fill="none" stroke="white" strokeWidth="3"
+                          strokeDasharray={`${2 * Math.PI * 19}`}
+                          strokeDashoffset={`${2 * Math.PI * 19 * (1 - exportProgress / 100)}`}
+                          strokeLinecap="round"
+                          className="transition-all duration-500"
+                        />
+                      </svg>
+                    )}
+                    <button
+                      onClick={exportPhase === "done" && exportUrl ? () => openAndDownload(exportUrl, "clip.mp4") : exportPhase === "idle" ? handleExport : undefined}
+                      disabled={exportPhase === "exporting"}
+                      title={exportPhase === "done" ? "Download" : exportPhase === "exporting" ? `${exportProgress}%` : "Export clip"}
+                      className={cn(
+                        "absolute inset-0 flex items-center justify-center rounded-full transition-all duration-150",
+                        exportPhase === "done"
+                          ? "bg-green-500 hover:bg-green-400 active:bg-green-600 text-white cursor-pointer"
+                          : exportPhase === "exporting"
+                            ? "bg-white/8 text-white/50 cursor-not-allowed"
+                            : "bg-white hover:bg-white/85 active:bg-white/70 text-black cursor-pointer"
+                      )}
+                    >
+                      {exportPhase === "exporting"
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : exportPhase === "done"
+                          ? <Download className="h-4 w-4" />
+                          : <Download className="h-4 w-4" />
+                      }
+                    </button>
+                  </div>
+                  <span className="text-[9px] font-medium text-white/60">
+                    {exportPhase === "done" ? "Download" : exportPhase === "exporting" ? `${exportProgress}%` : "Export"}
+                  </span>
                 </div>
               </div>
             )}
