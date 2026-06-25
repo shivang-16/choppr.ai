@@ -357,21 +357,24 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
       const allWords: { word: string; start: number; end: number }[] = [];
       let offset = 0;
       for (const item of videoItems) {
-        const trimIn   = item.trimIn ?? 0;
-        const itemDur  = item.duration;
-        const words    = captionMap[item.id] ?? [];
+        const trimIn    = item.trimIn ?? 0;
+        const itemDur   = item.duration;
+        const spd       = Math.max(0.25, Math.min(4.0, speeds[item.id] ?? 1.0));
+        const outputDur = itemDur / spd;   // actual duration of this segment in the exported video
+        const words     = captionMap[item.id] ?? [];
         for (const w of words) {
-          const adjStart = w.start - trimIn + offset;
-          const adjEnd   = w.end   - trimIn + offset;
-          if (adjEnd > offset && adjStart < offset + itemDur) {
+          // Shift caption times: subtract trimIn, compress by speed factor, add timeline offset
+          const adjStart = (w.start - trimIn) / spd + offset;
+          const adjEnd   = (w.end   - trimIn) / spd + offset;
+          if (adjEnd > offset && adjStart < offset + outputDur) {
             allWords.push({
               word:  w.word,
               start: Math.max(0, adjStart),
-              end:   Math.min(adjStart + (w.end - w.start), offset + itemDur),
+              end:   Math.min(adjStart + (w.end - w.start) / spd, offset + outputDur),
             });
           }
         }
-        offset += itemDur;
+        offset += outputDur;   // accumulate actual output duration (not source duration)
       }
 
       const totalDuration = offset;
