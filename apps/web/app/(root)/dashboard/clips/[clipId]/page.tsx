@@ -5,7 +5,7 @@ import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
 import {
   ArrowLeft, Play, Pause, Volume2, VolumeX,
-  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers,
+  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -149,9 +149,11 @@ function StickerPreview({ stickerId, size }: { stickerId: string; size: number }
 // ── Shared edit panel (desktop sidebar + mobile drawer) ─────────────────────
 interface EditPanelProps {
   activeTab: string;
+  hideTranscript?: boolean;
   captionStyle: CaptionStyle;
   setCaptionStyle: (s: CaptionStyle) => void;
   captionWords: CaptionWord[];
+  onCaptionWordsChange: (words: CaptionWord[]) => void;
   captionFontSize: number;
   setCaptionFontSize: (n: number) => void;
   captionPosY: number;
@@ -189,7 +191,7 @@ interface EditPanelProps {
 }
 
 function EditPanelContent({
-  activeTab, captionStyle, setCaptionStyle, captionWords, captionFontSize, setCaptionFontSize,
+  activeTab, hideTranscript = false, captionStyle, setCaptionStyle, captionWords, onCaptionWordsChange, captionFontSize, setCaptionFontSize,
   captionPosY, setCaptionPosY,
   captionLang, activeLang, translating, handleTranslate,
   speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
@@ -269,6 +271,38 @@ function EditPanelContent({
               <span>Higher</span><span>Lower</span>
             </div>
           </div>
+
+          {/* Editable transcript — only shown on mobile (desktop has its own left panel) */}
+          {captionWords.length > 0 && !hideTranscript && (
+            <div className="flex flex-col gap-2">
+              <div className="h-px bg-white/6" />
+              <div className="flex items-center justify-between">
+                <p className="text-[12px] font-medium text-white/70">Transcript</p>
+                <span className="text-[10px] text-white/30">Click any word to edit</span>
+              </div>
+              <div className="flex flex-wrap gap-x-1 gap-y-1.5 rounded-xl border border-white/8 bg-white/3 p-3">
+                {captionWords.map((w, i) => (
+                  <span
+                    key={i}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onBlur={(e) => {
+                      const newWord = e.currentTarget.textContent?.trim();
+                      if (newWord !== undefined && newWord !== w.word) {
+                        const updated = [...captionWords];
+                        updated[i] = { ...w, word: newWord || w.word };
+                        onCaptionWordsChange(updated);
+                      }
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
+                    className="text-[12px] text-white/75 rounded px-0.5 -mx-0.5 outline-none hover:bg-white/8 focus:bg-white/12 focus:text-white cursor-text leading-relaxed"
+                  >
+                    {w.word}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="h-px bg-white/6" />
 
@@ -594,6 +628,40 @@ export default function ClipRefinePage() {
   const [activeTab, setActiveTab]     = useState("captions");
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [drawerMounted, setDrawerMounted] = useState(false);
+  const [panelOpen, setPanelOpen]     = useState(false);
+
+  const handleSidebarIconClick = (tabId: string) => {
+    if (panelOpen && activeTab === tabId) {
+      setPanelOpen(false);
+    } else {
+      setActiveTab(tabId);
+      setPanelOpen(true);
+    }
+  };
+
+  // Transcript panel resize
+  const [transcriptWidth, setTranscriptWidth] = useState(300);
+  const transcriptResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const handleTranscriptDragStart = (e: React.PointerEvent) => {
+    e.preventDefault();
+    transcriptResizeRef.current = { startX: e.clientX, startWidth: transcriptWidth };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: PointerEvent) => {
+      if (!transcriptResizeRef.current) return;
+      const delta = ev.clientX - transcriptResizeRef.current.startX;
+      setTranscriptWidth(Math.max(180, Math.min(520, transcriptResizeRef.current.startWidth + delta)));
+    };
+    const onUp = () => {
+      transcriptResizeRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   // Caption state
   const [captionStyle, setCaptionStyle]   = useState<CaptionStyle>("none");
@@ -842,7 +910,9 @@ export default function ClipRefinePage() {
   const filterStyle = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
 
   const editPanelProps: EditPanelProps = {
-    activeTab, captionStyle, setCaptionStyle, captionWords, captionFontSize, setCaptionFontSize,
+    activeTab, captionStyle, setCaptionStyle, captionWords,
+    onCaptionWordsChange: setCaptionWords,
+    captionFontSize, setCaptionFontSize,
     captionPosY, setCaptionPosY,
     captionLang, activeLang, translating, handleTranslate,
     speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
@@ -878,17 +948,89 @@ export default function ClipRefinePage() {
 
       <main
         className={cn(
-          "mt-12 flex-1 flex overflow-hidden",
+          "mt-12 flex-1 flex overflow-hidden relative",
           isMobile ? "flex-col ml-0 pb-[9rem]" : "flex-row ml-14 pb-0"
         )}
         style={{ height: "calc(100vh - 48px)" }}
       >
 
-        {/* ── Video preview ── */}
+        {/* ── Video area: transcript (left) + drag handle + video preview (right) ── */}
         <div className={cn(
-          "flex flex-col flex-1 min-h-0 bg-black items-center justify-center relative",
+          "flex flex-col flex-1 min-h-0 overflow-hidden relative",
           !isMobile && "border-r border-white/6"
         )}>
+
+          {/* Top row: transcript + video */}
+          <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+
+          {/* Transcript panel — desktop only */}
+          {!isMobile && (
+            <>
+              <div
+                style={{ width: transcriptWidth }}
+                className="flex flex-col bg-black border-r border-white/8 shrink-0 overflow-hidden min-h-0"
+              >
+                <div className="px-4 py-3 border-b border-white/6 shrink-0 flex items-center justify-between">
+                  <p className="text-[12px] font-semibold text-white/60">Transcript</p>
+                  {captionWords.length > 0 && (
+                    <span className="text-[10px] text-white/25">{captionWords.length} words</span>
+                  )}
+                </div>
+                <div className="flex-1 overflow-y-auto px-4 py-5 no-scrollbar">
+                  {captionWords.length > 0 ? (
+                    <div className="flex flex-wrap gap-x-2 gap-y-2">
+                      {captionWords.map((w, i) => (
+                        <span
+                          key={i}
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => {
+                            const newWord = e.currentTarget.textContent?.trim();
+                            if (newWord !== undefined && newWord !== w.word) {
+                              const updated = [...captionWords];
+                              updated[i] = { ...w, word: newWord || w.word };
+                              setCaptionWords(updated);
+                            }
+                          }}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
+                          className={cn(
+                            "text-[15px] rounded px-1 -mx-0.5 outline-none cursor-text leading-8 transition-colors",
+                            currentTime >= w.start && currentTime <= w.end
+                              ? "bg-white/25 text-white"
+                              : "text-white hover:bg-white/8 focus:bg-white/12"
+                          )}
+                        >
+                          {w.word}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[13px] text-white/20 text-center pt-10">No captions available</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Drag handle */}
+              <div
+                onPointerDown={handleTranscriptDragStart}
+                className="relative w-4 shrink-0 cursor-col-resize flex items-center justify-center group select-none"
+              >
+                {/* Background fill on hover */}
+                <div className="absolute inset-0 bg-white/0 group-hover:bg-white/4 transition-colors" />
+                {/* Visible border line */}
+                <div className="absolute left-[7px] inset-y-0 w-px bg-white/10 group-hover:bg-white/20 transition-colors" />
+                {/* Always-visible grip pill */}
+                <div className="relative z-10 flex flex-col items-center gap-[4px] bg-[#2a2a2a] group-hover:bg-[#3a3a3a] border border-white/15 group-hover:border-white/30 rounded-full px-[3px] py-2 transition-all shadow-sm">
+                  {[0,1,2,3,4].map(i => (
+                    <div key={i} className="w-[3px] h-[3px] rounded-full bg-white/40 group-hover:bg-white/70 transition-colors" />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Video preview */}
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-black items-center justify-center relative">
           <button
             onClick={() => router.back()}
             className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 text-[11px] text-white/50 hover:text-white transition-colors backdrop-blur-sm"
@@ -904,14 +1046,19 @@ export default function ClipRefinePage() {
           </div>
 
           <div className={cn(
-            "relative flex items-center justify-center w-full h-full",
-            isMobile ? "px-3 py-3" : "px-8 py-16"
+            "relative flex items-center justify-center w-full h-full overflow-hidden",
+            isMobile ? "px-2 py-2" : "px-8 py-16"
           )}>
             {src ? (
               <div
                 ref={videoContainerRef}
-                className="relative rounded-xl md:rounded-2xl shadow-2xl shadow-black/80 w-full h-full max-w-full"
-                style={{
+                className="relative rounded-xl md:rounded-2xl shadow-2xl shadow-black/80"
+                style={isMobile ? {
+                  aspectRatio: aspectRatio === "16:9" ? "16/9" : aspectRatio === "1:1" ? "1/1" : "9/16",
+                  width: "100%",
+                  maxWidth: "100%",
+                  maxHeight: "100%",
+                } : {
                   aspectRatio: aspectRatio === "16:9" ? "16/9" : aspectRatio === "1:1" ? "1/1" : "9/16",
                   maxHeight: "100%",
                   maxWidth: aspectRatio === "16:9"
@@ -919,6 +1066,7 @@ export default function ClipRefinePage() {
                     : aspectRatio === "1:1"
                       ? "min(560px, 100%)"
                       : "min(380px, 100%)",
+                  height: "100%",
                 }}
               >
                 {/* Clip the video/canvas layers but NOT the drag handles */}
@@ -1020,10 +1168,24 @@ export default function ClipRefinePage() {
             )}
           </div>
 
-          {/* Playback controls */}
+          {/* ── Panel toggle arrow — sits on the right edge, vertically centered ── */}
+          {!isMobile && (
+            <button
+              onClick={() => setPanelOpen(o => !o)}
+              className="absolute top-1/2 -translate-y-1/2 z-20 flex items-center justify-center h-10 w-5 rounded-l-lg bg-[#1a1a1a] border border-r-0 border-white/10 text-white/70 hover:text-white hover:bg-white/8 transition-colors cursor-pointer"
+              title={panelOpen ? "Collapse panel" : "Expand panel"}
+              style={{ right: 0, transition: "right 300ms ease-in-out" }}
+            >
+              {panelOpen ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+            </button>
+          )}
+          </div>{/* closes video preview div */}
+          </div>{/* closes top row (flex-row) */}
+
+          {/* ── Full-width playback controls ── */}
           <div className={cn(
-            "shrink-0 w-full flex flex-col gap-2",
-            isMobile ? "px-4 pb-3" : "absolute bottom-0 left-0 right-0 px-6 pb-5"
+            "shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a]",
+            isMobile ? "px-4 pb-3 pt-2" : "px-6 py-3"
           )}>
             <input
               type="range" min={0} max={duration || 1} step={0.01} value={currentTime}
@@ -1034,47 +1196,81 @@ export default function ClipRefinePage() {
               <button onClick={togglePlay} className="h-8 w-8 flex items-center justify-center rounded-full bg-white text-black hover:bg-white/90 transition-colors">
                 {playing ? <Pause className="h-3.5 w-3.5 fill-black" /> : <Play className="h-3.5 w-3.5 fill-black ml-0.5" />}
               </button>
-              <button onClick={() => setMuted(m => !m)} className="text-white/40 hover:text-white transition-colors">
+              <button onClick={() => setMuted(m => !m)} className="text-white hover:text-white/70 transition-colors">
                 {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
               </button>
-              <span className="text-[11px] font-mono text-white/35">{fmt(currentTime)} / {fmt(duration)}</span>
+              <span className="text-[11px] font-mono text-white/70">{fmt(currentTime)} / {fmt(duration)}</span>
               {speed !== 1 && <span className="text-[10px] font-semibold text-white/50 bg-white/8 px-1.5 py-0.5 rounded">{speed}×</span>}
             </div>
           </div>
-        </div>
+        </div>{/* closes outer flex-col (video area wrapper) */}
 
-        {/* ── Desktop: right edit panel ── */}
-        {!isMobile && <div className="flex w-[320px] shrink-0 flex-col bg-[#0f0f0f] overflow-hidden">
-          <div className="flex border-b border-white/6">
-            {TABS.map(({ id, icon: Icon, label }) => (
-              <button
-                key={id}
-                onClick={() => setActiveTab(id)}
-                className={cn(
-                  "flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors border-b-2",
-                  activeTab === id ? "border-white text-white" : "border-transparent text-white/30 hover:text-white/60"
-                )}
-              >
-                <Icon className="h-4 w-4" />{label}
-              </button>
-            ))}
+        {/* ── Desktop: collapsible icon sidebar + sliding panel ── */}
+        {!isMobile && (
+          <div
+            className={cn(
+              "shrink-0 flex flex-col bg-[#0f0f0f] border-l border-white/6 overflow-hidden transition-all duration-300 ease-in-out",
+              panelOpen ? "w-[320px]" : "w-14"
+            )}
+          >
+            {panelOpen ? (
+              /* ── Full panel (tabs + content + export) ── */
+              <>
+                <div className="flex border-b border-white/6 shrink-0">
+                  {TABS.map(({ id, icon: Icon, label }) => (
+                    <button
+                      key={id}
+                      onClick={() => { if (activeTab === id) setPanelOpen(false); else setActiveTab(id); }}
+                      className={cn(
+                        "flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors border-b-2",
+                        activeTab === id ? "border-white text-white" : "border-transparent text-white/70 hover:text-white"
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />{label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
+                  <EditPanelContent {...editPanelProps} hideTranscript={true} />
+                </div>
+                <div className="p-4 border-t border-white/6 shrink-0">
+                  <ExportSection
+                    exportPhase={exportPhase}
+                    exportProgress={exportProgress}
+                    exportUrl={exportUrl}
+                    handleExport={handleExport}
+                    setExportPhase={setExportPhase}
+                    setExportUrl={setExportUrl}
+                  />
+                </div>
+              </>
+            ) : (
+              /* ── Collapsed icon sidebar ── */
+              <div className="flex flex-col h-full items-center py-2 gap-1">
+                {TABS.map(({ id, icon: Icon, label }) => (
+                  <button
+                    key={id}
+                    onClick={() => handleSidebarIconClick(id)}
+                    title={label}
+                    className="w-full flex flex-col items-center gap-1 py-3 text-[9px] font-medium text-white hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    <Icon className="h-4.5 w-4.5" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+                <div className="mt-auto w-full px-2 pb-2">
+                  <button
+                    onClick={handleExport}
+                    className="w-full flex flex-col items-center gap-1 py-3 rounded-xl bg-white text-black text-[9px] font-semibold hover:bg-white/90 transition-colors"
+                  >
+                    <Download className="h-4 w-4" />
+                    Export
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-
-          <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
-            <EditPanelContent {...editPanelProps} />
-          </div>
-
-          <div className="p-4 border-t border-white/6">
-            <ExportSection
-              exportPhase={exportPhase}
-              exportProgress={exportProgress}
-              exportUrl={exportUrl}
-              handleExport={handleExport}
-              setExportPhase={setExportPhase}
-              setExportUrl={setExportUrl}
-            />
-          </div>
-        </div>}
+        )}
       </main>
 
       {/* ── MOBILE ONLY — outside <main> ── */}
