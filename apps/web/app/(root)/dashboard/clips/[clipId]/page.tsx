@@ -369,7 +369,7 @@ function EditPanelContent({
             <button
               onClick={() => {
                 const id = `txt-${Date.now()}`;
-                setTextOverlays(prev => [...prev, { id, text: "Your text", x: 0.5, y: 0.5, fontSize: 28, color: "#ffffff", bold: false, italic: false }]);
+                setTextOverlays(prev => [...prev, { id, text: "Your text", x: 0.5, y: 0.5, fontSize: 20, color: "#ffffff", bold: false, italic: false }]);
                 setSelectedTextId(id);
               }}
               className="flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
@@ -1221,30 +1221,34 @@ export default function ClipRefinePage() {
 
           <div className={cn(
             "relative flex items-center justify-center w-full h-full overflow-hidden",
-            isMobile ? "px-2 py-2" : "px-8 py-16"
+            !isMobile && "px-6 py-8"
           )}>
             {src ? (
               <div
                 ref={videoContainerRef}
-                className="relative rounded-xl md:rounded-2xl shadow-2xl shadow-black/80"
+                className="relative md:rounded-2xl shadow-2xl shadow-black/80"
                 style={isMobile ? {
                   aspectRatio: aspectRatio === "16:9" ? "16/9" : aspectRatio === "1:1" ? "1/1" : "9/16",
                   width: "100%",
+                  height: "100%",
                   maxWidth: "100%",
                   maxHeight: "100%",
-                } : {
-                  aspectRatio: aspectRatio === "16:9" ? "16/9" : aspectRatio === "1:1" ? "1/1" : "9/16",
-                  maxHeight: "100%",
-                  maxWidth: aspectRatio === "16:9"
-                    ? "min(780px, 100%)"
-                    : aspectRatio === "1:1"
-                      ? "min(560px, 100%)"
-                      : "min(380px, 100%)",
+                } : aspectRatio === "9:16" ? {
+                  // Portrait: height-driven — fill the tall container
+                  aspectRatio: "9/16",
                   height: "100%",
+                  maxHeight: "100%",
+                  maxWidth: "100%",
+                } : {
+                  // Landscape / square: width-driven — fill the available width
+                  aspectRatio: aspectRatio === "16:9" ? "16/9" : "1/1",
+                  width: "100%",
+                  maxWidth: aspectRatio === "16:9" ? "min(780px, 100%)" : "min(560px, 100%)",
+                  maxHeight: "100%",
                 }}
               >
                 {/* Clip the video/canvas layers but NOT the drag handles */}
-                <div className="absolute inset-0 rounded-xl md:rounded-2xl overflow-hidden">
+                <div className={cn("absolute inset-0 overflow-hidden", !isMobile && "rounded-2xl")}>
                   <BackgroundRenderer
                     videoRef={videoRef}
                     placedStickers={placedStickers}
