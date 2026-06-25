@@ -26,6 +26,8 @@ export interface IExport {
   speeds:          Record<string, number>;
   captionMap:      Record<string, { word: string; start: number; end: number }[]>;
   stickers:        { stickerId: string; x: number; y: number; scale: number }[];
+  textOverlays:    { id: string; text: string; x: number; y: number; fontSize: number; color: string; bold: boolean; italic: boolean }[];
+  previewWidth:    number;
   originalClipId?: string;
   createdAt:       Date;
   updatedAt:       Date;
@@ -54,6 +56,8 @@ const ExportSchema = new Schema<IExport>(
     speeds:          { type: Schema.Types.Mixed, default: {} },
     captionMap:      { type: Schema.Types.Mixed, default: {} },
     stickers:        { type: Schema.Types.Mixed, default: [] },
+    textOverlays:    { type: Schema.Types.Mixed, default: [] },
+    previewWidth:    { type: Number, default: 380 },
     originalClipId:  { type: String },
   },
   { timestamps: true, _id: false }

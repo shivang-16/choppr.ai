@@ -23,6 +23,7 @@ import { Export }            from "../model/export.model.js";
 import { Clip }              from "../model/clip.model.js";
 import { renderCaptionToFile } from "./caption-overlay.service.js";
 import { renderStickersToBuffer, type PlacedSticker } from "./sticker-renderer.js";
+import { renderTextOverlaysToBuffer, type TextOverlay as TextOverlayRenderable } from "./text-overlay-renderer.js";
 import { logger }            from "../utils/logger.js";
 
 // ── AWS ───────────────────────────────────────────────────────────────────────
@@ -74,6 +75,19 @@ export interface ExportPipelineParams {
   saturation?:    number;
   originalClipId?: string | null;
   stickers?:      PlacedSticker[];
+  textOverlays?:  TextOverlay[];
+  previewWidth?:  number;
+}
+
+export interface TextOverlay {
+  id:       string;
+  text:     string;
+  x:        number;  // 0–1 relative
+  y:        number;  // 0–1 relative
+  fontSize: number;
+  color:    string;  // hex e.g. "#ffffff"
+  bold:     boolean;
+  italic:   boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -187,8 +201,10 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     exportId, projectId, userId, tracks, volumes, speeds,
     captionStyle, captionFontSize, captionPosY, aspectRatio, backgroundFill,
     brightness = 100, contrast = 100, saturation = 100, originalClipId,
-    stickers = [],
+    stickers = [], textOverlays = [],
   } = params;
+
+  const previewWidth = params.previewWidth ?? 380;
 
   const enhanceFilter = buildEnhanceFilter(brightness, contrast, saturation);
 
@@ -394,6 +410,32 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     }
 
     await updateExport(exportId, { progress: 88 });
+
+    // ── 7. Text overlays (rendered via canvas → PNG → FFmpeg overlay) ────────
+    if (textOverlays.length > 0) {
+      logger.info(`[export:${exportId}] Applying ${textOverlays.length} text overlay(s)...`);
+
+      const textPng = await renderTextOverlaysToBuffer(textOverlays, targetW, targetH, previewWidth);
+      const textPath = join(tmpDir, "text_overlay.png");
+      await fsp.writeFile(textPath, textPng);
+
+      const textOut = join(tmpDir, "with_text.mp4");
+      await runFFmpeg([
+        "-y",
+        "-i", finalOut,
+        "-loop", "1", "-i", textPath,
+        "-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1[vout]",
+        "-map", "[vout]", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "copy", "-movflags", "+faststart",
+        textOut,
+      ], "text-overlay");
+
+      finalOut = textOut;
+      logger.info(`[export:${exportId}] Text overlays composited`);
+    }
+
+    await updateExport(exportId, { progress: 92 });
 
     // ── 7. Upload to S3 ──────────────────────────────────────────────────────
     logger.info(`[export:${exportId}] Uploading to S3...`);

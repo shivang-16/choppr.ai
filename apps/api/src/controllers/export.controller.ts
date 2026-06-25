@@ -37,6 +37,17 @@ const StickerSchema = z.object({
   scale:     z.number().min(0.1).max(5),
 });
 
+const TextOverlaySchema = z.object({
+  id:       z.string(),
+  text:     z.string(),
+  x:        z.number().min(0).max(1),
+  y:        z.number().min(0).max(1),
+  fontSize: z.number().min(8).max(300),
+  color:    z.string(),
+  bold:     z.boolean().default(false),
+  italic:   z.boolean().default(false),
+});
+
 const BACKGROUND_FILLS = ["blur", "black", "white", "none"] as const;
 
 const CreateExportSchema = z.object({
@@ -55,6 +66,8 @@ const CreateExportSchema = z.object({
   saturation:     z.number().min(0).max(400).default(100),
   originalClipId: z.string().optional(),
   stickers:       z.array(StickerSchema).default([]),
+  textOverlays:   z.array(TextOverlaySchema).default([]),
+  previewWidth:   z.number().min(50).max(3000).default(380),
 });
 
 // ── POST /api/exports ───────────────────────────────────────────────────────
@@ -88,7 +101,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId, stickers } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId, stickers, textOverlays, previewWidth } = parsed.data;
     const exportId = randomUUID();
 
     await Export.create({
@@ -110,8 +123,10 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       speeds,
       captionMap,
       stickers,
+      textOverlays,
+      previewWidth,
       ...(originalClipId ? { originalClipId } : {}),
-    });
+    } as any);
 
     logger.info("Export pipeline starting", {
       exportId, projectId, userId, aspectRatio, backgroundFill, captionStyle,
@@ -125,6 +140,8 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       brightness, contrast, saturation,
       originalClipId: originalClipId ?? null,
       stickers,
+      textOverlays,
+      previewWidth,
     }).then(async () => {
       // Deduct credits only on successful export
       try {

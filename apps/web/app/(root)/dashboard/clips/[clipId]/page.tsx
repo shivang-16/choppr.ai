@@ -1,11 +1,15 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
+import type React from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 import { useApiFetch } from "@/lib/apiFetch";
 import {
   ArrowLeft, Play, Pause, Volume2, VolumeX,
-  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight,
+  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Type, Plus, Trash2, Smile,
 } from "lucide-react";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -14,6 +18,18 @@ import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_compone
 import BackgroundRenderer, { STICKERS, type PlacedSticker, type ImageSegmenterRef } from "./_components/background-renderer";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+// ── Text overlay type ─────────────────────────────────────────────────────────
+interface TextOverlay {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  color: string;
+  bold: boolean;
+  italic: boolean;
+}
 
 /**
  * Open the exported video in a new tab AND force a download to the local machine.
@@ -65,6 +81,7 @@ function useIsMobile() {
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const TABS = [
   { id: "captions",    icon: Captions,  label: "Captions" },
+  { id: "text",        icon: Type,      label: "Text" },
   { id: "stickers",    icon: Layers,    label: "Stickers" },
   { id: "speed",       icon: Gauge,     label: "Speed" },
   { id: "trim",        icon: Scissors,  label: "Trim" },
@@ -188,6 +205,11 @@ interface EditPanelProps {
   placedStickers: PlacedSticker[];
   setPlacedStickers: (s: PlacedSticker[]) => void;
   segmentationReady: boolean;
+  // Text overlays
+  textOverlays: TextOverlay[];
+  setTextOverlays: React.Dispatch<React.SetStateAction<TextOverlay[]>>;
+  selectedTextId: string | null;
+  setSelectedTextId: (id: string | null) => void;
 }
 
 function EditPanelContent({
@@ -199,7 +221,9 @@ function EditPanelContent({
   exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
   styleGridMaxHeight = 360,
   placedStickers, setPlacedStickers, segmentationReady,
+  textOverlays, setTextOverlays, selectedTextId, setSelectedTextId,
 }: EditPanelProps) {
+  const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
   return (
     <>
       {activeTab === "captions" && (
@@ -335,6 +359,154 @@ function EditPanelContent({
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === "text" && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <p className="text-[12px] font-medium text-white/70">Text overlays</p>
+            <button
+              onClick={() => {
+                const id = `txt-${Date.now()}`;
+                setTextOverlays(prev => [...prev, { id, text: "Your text", x: 0.5, y: 0.5, fontSize: 28, color: "#ffffff", bold: false, italic: false }]);
+                setSelectedTextId(id);
+              }}
+              className="flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <Plus className="h-3 w-3" /> Add text
+            </button>
+          </div>
+
+          {textOverlays.length === 0 && (
+            <p className="text-[12px] text-white/25 text-center py-6">No text overlays yet.<br />Click "Add text" to start.</p>
+          )}
+
+          {textOverlays.map((t) => {
+            const isSelected = selectedTextId === t.id;
+            return (
+              <div
+                key={t.id}
+                onClick={() => setSelectedTextId(isSelected ? null : t.id)}
+                className={cn(
+                  "flex flex-col gap-3 rounded-xl border p-3 cursor-pointer transition-all",
+                  isSelected ? "border-white/30 bg-white/6" : "border-white/8 bg-white/2 hover:border-white/15"
+                )}
+              >
+                {/* Text input + emoji button */}
+                <div className="flex items-center gap-1.5 border-b border-white/15 pb-1">
+                  <input
+                    id={`txt-input-${t.id}`}
+                    value={t.text}
+                    onChange={(e) => setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, text: e.target.value } : o))}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/25"
+                    placeholder="Enter text…"
+                  />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEmojiOpenId(emojiOpenId === t.id ? null : t.id); setSelectedTextId(t.id); }}
+                    className={cn(
+                      "flex items-center justify-center h-6 w-6 rounded transition-colors cursor-pointer shrink-0",
+                      emojiOpenId === t.id ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/8"
+                    )}
+                    title="Insert emoji"
+                  >
+                    <Smile className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {/* Emoji picker */}
+                {emojiOpenId === t.id && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <EmojiPicker
+                      onEmojiClick={(emojiData) => {
+                        const em = emojiData.emoji;
+                        const inputEl = document.getElementById(`txt-input-${t.id}`) as HTMLInputElement | null;
+                        const pos = inputEl?.selectionStart ?? t.text.length;
+                        const newText = t.text.slice(0, pos) + em + t.text.slice(pos);
+                        setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, text: newText } : o));
+                        setEmojiOpenId(null);
+                        requestAnimationFrame(() => { inputEl?.focus(); inputEl?.setSelectionRange(pos + em.length, pos + em.length); });
+                      }}
+                      theme={"dark" as import("emoji-picker-react").Theme}
+                      width="100%"
+                      height={300}
+                      searchDisabled={false}
+                      skinTonesDisabled
+                      previewConfig={{ showPreview: false }}
+                      style={{
+                        "--epr-search-input-height": "28px",
+                        "--epr-search-input-font-size": "12px",
+                        "--epr-search-input-padding": "0 8px 0 30px",
+                        "--epr-search-bar-height": "44px",
+                        "--epr-category-label-height": "24px",
+                        "--epr-emoji-size": "24px",
+                        "--epr-emoji-padding": "4px",
+                      } as React.CSSProperties}
+                    />
+                  </div>
+                )}
+
+                {/* Font size */}
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-white/50">Font size</span>
+                    <span className="text-[11px] font-semibold text-white/60">{t.fontSize}px</span>
+                  </div>
+                  <input
+                    type="range" min={12} max={120} step={2}
+                    value={t.fontSize}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, fontSize: Number(e.target.value) } : o))}
+                    className="w-full accent-white cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-white/20"><span>12px</span><span>120px</span></div>
+                </div>
+
+                {/* Color circle + bold + italic + delete */}
+                <div className="flex items-center gap-2">
+                  {/* Circular color swatch */}
+                  <div className="relative h-6 w-6 shrink-0">
+                    <div
+                      className="h-6 w-6 rounded-full border-2 border-white/20 cursor-pointer"
+                      style={{ background: t.color }}
+                      onClick={(e) => { e.stopPropagation(); (e.currentTarget.nextElementSibling as HTMLInputElement | null)?.click(); }}
+                    />
+                    <input
+                      type="color"
+                      value={t.color}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, color: e.target.value } : o))}
+                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                    />
+                  </div>
+                  {/* Bold */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, bold: !o.bold } : o)); }}
+                    className={cn("px-2.5 py-1 rounded-lg text-[12px] font-bold transition-colors cursor-pointer", t.bold ? "bg-white/20 text-white" : "bg-white/5 text-white/40 hover:text-white/70")}
+                    title="Bold"
+                  >B</button>
+                  {/* Italic */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, italic: !o.italic } : o)); }}
+                    className={cn("px-2.5 py-1 rounded-lg text-[12px] italic transition-colors cursor-pointer", t.italic ? "bg-white/20 text-white" : "bg-white/5 text-white/40 hover:text-white/70")}
+                    title="Italic"
+                  >I</button>
+                  {/* Delete */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setTextOverlays(prev => prev.filter(o => o.id !== t.id)); if (selectedTextId === t.id) setSelectedTextId(null); }}
+                    className="ml-auto text-white/25 hover:text-red-400 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          {textOverlays.length > 0 && (
+            <p className="text-[10px] text-white/25 text-center">Drag text on the video to reposition</p>
+          )}
         </div>
       )}
 
@@ -672,6 +844,9 @@ export default function ClipRefinePage() {
 
   // Background overlay
   const [placedStickers, setPlacedStickers]     = useState<PlacedSticker[]>([]);
+  const [textOverlays, setTextOverlays]         = useState<TextOverlay[]>([]);
+  const [selectedTextId, setSelectedTextId]     = useState<string | null>(null);
+  const textDragRef = useRef<{ id: string; rectLeft: number; rectTop: number; rectW: number; rectH: number } | null>(null);
   const [segmentationReady, setSegmentationReady] = useState(false);
   const segmenterRef = useRef<ImageSegmenterRef | null>(null);
 
@@ -733,7 +908,7 @@ export default function ClipRefinePage() {
   // Reset export button back to idle when user changes any setting after a successful export
   useEffect(() => {
     if (exportPhase === "done") { setExportPhase("idle"); setExportUrl(null); }
-  }, [captionStyle, captionFontSize, captionPosY, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers]);
+  }, [captionStyle, captionFontSize, captionPosY, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers, textOverlays]);
 
   const handleTranslate = async (lang: string) => {
     if (!lang || lang === activeLang || translating) return;
@@ -767,7 +942,8 @@ export default function ClipRefinePage() {
       brightness === 100 &&
       contrast === 100 &&
       saturation === 100 &&
-      placedStickers.length === 0;
+      placedStickers.length === 0 &&
+      textOverlays.length === 0;
 
     if (isUnchanged) {
       setExportPhase("done");
@@ -820,6 +996,8 @@ export default function ClipRefinePage() {
           saturation,
           originalClipId: clipId,
           stickers: placedStickers,
+          textOverlays,
+          previewWidth: videoContainerRef.current?.clientWidth || 380,
         }),
       });
 
@@ -914,6 +1092,7 @@ export default function ClipRefinePage() {
     brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
     exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
     placedStickers, setPlacedStickers, segmentationReady,
+    textOverlays, setTextOverlays, selectedTextId, setSelectedTextId,
   };
   const handleMobileTab = (id: string) => {
     if (activeTab === id && mobileDrawerOpen) {
@@ -1154,6 +1333,53 @@ export default function ClipRefinePage() {
                     <div className="relative pointer-events-none">
                       <StickerPreview stickerId={ps.stickerId} size={Math.round(48 * ps.scale)} />
                       <div className="absolute -inset-1 rounded-lg border border-dashed border-white/40" />
+                    </div>
+                  </div>
+                ))}
+
+                {/* Draggable text overlays */}
+                {textOverlays.map((t) => (
+                  <div
+                    key={t.id}
+                    className="absolute cursor-grab active:cursor-grabbing touch-none select-none"
+                    style={{
+                      left: `${t.x * 100}%`,
+                      top: `${t.y * 100}%`,
+                      transform: "translate(-50%, -50%)",
+                      zIndex: 12,
+                    }}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const rect = videoContainerRef.current?.getBoundingClientRect();
+                      if (!rect) return;
+                      textDragRef.current = { id: t.id, rectLeft: rect.left, rectTop: rect.top, rectW: rect.width, rectH: rect.height };
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      setSelectedTextId(t.id);
+                    }}
+                    onPointerMove={(e) => {
+                      if (!textDragRef.current || textDragRef.current.id !== t.id) return;
+                      const { rectLeft, rectTop, rectW, rectH } = textDragRef.current;
+                      const nx = Math.max(0.02, Math.min(0.98, (e.clientX - rectLeft) / rectW));
+                      const ny = Math.max(0.02, Math.min(0.98, (e.clientY - rectTop) / rectH));
+                      setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, x: nx, y: ny } : o));
+                    }}
+                    onPointerUp={() => { textDragRef.current = null; }}
+                  >
+                    <div
+                      className="relative pointer-events-none px-1.5 py-0.5 rounded"
+                      style={{
+                        fontSize: t.fontSize,
+                        color: t.color,
+                        fontWeight: t.bold ? 700 : 400,
+                        fontStyle: t.italic ? "italic" : "normal",
+                        textShadow: "0 1px 4px rgba(0,0,0,0.8)",
+                        whiteSpace: "nowrap",
+                        lineHeight: 1.2,
+                        userSelect: "none",
+                      }}
+                    >
+                      {t.text}
                     </div>
                   </div>
                 ))}
