@@ -31,10 +31,12 @@ const CaptionWordSchema = z.object({
 });
 
 const StickerSchema = z.object({
-  stickerId: z.string(),
-  x:         z.number().min(0).max(1),
-  y:         z.number().min(0).max(1),
-  scale:     z.number().min(0.1).max(5),
+  stickerId:  z.string(),
+  giphyUrl:   z.string().url().optional(),
+  previewUrl: z.string().url().optional(),
+  x:          z.number().min(0).max(1),
+  y:          z.number().min(0).max(1),
+  scale:      z.number().min(0.1).max(5),
 });
 
 const TextOverlaySchema = z.object({

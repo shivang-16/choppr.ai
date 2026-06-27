@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 export type CaptionStyle =
   | "none"
+  | "full-line"
   | "word-pop"
   | "karaoke"
   | "bold-center"
@@ -21,9 +22,6 @@ export type CaptionStyle =
   | "wave"
   | "gradient-gold"
   | "comic"
-  | "minimal-top"
-  | "beasty"
-  | "hormozi"
   | "mr-beast"
   | "stack-reveal"
   | "shake"
@@ -63,6 +61,7 @@ const CFG: Record<CaptionStyle, {
   outline: { color: string; width: number } | null;
 }> = {
   none:            { weight:"900", activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.80, glow:null,        outline:null },
+  "full-line":     { weight:"600", activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.45)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:2} },
   "word-pop":      { weight:"900", activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.35)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:3} },
   karaoke:         { weight:"900", activeColor:"#FFE600",   inactiveColor:"rgba(255,255,255,0.5)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:3} },
   "bold-center":   { weight:"900", activeColor:"#fff",      inactiveColor:"transparent",           bg:"rgba(0,0,0,0.65)",  showAll:false, yRatio:0.76, glow:null,        outline:null },
@@ -80,9 +79,6 @@ const CFG: Record<CaptionStyle, {
   wave:            { weight:"900", activeColor:"#ffffff",   inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.82, glow:null,        outline:{color:"#000",width:3} },
   "gradient-gold": { weight:"900", activeColor:"gradient",  inactiveColor:"rgba(255,215,0,0.3)",    bg:null,                showAll:true,  yRatio:0.80, glow:"#FFD700",   outline:{color:"#000",width:2} },
   comic:           { weight:"900", activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.4)",  bg:"rgba(30,30,200,0.85)",showAll:false,yRatio:0.78, glow:null,       outline:{color:"#000",width:4} },
-  "minimal-top":   { weight:"400", activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.4)",  bg:null,                showAll:true,  yRatio:0.12, glow:null,        outline:null },
-  beasty:          { weight:"900", activeColor:"#FFFFFF",   inactiveColor:"rgba(255,255,255,0.0)",  bg:null,                showAll:false, yRatio:0.80, glow:null,        outline:{color:"#000",width:5} },
-  hormozi:         { weight:"900", activeColor:"#FFE600",   inactiveColor:"rgba(255,255,255,0.9)",  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
   "mr-beast":      { weight:"900", activeColor:"#FF0000",   inactiveColor:"rgba(255,255,255,1.0)",  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:6} },
   "stack-reveal":  { weight:"900", activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.45, glow:null,        outline:{color:"#000",width:4} },
   shake:           { weight:"900", activeColor:"#FF3333",   inactiveColor:"rgba(255,255,255,0.8)",  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:4} },
@@ -147,7 +143,25 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
 
       // Window of words to display
       const windowWords = cfg.showAll
-        ? words.slice(Math.max(0, activeIdx - 2), Math.min(words.length, activeIdx + 3))
+        ? style === "full-line"
+          // Full-line: scan blocks from the start to find the one containing activeIdx
+          ? (() => {
+              const GAP   = 0.5;
+              const MAX_W = 7;
+              let s = 0;
+              while (s < words.length) {
+                let e = s;
+                while (
+                  e < words.length - 1 &&
+                  (e - s) < MAX_W - 1 &&
+                  (words[e + 1]!.start - words[e]!.end) < GAP
+                ) e++;
+                if (activeIdx >= s && activeIdx <= e) return words.slice(s, e + 1);
+                s = e + 1;
+              }
+              return [active];
+            })()
+          : words.slice(Math.max(0, activeIdx - 2), Math.min(words.length, activeIdx + 3))
         : [active];
 
       ctx.font = `${cfg.weight} ${fs}px system-ui,-apple-system,sans-serif`;
@@ -158,6 +172,52 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
         width: ctx.measureText(w.word + " ").width,
       }));
 
+      // Full-line: wrap words into rows that fit within 88% of canvas width
+      // All words in the block render at full brightness — no active/inactive distinction
+      if (style === "full-line") {
+        const maxLineW = cw * 0.88;
+        const lineH    = fs * 1.5;
+        // Split into rows
+        const rows: typeof measured[] = [];
+        let row: typeof measured = [];
+        let rowW = 0;
+        for (const m of measured) {
+          if (row.length > 0 && rowW + m.width > maxLineW) {
+            rows.push(row);
+            row = [];
+            rowW = 0;
+          }
+          row.push(m);
+          rowW += m.width;
+        }
+        if (row.length > 0) rows.push(row);
+
+        // Draw rows centered vertically around cy
+        const totalH = rows.length * lineH;
+        const startY = cy - totalH / 2 + fs;
+
+        rows.forEach((rowWords, ri) => {
+          const rowTotalW = rowWords.reduce((s, m) => s + m.width, 0);
+          let rx = cx - rowTotalW / 2;
+          const ry = startY + ri * lineH;
+
+          rowWords.forEach((m) => {
+            if (cfg.outline) {
+              ctx.strokeStyle = cfg.outline.color;
+              ctx.lineWidth   = cfg.outline.width;
+              ctx.lineJoin    = "round";
+              ctx.strokeText(m.word, rx, ry);
+            }
+            ctx.fillStyle = cfg.activeColor as string;
+            ctx.fillText(m.word, rx, ry);
+            rx += m.width;
+          });
+        });
+
+        rafRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
       const totalW = measured.reduce((s, m) => s + m.width, 0);
       let x = cx - totalW / 2;
 
@@ -167,9 +227,7 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
         // Font size variants per style
         let wfs = fs;
         if (style === "word-pop"  && isA)   wfs = fs * 1.5;
-        if (style === "beasty"    && isA)   wfs = fs * 1.6;
         if (style === "comic"     && isA)   wfs = fs * 1.2;
-        if (style === "hormozi"   && isA)   wfs = fs * 1.4;
         if (style === "mr-beast"  && isA)   wfs = fs * 1.6;
         if (style === "stack-reveal" && isA) wfs = fs * 1.3;
         if (style === "shake"     && isA)   wfs = fs * 1.3;

@@ -22,7 +22,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Export }            from "../model/export.model.js";
 import { Clip }              from "../model/clip.model.js";
 import { renderCaptionToFile } from "./caption-overlay.service.js";
-import { renderStickersToBuffer, type PlacedSticker } from "./sticker-renderer.js";
+import { type PlacedSticker } from "./sticker-renderer.js";
 import { renderTextOverlaysToBuffer, type TextOverlay as TextOverlayRenderable } from "./text-overlay-renderer.js";
 import { logger }            from "../utils/logger.js";
 
@@ -322,23 +322,39 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     if (stickers.length > 0) {
       logger.info(`[export:${exportId}] Compositing ${stickers.length} sticker(s)...`);
 
-      const stickerPng  = renderStickersToBuffer(stickers, targetW, targetH);
-      const stickerPath = join(tmpDir, "stickers.png");
-      await fsp.writeFile(stickerPath, stickerPng);
+      // Download each sticker and overlay with FFmpeg (preserves animation)
+      for (let si = 0; si < stickers.length; si++) {
+        const ps = stickers[si]!;
+        if (!ps.giphyUrl) continue;
 
-      const stickerOut = join(tmpDir, "with_stickers.mp4");
-      await runFFmpeg([
-        "-y",
-        "-i", concatOut,
-        "-loop", "1", "-i", stickerPath,
-        "-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1[vout]",
-        "-map", "[vout]", "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "copy", "-movflags", "+faststart",
-        stickerOut,
-      ], "sticker-composite");
+        const stickerFile = join(tmpDir, `sticker_${si}.gif`);
+        try {
+          await downloadFile(ps.giphyUrl, stickerFile);
+        } catch {
+          logger.warn(`[export:${exportId}] Failed to download sticker ${si}, skipping`);
+          continue;
+        }
 
-      finalOut = stickerOut;
+        const pSize = Math.round(targetW * 0.18 * ps.scale);
+        const posX  = Math.round(ps.x * targetW - pSize / 2);
+        const posY  = Math.round(ps.y * targetH - pSize / 2);
+
+        const stickerOut = join(tmpDir, `with_sticker_${si}.mp4`);
+        await runFFmpeg([
+          "-y",
+          "-i", finalOut,
+          "-ignore_loop", "0", "-stream_loop", "-1", "-i", stickerFile,
+          "-filter_complex",
+          `[1:v]scale=${pSize}:${pSize}:flags=lanczos,format=rgba[stk];[0:v][stk]overlay=${posX}:${posY}:shortest=1[vout]`,
+          "-map", "[vout]", "-map", "0:a?",
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+          "-c:a", "copy", "-movflags", "+faststart",
+          stickerOut,
+        ], `sticker-${si}`);
+
+        finalOut = stickerOut;
+      }
+
       logger.info(`[export:${exportId}] Stickers composited`);
     }
 
