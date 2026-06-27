@@ -6,12 +6,14 @@ import { useEffect, useRef, useState, useCallback } from "react";
 export type StickerId = string;
 
 export interface PlacedSticker {
-  stickerId:  string;     // "giphy:{id}" for GIPHY stickers
-  giphyUrl?:  string;     // full render URL (webp/gif) — set for GIPHY stickers
-  previewUrl?: string;    // small thumbnail URL for UI — set for GIPHY stickers
-  x:     number;          // 0-1 normalized
-  y:     number;          // 0-1 normalized
-  scale: number;          // 0.3 - 2.0
+  stickerId:  string;      // "stipop:{id}" for Stipop stickers
+  stickerUrl?: string;     // full render URL — set for Stipop stickers
+  previewUrl?: string;     // small thumbnail URL for UI — set for Stipop stickers
+  /** @deprecated use stickerUrl */
+  giphyUrl?:  string;      // kept for backwards-compat with any saved exports
+  x:     number;           // 0-1 normalized
+  y:     number;           // 0-1 normalized
+  scale: number;           // 0.3 - 2.0
 }
 
 // Legacy emoji sticker types (kept so nothing breaks if old stickers exist)
@@ -25,30 +27,80 @@ export interface StickerDef {
 export const STICKERS: StickerDef[] = [];
 export const STICKER_CATEGORIES: { id: StickerDef["category"]; label: string }[] = [];
 
-// ── GIPHY helpers ──────────────────────────────────────────────────────────────
-export const GIPHY_KEY = process.env.NEXT_PUBLIC_GIPHY_API_KEY ?? "";
+// ── Stipop helpers ─────────────────────────────────────────────────────────────
+export const STIPOP_KEY = process.env.NEXT_PUBLIC_STIPOP_API_KEY ?? "";
+const STIPOP_USER_ID = "choppr-web";
 
-export interface GiphySticker {
+export interface StipopSticker {
   id:         string;
   title:      string;
-  previewUrl: string;   // small webp for the picker grid
-  renderUrl:  string;   // medium webp for canvas
+  previewUrl: string;   // image URL for the picker grid
+  renderUrl:  string;   // full-size image URL for canvas / export
 }
 
-export async function fetchGiphyStickers(query: string, limit = 24): Promise<GiphySticker[]> {
-  if (!GIPHY_KEY) return [];
-  const endpoint = query.trim()
-    ? `https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_KEY}&q=${encodeURIComponent(query)}&limit=${limit}&rating=g`
-    : `https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_KEY}&limit=${limit}&rating=g`;
+export interface StipopPack {
+  packageId:  number;
+  packageName: string;
+  packageImg: string;
+}
+
+/** Fetch trending sticker packs (shown as pack covers on "Trending" tab) */
+export async function fetchStipopTrendingPacks(limit = 20): Promise<StipopPack[]> {
+  if (!STIPOP_KEY) return [];
   try {
-    const res  = await fetch(endpoint);
+    const res  = await fetch(
+      `https://messenger.stipop.io/v1/package?userId=${STIPOP_USER_ID}&limit=${limit}&lang=en&countryCode=US`,
+      { headers: { apikey: STIPOP_KEY } },
+    );
     const json = await res.json();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (json.data ?? []).map((item: any) => ({
-      id:         item.id,
-      title:      item.title ?? "",
-      previewUrl: item.images?.fixed_width_small?.webp ?? item.images?.fixed_width_small?.url ?? "",
-      renderUrl:  item.images?.fixed_width?.url        ?? item.images?.fixed_width?.webp       ?? "",
+    return (json.body?.packageList ?? []).map((p: any) => ({
+      packageId:   p.packageId,
+      packageName: p.packageName ?? "",
+      packageImg:  p.packageImg  ?? "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Fetch all stickers inside a pack */
+export async function fetchStipopPackStickers(packageId: number): Promise<StipopSticker[]> {
+  if (!STIPOP_KEY) return [];
+  try {
+    const res  = await fetch(
+      `https://messenger.stipop.io/v1/package/${packageId}?userId=${STIPOP_USER_ID}`,
+      { headers: { apikey: STIPOP_KEY } },
+    );
+    const json = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (json.body?.package?.stickers ?? []).map((s: any) => ({
+      id:         String(s.stickerId),
+      title:      json.body?.package?.packageName ?? "",
+      previewUrl: s.stickerImg ?? "",
+      renderUrl:  s.stickerImg ?? "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Search stickers by keyword */
+export async function fetchStipopStickers(query: string, limit = 24): Promise<StipopSticker[]> {
+  if (!STIPOP_KEY) return [];
+  if (!query.trim()) return [];
+  try {
+    const res  = await fetch(
+      `https://messenger.stipop.io/v1/search?userId=${STIPOP_USER_ID}&q=${encodeURIComponent(query)}&limit=${limit}&lang=en&countryCode=US`,
+      { headers: { apikey: STIPOP_KEY } },
+    );
+    const json = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (json.body?.stickerList ?? []).map((s: any) => ({
+      id:         String(s.stickerId),
+      title:      s.keyword ?? "",
+      previewUrl: s.stickerImg ?? "",
+      renderUrl:  s.stickerImg ?? "",
     }));
   } catch {
     return [];
@@ -95,8 +147,9 @@ export default function BackgroundRenderer({ videoRef, placedStickers, segmentat
   // Pre-load images whenever placed stickers change
   useEffect(() => {
     for (const ps of placedStickers) {
-      if (ps.giphyUrl && !loadedImgs.current.has(ps.stickerId)) {
-        loadImage(ps.giphyUrl).then(img => {
+      const url = ps.stickerUrl ?? ps.giphyUrl;
+      if (url && !loadedImgs.current.has(ps.stickerId)) {
+        loadImage(url).then(img => {
           loadedImgs.current.set(ps.stickerId, img);
         }).catch(() => {});
       }
@@ -142,8 +195,8 @@ export default function BackgroundRenderer({ videoRef, placedStickers, segmentat
       sCtx.save();
       sCtx.translate(px, py);
 
-      if (ps.giphyUrl) {
-        // GIPHY image sticker
+      if (ps.stickerUrl ?? ps.giphyUrl) {
+        // Stipop (or legacy Giphy) image sticker
         const img = loadedImgs.current.get(ps.stickerId);
         if (img) {
           const half = pSize / 2;

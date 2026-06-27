@@ -325,11 +325,11 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
       // Download each sticker and overlay with FFmpeg (preserves animation)
       for (let si = 0; si < stickers.length; si++) {
         const ps = stickers[si]!;
-        if (!ps.giphyUrl) continue;
+        if (!ps.stickerUrl && !ps.giphyUrl) continue;
 
         const stickerFile = join(tmpDir, `sticker_${si}.gif`);
         try {
-          await downloadFile(ps.giphyUrl, stickerFile);
+          await downloadFile((ps.stickerUrl ?? ps.giphyUrl)!, stickerFile);
         } catch {
           logger.warn(`[export:${exportId}] Failed to download sticker ${si}, skipping`);
           continue;

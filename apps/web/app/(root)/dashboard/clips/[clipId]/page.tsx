@@ -15,7 +15,7 @@ import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
 import { cn } from "@/lib/utils";
 import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_components/caption-renderer";
-import BackgroundRenderer, { GIPHY_KEY, fetchGiphyStickers, type GiphySticker, type PlacedSticker, type ImageSegmenterRef } from "./_components/background-renderer";
+import BackgroundRenderer, { STIPOP_KEY, fetchStipopStickers, fetchStipopTrendingPacks, fetchStipopPackStickers, type StipopSticker, type StipopPack, type PlacedSticker, type ImageSegmenterRef } from "./_components/background-renderer";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -230,19 +230,19 @@ interface EditPanelProps {
   setSelectedTextId: (id: string | null) => void;
 }
 
-// ── GIPHY Sticker Picker ───────────────────────────────────────────────────────
-const GIPHY_CATEGORIES = [
+// ── Stipop Sticker Picker ─────────────────────────────────────────────────────
+const STIPOP_CATEGORIES = [
   { label: "Trending", query: "" },
   { label: "Memes",    query: "meme" },
   { label: "Funny",    query: "funny" },
   { label: "Love",     query: "love" },
-  { label: "Hype",     query: "hype fire" },
+  { label: "Hype",     query: "hype" },
   { label: "Reactions",query: "reaction" },
-  { label: "Christmas",query: "christmas" },
+  { label: "Happy",    query: "happy" },
   { label: "Cute",     query: "cute" },
 ];
 
-function GiphyStickerPicker({
+function StipopStickerPicker({
   placedStickers, setPlacedStickers, segmentationReady, styleGridMaxHeight,
 }: {
   placedStickers: PlacedSticker[];
@@ -250,44 +250,143 @@ function GiphyStickerPicker({
   segmentationReady: boolean;
   styleGridMaxHeight: number | string;
 }) {
-  const [query, setQuery]         = useState("");
-  const [results, setResults]     = useState<GiphySticker[]>([]);
-  const [loading, setLoading]     = useState(false);
-  const [activecat, setActivecat] = useState("");
+  // "trending" | "category" | "search" | "pack"
+  type ViewMode = "trending" | "category" | "search" | "pack";
+
+  const [mode, setMode]                     = useState<ViewMode>("trending");
+  const [query, setQuery]                   = useState("");
+  const [activecat, setActivecat]           = useState("");
+  const [catResults, setCatResults]         = useState<StipopSticker[]>([]);
+  const [searchResults, setSearchResults]   = useState<StipopSticker[]>([]);
+  const [trendingPacks, setTrendingPacks]   = useState<StipopPack[]>([]);
+  const [loading, setLoading]               = useState(false);
+  const [expandedPack, setExpandedPack]     = useState<StipopPack | null>(null);
+  const [packStickers, setPackStickers]     = useState<StipopSticker[]>([]);
+  const [packLoading, setPackLoading]       = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load trending on mount
+  // Load trending packs on mount
   useEffect(() => {
-    if (!GIPHY_KEY) return;
+    if (!STIPOP_KEY) return;
     setLoading(true);
-    fetchGiphyStickers("", 24).then(r => { setResults(r); setLoading(false); });
+    fetchStipopTrendingPacks(20).then(packs => {
+      setTrendingPacks(packs);
+      setLoading(false);
+    });
   }, []);
 
-  const search = (q: string) => {
-    if (!GIPHY_KEY) return;
+  // Search bar handler — never touches category state
+  const handleSearchInput = (q: string) => {
+    setQuery(q);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!q.trim()) {
+      setSearchResults([]);
+      // Go back to whichever tab was active before searching
+      setMode(activecat ? "category" : "trending");
+      return;
+    }
+    setMode("search");
     setLoading(true);
     debounceRef.current = setTimeout(() => {
-      fetchGiphyStickers(q, 24).then(r => { setResults(r); setLoading(false); });
+      fetchStipopStickers(q, 50).then(r => { setSearchResults(r); setLoading(false); });
     }, 400);
   };
 
-  if (!GIPHY_KEY) {
+  // Category chip click — clears search bar, never writes into it
+  const handleCategoryClick = (catQuery: string) => {
+    setQuery("");
+    setActivecat(catQuery);
+    setExpandedPack(null);
+    if (!catQuery) {
+      // "Trending" tab
+      setMode("trending");
+      setCatResults([]);
+      return;
+    }
+    setMode("category");
+    setLoading(true);
+    fetchStipopStickers(catQuery, 50).then(r => { setCatResults(r); setLoading(false); });
+  };
+
+  const openPack = (pack: StipopPack) => {
+    setMode("pack");
+    setExpandedPack(pack);
+    setPackLoading(true);
+    fetchStipopPackStickers(pack.packageId).then(s => {
+      setPackStickers(s);
+      setPackLoading(false);
+    });
+  };
+
+  const placeStickerFromResult = (s: StipopSticker) => {
+    const key = `stipop:${s.id}`;
+    const isPlaced = placedStickers.some(ps => ps.stickerId === key);
+    if (isPlaced) {
+      setPlacedStickers(placedStickers.filter(ps => ps.stickerId !== key));
+    } else {
+      setPlacedStickers([...placedStickers, {
+        stickerId:  key,
+        stickerUrl: s.renderUrl,
+        previewUrl: s.previewUrl,
+        x: 0.15 + Math.random() * 0.7,
+        y: 0.15 + Math.random() * 0.7,
+        scale: 1,
+      }]);
+    }
+  };
+
+  if (!STIPOP_KEY) {
     return (
       <div className="flex flex-col gap-3">
         <p className="text-[12px] font-medium text-white/70">Stickers</p>
         <div className="rounded-xl border border-white/8 bg-white/3 p-4 flex flex-col gap-2">
-          <p className="text-[12px] font-semibold text-white/70">Add a GIPHY API key</p>
+          <p className="text-[12px] font-semibold text-white/70">Add a Stipop API key</p>
           <p className="text-[11px] text-white/35 leading-relaxed">
-            Get a free key at <span className="text-white/60">developers.giphy.com</span> then add it to your <span className="text-white/60">.env</span>:
+            Get a free key at <span className="text-white/60">developers.stipop.io</span> then add it to your <span className="text-white/60">.env</span>:
           </p>
           <code className="text-[10px] bg-white/5 rounded-lg px-2 py-1.5 text-white/50 font-mono">
-            NEXT_PUBLIC_GIPHY_API_KEY=your_key
+            NEXT_PUBLIC_STIPOP_API_KEY=your_key
           </code>
         </div>
       </div>
     );
   }
+
+  // Shared sticker grid renderer
+  const StickerGrid = ({ stickers }: { stickers: StipopSticker[] }) => (
+    <div className="grid grid-cols-3 gap-1.5">
+      {stickers.map(s => {
+        const key = `stipop:${s.id}`;
+        const isPlaced = placedStickers.some(ps => ps.stickerId === key);
+        return (
+          <button
+            key={s.id}
+            onClick={() => placeStickerFromResult(s)}
+            className={cn(
+              "relative rounded-xl overflow-hidden border transition-all aspect-square bg-white/3",
+              isPlaced ? "border-white/50 ring-1 ring-white/30" : "border-white/8 hover:border-white/25"
+            )}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={s.previewUrl} alt={s.title} className="w-full h-full object-contain p-1" loading="lazy" />
+            {isPlaced && (
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                <Check className="h-4 w-4 text-white" />
+              </div>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const loadingSkeleton = (
+    <div className="grid grid-cols-3 gap-1.5">
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div key={i} className="aspect-square rounded-xl bg-white/5 animate-pulse" style={{ animationDelay: `${i * 40}ms` }} />
+      ))}
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -310,21 +409,21 @@ function GiphyStickerPicker({
           type="text"
           value={query}
           placeholder="Search stickers…"
-          onChange={e => { setQuery(e.target.value); search(e.target.value); }}
+          onChange={e => handleSearchInput(e.target.value)}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[12px] text-white placeholder:text-white/30 outline-none focus:border-white/25 transition-colors"
         />
         {loading && <Loader2 className="absolute right-2.5 top-2 h-3.5 w-3.5 animate-spin text-white/30" />}
       </div>
 
-      {/* Category chips */}
+      {/* Category chips — always visible, search bar stays clean */}
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-        {GIPHY_CATEGORIES.map(cat => (
+        {STIPOP_CATEGORIES.map(cat => (
           <button
             key={cat.label}
-            onClick={() => { setActivecat(cat.query); setQuery(""); search(cat.query); }}
+            onClick={() => handleCategoryClick(cat.query)}
             className={cn(
               "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all",
-              activecat === cat.query && !query
+              activecat === cat.query && mode !== "search"
                 ? "bg-white text-black"
                 : "bg-white/8 text-white/50 hover:bg-white/12 hover:text-white/80"
             )}
@@ -334,64 +433,66 @@ function GiphyStickerPicker({
         ))}
       </div>
 
-      {/* Sticker grid */}
+      {/* Main grid area */}
       <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: styleGridMaxHeight }}>
-        {loading && (
+        {loading && loadingSkeleton}
+
+        {/* Search results */}
+        {!loading && mode === "search" && (
+          searchResults.length === 0
+            ? <p className="text-[11px] text-white/25 text-center py-8">No stickers found</p>
+            : <StickerGrid stickers={searchResults} />
+        )}
+
+        {/* Category stickers */}
+        {!loading && mode === "category" && (
+          catResults.length === 0
+            ? <p className="text-[11px] text-white/25 text-center py-8">No stickers found</p>
+            : <StickerGrid stickers={catResults} />
+        )}
+
+        {/* Trending pack covers */}
+        {!loading && mode === "trending" && (
           <div className="grid grid-cols-3 gap-1.5">
-            {Array.from({ length: 12 }).map((_, i) => (
-              <div
-                key={i}
-                className="aspect-square rounded-xl bg-white/5 animate-pulse"
-                style={{ animationDelay: `${i * 40}ms` }}
-              />
+            {trendingPacks.map(pack => (
+              <button
+                key={pack.packageId}
+                onClick={() => openPack(pack)}
+                className="relative rounded-xl overflow-hidden border border-white/8 hover:border-white/25 transition-all aspect-square bg-white/3"
+                title={pack.packageName}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={pack.packageImg} alt={pack.packageName} className="w-full h-full object-contain p-1" loading="lazy" />
+              </button>
             ))}
           </div>
         )}
-        {!loading && results.length === 0 && (
-          <p className="text-[11px] text-white/25 text-center py-8">No stickers found</p>
-        )}
-        {!loading && (
-        <div className="grid grid-cols-3 gap-1.5">
-          {results.map(s => {
-            const stickerKey = `giphy:${s.id}`;
-            const isPlaced = placedStickers.some(ps => ps.stickerId === stickerKey);
-            return (
-              <button
-                key={s.id}
-                onClick={() => {
-                  if (isPlaced) {
-                    setPlacedStickers(placedStickers.filter(ps => ps.stickerId !== stickerKey));
-                  } else {
-                    setPlacedStickers([...placedStickers, {
-                      stickerId:  stickerKey,
-                      giphyUrl:   s.renderUrl,
-                      previewUrl: s.previewUrl,
-                      x: 0.15 + Math.random() * 0.7,
-                      y: 0.15 + Math.random() * 0.7,
-                      scale: 1,
-                    }]);
-                  }
-                }}
-                className={cn(
-                  "relative rounded-xl overflow-hidden border transition-all aspect-square",
-                  isPlaced ? "border-white/50 ring-1 ring-white/30" : "border-white/8 hover:border-white/25"
-                )}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={s.previewUrl} alt={s.title} className="w-full h-full object-cover" loading="lazy" />
-                {isPlaced && (
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                    <Check className="h-4 w-4 text-white" />
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
+
+        {/* Expanded pack stickers */}
+        {mode === "pack" && (
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => { setMode("trending"); setExpandedPack(null); }}
+              className="flex items-center gap-1.5 text-[11px] text-white/50 hover:text-white/80 transition-colors"
+            >
+              <ChevronLeft className="h-3 w-3" />
+              {expandedPack?.packageName ?? "Back"}
+            </button>
+            {packLoading
+              ? (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {Array.from({ length: 9 }).map((_, i) => (
+                    <div key={i} className="aspect-square rounded-xl bg-white/5 animate-pulse" />
+                  ))}
+                </div>
+              )
+              : <StickerGrid stickers={packStickers} />
+            }
+          </div>
         )}
       </div>
 
-      {/* Placed stickers */}
+      {/* Placed stickers list */}
       {placedStickers.length > 0 && (
         <div className="flex flex-col gap-2">
           <div className="h-px bg-white/6" />
@@ -405,10 +506,10 @@ function GiphyStickerPicker({
             <div key={ps.stickerId} className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/3 px-2 py-1.5">
               {ps.previewUrl
                 // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={ps.previewUrl} alt="" className="h-7 w-7 rounded object-cover shrink-0" />
+                ? <img src={ps.previewUrl} alt="" className="h-7 w-7 rounded object-contain shrink-0" />
                 : <div className="h-7 w-7 rounded bg-white/10 shrink-0" />
               }
-              <span className="text-[10px] text-white/50 flex-1 truncate">{ps.stickerId.replace("giphy:", "")}</span>
+              <span className="text-[10px] text-white/50 flex-1 truncate">{ps.stickerId.replace("stipop:", "")}</span>
               <input
                 type="range" min={0.3} max={2} step={0.1}
                 value={ps.scale}
@@ -740,7 +841,7 @@ function EditPanelContent({
       )}
 
       {activeTab === "stickers" && (
-        <GiphyStickerPicker
+        <StipopStickerPicker
           placedStickers={placedStickers}
           setPlacedStickers={setPlacedStickers}
           segmentationReady={segmentationReady}

@@ -32,6 +32,7 @@ const CaptionWordSchema = z.object({
 
 const StickerSchema = z.object({
   stickerId:  z.string(),
+  stickerUrl: z.string().url().optional(),
   giphyUrl:   z.string().url().optional(),
   previewUrl: z.string().url().optional(),
   x:          z.number().min(0).max(1),
