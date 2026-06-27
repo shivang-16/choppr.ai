@@ -1297,7 +1297,7 @@ export default function ClipRefinePage() {
                 </div>
                 <div className="flex-1 overflow-y-auto px-4 py-5 no-scrollbar">
                   {captionWords.length > 0 ? (
-                    <div className="flex flex-wrap gap-x-2 gap-y-2">
+                    <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
                       {captionWords.map((w, i) => (
                         <span
                           key={i}
@@ -1313,10 +1313,10 @@ export default function ClipRefinePage() {
                           }}
                           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
                           className={cn(
-                            "text-[15px] rounded px-1 -mx-0.5 outline-none cursor-text leading-8 transition-colors",
+                            "text-[15px] font-semibold rounded px-1 -mx-0.5 outline-none cursor-text leading-5 transition-colors",
                             currentTime >= w.start && currentTime <= w.end
-                              ? "bg-white/25 text-white"
-                              : "text-white hover:bg-white/8 focus:bg-white/12"
+                              ? "bg-violet-500/45 text-white"
+                              : "text-white/90 hover:bg-white/8 focus:bg-white/12"
                           )}
                         >
                           {w.word}
