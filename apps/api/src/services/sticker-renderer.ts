@@ -9,8 +9,8 @@ import { createCanvas, loadImage, type Canvas, type SKRSContext2D } from "@napi-
 
 export interface PlacedSticker {
   stickerId:   string;   // "giphy:{id}" for GIPHY stickers
-  giphyUrl?:   string;   // render URL (webp/gif) — set for GIPHY stickers
-  previewUrl?: string;   // small thumbnail URL — unused server-side
+  giphyUrl?:   string | undefined;   // render URL (webp/gif) — set for GIPHY stickers
+  previewUrl?: string | undefined;   // small thumbnail URL — unused server-side
   x:     number;         // 0-1 normalised
   y:     number;         // 0-1 normalised
   scale: number;         // 0.3-2.0
