@@ -712,7 +712,7 @@ function DashboardInner() {
                   label: "Genre",
                   value: genre,
                   set: setGenre,
-                  opts: ["Auto", "Gaming", "Podcast", "Sports", "Finance", "Fitness", "News", "Comedy", "Interview", "Tutorial", "Vlog", "Music", "Education", "Romantic", "Review"],
+                  opts: ["Auto", "Comedy", "Education", "Finance", "Fitness", "Gaming", "Interview", "Movie", "Music", "News", "Podcast", "Reaction", "Review", "Romantic", "Song", "Sports", "Tutorial", "Vlog"],
                 },
                 {
                   label: "Clip Length",
