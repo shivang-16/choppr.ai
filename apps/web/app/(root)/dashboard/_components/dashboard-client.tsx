@@ -303,9 +303,9 @@ function DashboardInner() {
 
   const handleFileSelect = async (file: File) => {
     if (!file) return;
-    const MAX_SIZE = 500 * 1024 * 1024; // 500 MB
+    const MAX_SIZE = 3 * 1024 * 1024 * 1024; // 3 GB
     if (file.size > MAX_SIZE) {
-      setError("File too large. Maximum size is 500 MB.");
+      setError("File too large. Maximum size is 3 GB.");
       return;
     }
     setError(null);
