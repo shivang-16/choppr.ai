@@ -1629,16 +1629,17 @@ export default function ClipRefinePage() {
                   <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} posOffset={captionPosY} hOffset={captionPosX} />
                   {/* Caption drag + play/pause overlay — covers full preview */}
                   <div
-                    className="absolute inset-0 flex items-center justify-center"
+                    className="absolute inset-0 flex items-center justify-center select-none"
                     style={{
                       zIndex: 4,
+                      touchAction: "none", // prevent browser scroll/zoom hijacking touch events
                       cursor: activeTab === "captions" && captionStyle !== "none"
                         ? (captionDragRef.current ? "grabbing" : "grab")
                         : "pointer",
                     }}
                     onPointerDown={(e) => {
-                      // Don't interfere with sticker drags
                       if (dragRef.current) return;
+                      e.preventDefault(); // stop browser claiming the touch for scroll
                       const rect = videoContainerRef.current?.getBoundingClientRect();
                       if (!rect) return;
                       captionDragRef.current = {
@@ -1655,22 +1656,25 @@ export default function ClipRefinePage() {
                       if (!captionDragRef.current) return;
                       if (activeTab !== "captions" || captionStyle === "none") return;
                       const { startX, startY, startPosX, startPosY, rectW, rectH } = captionDragRef.current;
-                      const dx = ((e.clientX - startX) / rectW) * 200;
-                      const dy = ((e.clientY - startY) / rectH) * 200;
-                      // Only start updating once past 3px threshold
-                      if (Math.abs(e.clientX - startX) < 3 && Math.abs(e.clientY - startY) < 3) return;
+                      const deltaX = e.clientX - startX;
+                      const deltaY = e.clientY - startY;
+                      // 8px threshold — large enough for finger jitter, small enough to feel instant
+                      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+                      const dx = (deltaX / rectW) * 200;
+                      const dy = (deltaY / rectH) * 200;
                       setCaptionPosX(Math.round(Math.max(-100, Math.min(100, startPosX + dx))));
                       setCaptionPosY(Math.round(Math.max(-100, Math.min(100, startPosY + dy))));
                     }}
                     onPointerUp={(e) => {
-                      const wasDrag = captionDragRef.current
+                      const ref = captionDragRef.current;
+                      const wasDrag = ref
                         && activeTab === "captions"
                         && captionStyle !== "none"
-                        && (Math.abs(e.clientX - captionDragRef.current.startX) > 3 || Math.abs(e.clientY - captionDragRef.current.startY) > 3);
+                        && (Math.abs(e.clientX - ref.startX) >= 8 || Math.abs(e.clientY - ref.startY) >= 8);
                       captionDragRef.current = null;
-                      // If it was a short tap (not a drag), toggle play
                       if (!wasDrag && !dragRef.current) togglePlay();
                     }}
+                    onPointerCancel={() => { captionDragRef.current = null; }}
                   >
                     {!playing && (
                       <div className="h-14 w-14 flex items-center justify-center rounded-full bg-black/50 border border-white/20 backdrop-blur-sm pointer-events-none">
