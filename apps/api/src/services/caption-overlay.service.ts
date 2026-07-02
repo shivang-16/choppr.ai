@@ -29,6 +29,7 @@ export interface OverlayParams {
   durationSecs: number;
   fontSize?:    number; // logical font size from the editor (default 28)
   posOffset?:   number; // vertical offset in % of height (- = up, + = down)
+  hOffset?:     number; // horizontal offset in % of width (- = left, + = right)
   outputPath:   string; // destination .mov file
 }
 
@@ -49,6 +50,7 @@ export async function renderCaptionToFile(params: OverlayParams): Promise<void> 
   const { words, width, height, durationSecs, outputPath } = params;
   const fontSize    = params.fontSize ?? DEFAULT_FONT_SIZE;
   const posOffset   = params.posOffset ?? 0;
+  const hOffset     = params.hOffset ?? 0;
   const style       = (params.style as CaptionStyle) ?? "bold-center";
   const isMotion    = MOTION_STYLES.has(style as CaptionStyle);
   const totalFrames = Math.ceil(durationSecs * FPS);
@@ -93,7 +95,7 @@ export async function renderCaptionToFile(params: OverlayParams): Promise<void> 
 
     if (needsRender) {
       ctx.clearRect(0, 0, width, height);
-      renderCaptionFrame(ctx, width, height, words, style as CaptionStyle, timeMs, fontSize, bounceStart, posOffset);
+      renderCaptionFrame(ctx, width, height, words, style as CaptionStyle, timeMs, fontSize, bounceStart, posOffset, hOffset);
       lastPng         = canvas.toBuffer("image/png");
       lastActiveStart = active?.start ?? null;
     }

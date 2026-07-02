@@ -19,11 +19,9 @@ const __dirname  = dirname(fileURLToPath(import.meta.url));
 // src/utils → ../../assets/fonts (works in both tsx-dev and built dist layout)
 const FONTS_DIR  = join(__dirname, "../../assets/fonts");
 
-/**
- * Per-glyph fallback stack covering every supported language. The canvas walks
- * this list for each glyph until it finds a font that has it.
- */
-export const CAPTION_FONT_STACK =
+// Multilingual fallback tail — appended after every display font so non-Latin
+// scripts always render correctly.
+const MULTILINGUAL_FALLBACK =
   '"Noto Sans",' +
   '"Noto Sans Devanagari",' +   // Hindi
   '"Noto Sans Tamil",' +        // Tamil
@@ -35,6 +33,31 @@ export const CAPTION_FONT_STACK =
   '"Noto Sans JP",' +           // Japanese
   '"Noto Sans KR",' +           // Korean
   "sans-serif";
+
+/**
+ * Default per-glyph fallback stack (Noto Sans + multilingual).
+ * Used by styles that don't declare their own display font.
+ */
+export const CAPTION_FONT_STACK = MULTILINGUAL_FALLBACK;
+
+/** Condensed display fonts — bold/impactful word-by-word styles */
+export const FONT_ANTON    = `"Anton",${MULTILINGUAL_FALLBACK}`;
+/** Wide comic-book display font */
+export const FONT_BANGERS  = `"Bangers",${MULTILINGUAL_FALLBACK}`;
+/** Condensed grotesque — clean titles, mr-beast style */
+export const FONT_OSWALD   = `"Oswald",${MULTILINGUAL_FALLBACK}`;
+/** Tall condensed sans — bold headlines */
+export const FONT_BEBAS    = `"Bebas Neue",${MULTILINGUAL_FALLBACK}`;
+/** Hand-written marker feel */
+export const FONT_MARKER   = `"Permanent Marker",${MULTILINGUAL_FALLBACK}`;
+/** Retro pixel / arcade */
+export const FONT_PIXEL    = `"Press Start 2P",${MULTILINGUAL_FALLBACK}`;
+/** Geometric modern sans */
+export const FONT_SPACE    = `"Space Grotesk",${MULTILINGUAL_FALLBACK}`;
+/** Gothic/blackletter display */
+export const FONT_GOTHIC   = `"UnifrakturCook",${MULTILINGUAL_FALLBACK}`;
+/** Rounded humanist sans */
+export const FONT_NUNITO   = `"Nunito",${MULTILINGUAL_FALLBACK}`;
 
 let registered = false;
 

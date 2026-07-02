@@ -89,77 +89,173 @@ const TABS = [
 ];
 
 // ── Caption styles ────────────────────────────────────────────────────────────
-type CaptionStyleEntry = { id: CaptionStyle; label: string; desc: string; preview: string | null; previewClass: string };
+type CaptionStyleEntry = {
+  id: CaptionStyle;
+  label: string;
+  desc: string;
+  preview: string | null;
+  previewClass: string;
+  renderPreview?: () => React.ReactNode;
+};
 type CaptionStyleCategory = { category: string; styles: CaptionStyleEntry[] };
+
+// Font-family strings mirroring the server CFG
+const PF_DEFAULT   = "system-ui, sans-serif";
+const PF_ANTON     = "'Anton', Impact, sans-serif";
+const PF_BANGERS   = "'Bangers', cursive";
+const PF_OSWALD    = "'Oswald', sans-serif";
+const PF_BEBAS     = "'Bebas Neue', 'Anton', sans-serif";
+const PF_MARKER    = "'Permanent Marker', cursive";
+const PF_PIXEL     = "'Press Start 2P', monospace";
+const PF_SPACE     = "'Space Grotesk', sans-serif";
+const PF_GOTHIC    = "'UnifrakturCook', cursive";
+const PF_NUNITO    = "'Nunito', sans-serif";
+
+// Helper: 3-row stacked preview
+function stackPreview(
+  activeText: string,
+  activeClass: string,
+  contextClass: string,
+  font: string,
+  bg = "transparent",
+): React.ReactNode {
+  return (
+    <div className="flex flex-col items-center justify-center gap-0 w-full h-full px-1" style={{ background: bg, fontFamily: font }}>
+      <span className={cn("text-[7px] leading-tight", contextClass)}>won&apos;t do</span>
+      <span className={cn("text-[17px] leading-tight font-black", activeClass)}>{activeText}</span>
+      <span className={cn("text-[7px] leading-tight", contextClass)}>to</span>
+    </div>
+  );
+}
 
 const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
   {
     category: "Classic",
     styles: [
-      { id: "none",           label: "None",           desc: "No captions",             preview: null,     previewClass: "" },
-      { id: "subtitle",       label: "Subtitle",       desc: "Classic dark bar",        preview: "Sub",    previewClass: "bg-black/60 text-white px-1 rounded text-[8px]" },
-      { id: "shadow",         label: "Shadow",         desc: "Heavy drop shadow",       preview: "SHADE",  previewClass: "text-white font-black text-[9px] [text-shadow:1px_1px_3px_black]" },
-      { id: "outline-black",  label: "Impact",         desc: "White with thick border", preview: "MPCT",   previewClass: "text-white font-black text-[9px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]" },
-      { id: "outline-white",  label: "Outline",        desc: "White stroke, no fill",   preview: "LINE",   previewClass: "text-transparent font-black text-[9px] [text-stroke:1px_white] outline outline-1 outline-white rounded" },
-      { id: "bold-center",    label: "Bold Center",    desc: "One word, centered pill", preview: "BOLD",   previewClass: "bg-white text-black font-black px-1 rounded text-[7px]" },
-      { id: "clean-mid",      label: "Clean Mid",      desc: "Centered pill, minimal",  preview: "MID",    previewClass: "bg-black/50 text-white font-bold px-1 rounded text-[8px]" },
+      { id: "none",           label: "None",        desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="text-white/20 text-[11px]">⊘</span> },
+      { id: "subtitle",       label: "Subtitle",    desc: "", preview: null, previewClass: "",
+        renderPreview: () => <div className="flex items-end w-full h-full px-1 pb-1.5"><div className="w-full bg-black/70 text-white text-[9px] font-semibold text-center py-0.5 rounded" style={{ fontFamily: PF_DEFAULT }}>just be kind</div></div> },
+      { id: "shadow",         label: "Shadow",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="text-white font-black text-[14px] [text-shadow:2px_2px_6px_black,2px_2px_12px_black]" style={{ fontFamily: PF_DEFAULT }}>SHADOW</span> },
+      { id: "outline-black",  label: "Impact",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="text-white font-black text-[14px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black,-1px_1px_0_black,1px_1px_0_black]" style={{ fontFamily: PF_SPACE }}>IMPACT</span> },
+      { id: "outline-white",  label: "Outline",     desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[14px] text-transparent" style={{ WebkitTextStroke: "1.5px white", fontFamily: PF_SPACE }}>OUTLINE</span> },
+      { id: "bold-center",    label: "Bold Center", desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="bg-white text-black font-black text-[14px] px-2 py-0.5 rounded-lg" style={{ fontFamily: PF_ANTON }}>BOLD</span> },
+      { id: "clean-mid",      label: "Clean Mid",   desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="bg-black/60 text-white font-bold text-[12px] px-2 py-0.5 rounded-lg" style={{ fontFamily: PF_SPACE }}>Clean</span> },
+    ],
+  },
+  {
+    category: "3-Row Stacked",
+    styles: [
+      { id: "gothic",       label: "Gothic",    desc: "", preview: null, previewClass: "",
+        renderPreview: () => stackPreview("Kind", "text-white [text-shadow:-1px_-1px_0_black,1px_-1px_0_black,-1px_1px_0_black,1px_1px_0_black]", "text-white/80 [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]", PF_GOTHIC) },
+      { id: "word-stack",   label: "Word Stack",desc: "", preview: null, previewClass: "",
+        renderPreview: () => stackPreview("good", "text-white [text-shadow:-1px_-1px_0_black,1px_-1px_0_black,-1px_1px_0_black,1px_1px_0_black]", "text-white/80 italic [text-shadow:-1px_-1px_0_black]", PF_NUNITO) },
+      { id: "stack-shake",  label: "Shake",     desc: "", preview: null, previewClass: "",
+        renderPreview: () => stackPreview("SHAKE", "text-red-400 [text-shadow:-1px_-1px_0_black,1px_-1px_0_black,0_0_8px_#FF3333]", "text-white/80 [text-shadow:-1px_-1px_0_black]", PF_OSWALD) },
+      { id: "stack-wave",   label: "Wave",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => stackPreview("Wave", "text-white [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]", "text-white/80 [text-shadow:-1px_-1px_0_black]", PF_MARKER) },
+      { id: "stack-neon",   label: "Neon",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => stackPreview("NEON", "text-[#00FF88] [text-shadow:0_0_8px_#00FF88,0_0_16px_#00FF88]", "text-white/80", PF_BEBAS) },
+      { id: "stack-fire",   label: "Fire",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => stackPreview("FIRE", "text-orange-400 [text-shadow:0_0_8px_#FF4500,0_0_16px_#FF4500,-1px_-1px_0_black]", "text-white/80 [text-shadow:-1px_-1px_0_black]", PF_ANTON) },
+      { id: "stack-comic",  label: "Comic",     desc: "", preview: null, previewClass: "",
+        renderPreview: () => stackPreview("POW!", "text-white [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]", "text-white/80", PF_BANGERS, "rgba(20,20,200,0.85)") },
+      { id: "stack-gold",   label: "Gold",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => stackPreview("GOLD", "text-yellow-400 [text-shadow:0_0_8px_#FFD700,0_0_14px_#FFD700,-1px_-1px_0_black]", "text-white/80 [text-shadow:-1px_-1px_0_black]", PF_OSWALD) },
+      { id: "stack-sunny",  label: "Sunny",     desc: "", preview: null, previewClass: "",
+        renderPreview: () => stackPreview("SUN", "text-yellow-300 [text-shadow:-1px_-1px_0_black,1px_-1px_0_black,-1px_1px_0_black,1px_1px_0_black]", "text-white/80 [text-shadow:-1px_-1px_0_black]", PF_ANTON) },
     ],
   },
   {
     category: "Full Line",
     styles: [
-      { id: "full-line",      label: "Full Line",      desc: "Whole sentence at once",  preview: "LINE",   previewClass: "text-white font-semibold text-[8px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]" },
+      { id: "full-line",     label: "Full Line",  desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <div className="flex flex-col items-center justify-center gap-0.5 px-1 w-full" style={{ fontFamily: PF_DEFAULT }}>
+            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">just be kind</span>
+            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">to others</span>
+          </div>
+        ) },
     ],
   },
   {
     category: "Viral",
     styles: [
-      { id: "word-pop",       label: "Word Pop",       desc: "Active word scales up",   preview: "BIG",    previewClass: "text-white font-black text-[9px]" },
-      { id: "karaoke",        label: "Karaoke",        desc: "Yellow word highlight",   preview: "WORD",   previewClass: "text-yellow-400 font-black text-[9px]" },
-      { id: "mr-beast",       label: "MrBeast",        desc: "Big red active, center",  preview: "HUGE",   previewClass: "text-red-500 font-black text-[9px] [text-shadow:-2px_-2px_0_black,2px_-2px_0_black]" },
-      { id: "stack-reveal",   label: "Stack",          desc: "Single word reveal, mid", preview: "STAK",   previewClass: "text-white font-black text-[9px] [text-shadow:-2px_-2px_0_black,2px_-2px_0_black]" },
-      { id: "highlight-box",  label: "Highlight",      desc: "Yellow box, black text",  preview: "HI",     previewClass: "bg-yellow-400 text-black font-black px-1 rounded text-[8px]" },
-      { id: "comic",          label: "Comic",          desc: "Blue pill, huge text",    preview: "POW!",   previewClass: "bg-blue-800 text-white font-black px-1 rounded text-[7px]" },
+      { id: "word-pop",      label: "Word Pop",   desc: "", preview: null, previewClass: "",
+        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_ANTON }}><span className="text-white/40 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">just</span><span className="text-white font-black text-[16px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]">BE</span><span className="text-white/40 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">kind</span></div> },
+      { id: "karaoke",       label: "Karaoke",    desc: "", preview: null, previewClass: "",
+        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_MARKER }}><span className="text-white/50 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">just</span><span className="text-yellow-400 font-black text-[12px] [text-shadow:-1px_-1px_0_black]">BE</span><span className="text-white/50 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">kind</span></div> },
+      { id: "mr-beast",      label: "MrBeast",    desc: "", preview: null, previewClass: "",
+        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_OSWALD }}><span className="text-white font-black text-[8px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]">just</span><span className="text-red-500 font-black text-[17px] [text-shadow:-2px_-2px_0_black,2px_-2px_0_black]">BE</span><span className="text-white font-black text-[8px] [text-shadow:-1px_-1px_0_black]">kind</span></div> },
+      { id: "stack-reveal",  label: "Stack",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="text-white font-black text-[20px] [text-shadow:-2px_-2px_0_black,2px_-2px_0_black,-2px_2px_0_black,2px_2px_0_black]" style={{ fontFamily: PF_OSWALD }}>KIND</span> },
+      { id: "highlight-box", label: "Highlight",  desc: "", preview: null, previewClass: "",
+        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_BANGERS }}><span className="text-white/50 font-black text-[8px]">just</span><span className="bg-yellow-400 text-black font-black text-[11px] px-1 rounded">BE</span><span className="text-white/50 font-black text-[8px]">kind</span></div> },
+      { id: "comic",         label: "Comic",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="bg-blue-800 text-white font-black text-[15px] px-2 py-0.5 rounded [text-shadow:-1px_-1px_0_black]" style={{ fontFamily: PF_BANGERS }}>POW!</span> },
     ],
   },
   {
     category: "Animated",
     styles: [
-      { id: "bounce",         label: "Bounce",         desc: "Word springs in",         preview: "DROP",   previewClass: "text-white font-black text-[9px]" },
-      { id: "wave",           label: "Wave",           desc: "Words oscillate up/down", preview: "~WVE~",  previewClass: "text-white font-black text-[9px]" },
-      { id: "shake",          label: "Shake",          desc: "Vibrating active word",   preview: "SHKK",   previewClass: "text-red-400 font-black text-[9px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]" },
-      { id: "glitch",         label: "Glitch",         desc: "Cyan/magenta glitch",     preview: "ERR",    previewClass: "text-fuchsia-400 font-black text-[9px]" },
-      { id: "typewriter",     label: "Typewriter",     desc: "Matrix green on black",   preview: "TYPE",   previewClass: "text-[#00FF41] font-black text-[9px] bg-black/80 px-1 rounded" },
+      { id: "bounce",        label: "Bounce",     desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="text-white font-black text-[16px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black] -translate-y-1.5 inline-block" style={{ fontFamily: PF_ANTON }}>DROP</span> },
+      { id: "wave",          label: "Wave",       desc: "", preview: null, previewClass: "",
+        renderPreview: () => <div className="flex items-end gap-0.5" style={{ fontFamily: PF_MARKER }}>{"WAVE".split("").map((c, i) => <span key={i} className={cn("text-white font-black text-[12px]", i % 2 === 0 ? "-translate-y-1" : "translate-y-0.5")}>{c}</span>)}</div> },
+      { id: "shake",         label: "Shake",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="text-red-400 font-black text-[16px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black] translate-x-0.5 inline-block" style={{ fontFamily: PF_OSWALD }}>SHAKE</span> },
+      { id: "glitch",        label: "Glitch",     desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="relative font-black text-[15px]" style={{ fontFamily: PF_PIXEL }}><span className="absolute text-cyan-400/70 translate-x-0.5 -translate-y-px">ERR!</span><span className="relative text-fuchsia-400">ERR!</span></span> },
+      { id: "typewriter",    label: "Typewriter", desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[11px] text-[#00FF41] bg-black/80 px-1.5 py-0.5 rounded [text-shadow:0_0_6px_#00FF41]" style={{ fontFamily: PF_PIXEL }}>TYPE_</span> },
     ],
   },
   {
     category: "Glowing",
     styles: [
-      { id: "neon",           label: "Neon",           desc: "Green neon glow",         preview: "GLOW",   previewClass: "text-[#00ff88] font-black text-[9px]" },
-      { id: "fire",           label: "Fire",           desc: "Orange-red flame glow",   preview: "FIRE",   previewClass: "text-orange-500 font-black text-[9px]" },
-      { id: "electric-blue",  label: "Electric",       desc: "Bright blue glow, mid",   preview: "ELEC",   previewClass: "text-cyan-400 font-black text-[9px]" },
-      { id: "gradient-gold",  label: "Gold",           desc: "Shimmering gold gradient",preview: "GOLD",   previewClass: "text-yellow-400 font-black text-[9px]" },
+      { id: "neon",          label: "Neon",       desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[16px] text-[#00ff88] [text-shadow:0_0_8px_#00ff88,0_0_20px_#00ff88]" style={{ fontFamily: PF_BEBAS }}>NEON</span> },
+      { id: "fire",          label: "Fire",       desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[16px] text-orange-400 [text-shadow:0_0_8px_#FF4500,0_0_20px_#FF4500,-1px_-1px_0_black]" style={{ fontFamily: PF_OSWALD }}>FIRE</span> },
+      { id: "electric-blue", label: "Electric",   desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[16px] text-cyan-400 [text-shadow:0_0_8px_#00D4FF,0_0_20px_#00D4FF]" style={{ fontFamily: PF_BEBAS }}>ELEC</span> },
+      { id: "gradient-gold", label: "Gold",       desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[16px] bg-gradient-to-b from-yellow-200 via-yellow-400 to-yellow-600 bg-clip-text text-transparent drop-shadow-[0_0_6px_#FFD700]" style={{ fontFamily: PF_OSWALD }}>GOLD</span> },
     ],
   },
   {
     category: "Gradient",
     styles: [
-      { id: "rainbow",        label: "Rainbow",        desc: "Full spectrum colors",    preview: "RGB",    previewClass: "font-black text-[9px] bg-gradient-to-r from-red-500 via-yellow-400 to-blue-500 bg-clip-text text-transparent" },
-      { id: "gradient-pop",   label: "Gradient Pop",   desc: "Purple-pink gradient",    preview: "GRAD",   previewClass: "font-black text-[9px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 bg-clip-text text-transparent" },
+      { id: "rainbow",       label: "Rainbow",    desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[16px] bg-gradient-to-r from-red-500 via-yellow-400 to-blue-500 bg-clip-text text-transparent" style={{ fontFamily: PF_BANGERS }}>RBOW</span> },
+      { id: "gradient-pop",  label: "Grad Pop",   desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[16px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 bg-clip-text text-transparent" style={{ fontFamily: PF_BEBAS }}>POP!</span> },
     ],
   },
   {
     category: "Solo",
     styles: [
-      { id: "solo-pop",       label: "Solo Pop",       desc: "One word, big & bold",    preview: "ONE",    previewClass: "text-white font-black text-[9px] [text-shadow:-2px_-2px_0_black,2px_-2px_0_black]" },
-      { id: "solo-red",       label: "Solo Red",       desc: "One word, red glow",      preview: "RED",    previewClass: "text-red-500 font-black text-[9px] [text-shadow:-2px_-2px_0_black,2px_-2px_0_black]" },
-      { id: "solo-glow",      label: "Solo Glow",      desc: "One word, green neon",    preview: "GLO",    previewClass: "text-[#00FF88] font-black text-[9px]" },
-      { id: "solo-box",       label: "Solo Box",       desc: "One word, yellow pill",   preview: "BOX",    previewClass: "bg-yellow-400 text-black font-black px-1 rounded text-[8px]" },
-      { id: "solo-gradient",  label: "Solo Grad",      desc: "One word, purple grad",   preview: "PRPL",   previewClass: "font-black text-[9px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 bg-clip-text text-transparent" },
-      { id: "solo-shake",     label: "Solo Shake",     desc: "One word, shaking",       preview: "SHKK",   previewClass: "text-white font-black text-[9px] [text-shadow:-2px_-2px_0_red,2px_-2px_0_red]" },
+      { id: "solo-pop",      label: "Solo Pop",   desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[20px] text-white [text-shadow:-2px_-2px_0_black,2px_-2px_0_black,-2px_2px_0_black,2px_2px_0_black]" style={{ fontFamily: PF_ANTON }}>ONE</span> },
+      { id: "solo-red",      label: "Solo Red",   desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[20px] text-red-500 [text-shadow:0_0_8px_#FF2D2D,-1px_-1px_0_black,1px_-1px_0_black]" style={{ fontFamily: PF_ANTON }}>RED</span> },
+      { id: "solo-glow",     label: "Solo Glow",  desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[20px] text-[#00FF88] [text-shadow:0_0_10px_#00FF88,0_0_20px_#00FF88]" style={{ fontFamily: PF_BEBAS }}>GLO</span> },
+      { id: "solo-box",      label: "Solo Box",   desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[16px] text-black bg-yellow-400 px-2 py-0.5 rounded-lg" style={{ fontFamily: PF_SPACE }}>BOX</span> },
+      { id: "solo-gradient", label: "Solo Grad",  desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[20px] bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 bg-clip-text text-transparent" style={{ fontFamily: PF_BEBAS }}>PRPL</span> },
+      { id: "solo-shake",    label: "Solo Shake", desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="font-black text-[20px] text-white [text-shadow:-2px_-2px_0_red,2px_-2px_0_red] translate-x-0.5 inline-block" style={{ fontFamily: PF_OSWALD }}>SHK</span> },
     ],
   },
 ];
+
 
 
 const SPEED_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
@@ -193,6 +289,8 @@ interface EditPanelProps {
   setCaptionFontSize: (n: number) => void;
   captionPosY: number;
   setCaptionPosY: (n: number) => void;
+  captionPosX: number;
+  setCaptionPosX: (n: number) => void;
   captionLang: string;
   activeLang: string;
   translating: boolean;
@@ -537,7 +635,7 @@ function StipopStickerPicker({
 
 function EditPanelContent({
   activeTab, hideTranscript = false, captionStyle, setCaptionStyle, captionWords, onCaptionWordsChange, captionFontSize, setCaptionFontSize,
-  captionPosY, setCaptionPosY,
+  captionPosY, setCaptionPosY, captionPosX, setCaptionPosX,
   captionLang, activeLang, translating, handleTranslate,
   speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
   brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
@@ -569,21 +667,23 @@ function EditPanelContent({
                         key={s.id}
                         onClick={() => setCaptionStyle(s.id)}
                         className={cn(
-                          "flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition-all",
-                          captionStyle === s.id ? "border-white/40 bg-white/8" : "border-white/8 bg-white/3 hover:border-white/16"
+                          "relative rounded-xl border transition-all overflow-hidden",
+                          captionStyle === s.id ? "border-white/50 ring-1 ring-white/20" : "border-white/8 bg-white/3 hover:border-white/20"
                         )}
                       >
-                        <div className="h-8 w-9 rounded-lg bg-[#1a1a1a] flex items-center justify-center shrink-0 overflow-hidden">
-                          {s.preview
-                            ? <span className={cn("leading-none text-center block truncate px-0.5", s.previewClass)}>{s.preview}</span>
-                            : <span className="text-white/20 text-[11px]">⊘</span>
-                          }
+                        {/* Preview area */}
+                        <div className="h-14 w-full bg-[#111] flex items-center justify-center overflow-hidden">
+                          {s.renderPreview ? s.renderPreview() : (
+                            s.preview
+                              ? <span className={cn("leading-none text-center block px-1", s.previewClass)}>{s.preview}</span>
+                              : <span className="text-white/20 text-[11px]">⊘</span>
+                          )}
                         </div>
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <span className="text-[10px] font-semibold text-white/80 leading-tight truncate">{s.label}</span>
-                          <span className="text-[8px] text-white/30 leading-tight truncate">{s.desc}</span>
+                        {/* Label */}
+                        <div className="px-2 py-1 flex items-center justify-between bg-[#181818]">
+                          <span className="text-[9px] font-semibold text-white/60 truncate leading-tight">{s.label}</span>
+                          {captionStyle === s.id && <Check className="h-2.5 w-2.5 text-white/70 shrink-0 ml-1" />}
                         </div>
-                        {captionStyle === s.id && <Check className="h-3 w-3 text-white/60 shrink-0" />}
                       </button>
                     ))}
                   </div>
@@ -610,20 +710,19 @@ function EditPanelContent({
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="text-[12px] text-white/50">Vertical position</span>
-              <span className="text-[11px] font-semibold text-white/60">
-                {captionPosY === 0 ? "Default" : `${captionPosY > 0 ? "+" : ""}${captionPosY}`}
-              </span>
+              <span className="text-[12px] text-white/50">Position</span>
+              {(captionPosX !== 0 || captionPosY !== 0) && (
+                <button
+                  onClick={() => { setCaptionPosX(0); setCaptionPosY(0); }}
+                  className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
+                >
+                  Reset
+                </button>
+              )}
             </div>
-            <input
-              type="range" min={-100} max={100} step={5}
-              value={captionPosY}
-              onChange={e => setCaptionPosY(Number(e.target.value))}
-              className="w-full accent-white cursor-pointer"
-            />
-            <div className="flex justify-between text-[10px] text-white/20">
-              <span>Higher</span><span>Lower</span>
-            </div>
+            <p className="text-[10px] text-white/30 leading-snug">
+              Drag the caption directly on the preview to reposition it.
+            </p>
           </div>
 
           {/* Editable transcript — only shown on mobile (desktop has its own left panel) */}
@@ -1077,6 +1176,7 @@ export default function ClipRefinePage() {
   const [captionLang, setCaptionLang]     = useState("");
   const [captionFontSize, setCaptionFontSize] = useState(50);
   const [captionPosY, setCaptionPosY]         = useState(0);
+  const [captionPosX, setCaptionPosX]         = useState(0);
   const [translating, setTranslating]     = useState(false);
   const [activeLang, setActiveLang]       = useState("");
 
@@ -1104,6 +1204,8 @@ export default function ClipRefinePage() {
 
   // Sticker drag state — using refs so no stale closures
   const dragRef = useRef<{ idx: number; rectLeft: number; rectTop: number; rectW: number; rectH: number } | null>(null);
+  // Caption position drag state
+  const captionDragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number; rectW: number; rectH: number } | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
 
   // Load project aspect ratio
@@ -1235,6 +1337,7 @@ export default function ClipRefinePage() {
           captionStyle,
           captionFontSize,
           captionPosY,
+          captionPosX,
           captionMap:     captionWords.length ? { [clipId]: captionWords } : {},
           aspectRatio,
           brightness,
@@ -1333,6 +1436,7 @@ export default function ClipRefinePage() {
     onCaptionWordsChange: setCaptionWords,
     captionFontSize, setCaptionFontSize,
     captionPosY, setCaptionPosY,
+    captionPosX, setCaptionPosX,
     captionLang, activeLang, translating, handleTranslate,
     speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
     brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
@@ -1522,14 +1626,50 @@ export default function ClipRefinePage() {
                     onPlay={() => setPlaying(true)}
                     onPause={() => setPlaying(false)}
                   />
-                  <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} posOffset={captionPosY} />
-                  {/* Play/pause tap target — only active when NO drag in progress */}
+                  <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} posOffset={captionPosY} hOffset={captionPosX} />
+                  {/* Caption drag + play/pause overlay — covers full preview */}
                   <div
-                    className="absolute inset-0 flex items-center justify-center cursor-pointer"
-                    style={{ zIndex: 3 }}
-                    onClick={(e) => {
+                    className="absolute inset-0 flex items-center justify-center"
+                    style={{
+                      zIndex: 4,
+                      cursor: activeTab === "captions" && captionStyle !== "none"
+                        ? (captionDragRef.current ? "grabbing" : "grab")
+                        : "pointer",
+                    }}
+                    onPointerDown={(e) => {
+                      // Don't interfere with sticker drags
                       if (dragRef.current) return;
-                      togglePlay();
+                      const rect = videoContainerRef.current?.getBoundingClientRect();
+                      if (!rect) return;
+                      captionDragRef.current = {
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        startPosX: captionPosX,
+                        startPosY: captionPosY,
+                        rectW: rect.width,
+                        rectH: rect.height,
+                      };
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                    }}
+                    onPointerMove={(e) => {
+                      if (!captionDragRef.current) return;
+                      if (activeTab !== "captions" || captionStyle === "none") return;
+                      const { startX, startY, startPosX, startPosY, rectW, rectH } = captionDragRef.current;
+                      const dx = ((e.clientX - startX) / rectW) * 200;
+                      const dy = ((e.clientY - startY) / rectH) * 200;
+                      // Only start updating once past 3px threshold
+                      if (Math.abs(e.clientX - startX) < 3 && Math.abs(e.clientY - startY) < 3) return;
+                      setCaptionPosX(Math.round(Math.max(-100, Math.min(100, startPosX + dx))));
+                      setCaptionPosY(Math.round(Math.max(-100, Math.min(100, startPosY + dy))));
+                    }}
+                    onPointerUp={(e) => {
+                      const wasDrag = captionDragRef.current
+                        && activeTab === "captions"
+                        && captionStyle !== "none"
+                        && (Math.abs(e.clientX - captionDragRef.current.startX) > 3 || Math.abs(e.clientY - captionDragRef.current.startY) > 3);
+                      captionDragRef.current = null;
+                      // If it was a short tap (not a drag), toggle play
+                      if (!wasDrag && !dragRef.current) togglePlay();
                     }}
                   >
                     {!playing && (
