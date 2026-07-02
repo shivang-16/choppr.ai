@@ -72,15 +72,30 @@ interface Props {
 
 // ── Per-style font families (match server-side assets/fonts TTFs) ─────────────
 const F_DEFAULT = `system-ui,-apple-system,sans-serif`;       // Noto on server
-const F_ANTON   = `"Anton",${F_DEFAULT}`;                      // condensed impact
-const F_BANGERS = `"Bangers",${F_DEFAULT}`;                    // comic-book
-const F_OSWALD  = `"Oswald",${F_DEFAULT}`;                     // condensed grotesque
-const F_BEBAS   = `"Bebas Neue",${F_DEFAULT}`;                 // tall condensed
-const F_MARKER  = `"Permanent Marker",${F_DEFAULT}`;           // hand-written
-const F_PIXEL   = `"Press Start 2P",${F_DEFAULT}`;             // retro pixel
-const F_SPACE   = `"Space Grotesk",${F_DEFAULT}`;              // geometric modern
-const F_GOTHIC  = `"UnifrakturCook",${F_DEFAULT}`;             // gothic blackletter
-const F_NUNITO  = `"Nunito",${F_DEFAULT}`;                     // rounded bold
+const F_ANTON   = `"Anton",${F_DEFAULT}`;                      // condensed impact     — single-weight 400
+const F_BANGERS = `"Bangers",${F_DEFAULT}`;                    // comic-book           — single-weight 400
+const F_OSWALD  = `"Oswald",${F_DEFAULT}`;                     // condensed grotesque  — single-weight 400
+const F_BEBAS   = `"Bebas Neue",${F_DEFAULT}`;                 // tall condensed       — single-weight 400
+const F_MARKER  = `"Permanent Marker",${F_DEFAULT}`;           // hand-written         — single-weight 400
+const F_PIXEL   = `"Press Start 2P",${F_DEFAULT}`;             // retro pixel          — single-weight 400
+const F_SPACE   = `"Space Grotesk",${F_DEFAULT}`;              // geometric modern     — variable (use 700)
+const F_GOTHIC  = `"UnifrakturCook",${F_DEFAULT}`;             // gothic blackletter   — registered at 700
+const F_NUNITO  = `"Nunito",${F_DEFAULT}`;                     // rounded black (900)
+
+// Registered CSS weight per font — must match what the TTF reports on server
+const W: Record<string, string> = {
+  [F_DEFAULT]: "bold",
+  [F_ANTON]:   "400",
+  [F_BANGERS]: "400",
+  [F_OSWALD]:  "400",
+  [F_BEBAS]:   "400",
+  [F_MARKER]:  "400",
+  [F_PIXEL]:   "400",
+  [F_SPACE]:   "700",
+  [F_GOTHIC]:  "bold",
+  [F_NUNITO]:  "900",
+};
+const fw = (f: string): string => W[f] ?? "bold";
 
 const CFG: Record<CaptionStyle, {
   weight: string;
@@ -94,66 +109,66 @@ const CFG: Record<CaptionStyle, {
   outline: { color: string; width: number } | null;
 }> = {
   // ── Noto / system default ─────────────────────────────────────────────────
-  none:            { weight:"900", font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.80, glow:null,        outline:null },
-  subtitle:        { weight:"bold",font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.6)",  bg:"rgba(0,0,0,0.7)",   showAll:true,  yRatio:0.88, glow:null,        outline:null },
-  "full-line":     { weight:"600", font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.45)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:2} },
-  shadow:          { weight:"900", font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.4)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:null },
-  "clean-mid":     { weight:"900", font:F_SPACE,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.5)",  bg:"rgba(0,0,0,0.5)",   showAll:true,  yRatio:0.50, glow:null,        outline:null },
+  none:            { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.80, glow:null,        outline:null },
+  subtitle:        { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.6)",  bg:"rgba(0,0,0,0.7)",   showAll:true,  yRatio:0.88, glow:null,        outline:null },
+  "full-line":     { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.45)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:2} },
+  shadow:          { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.4)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:null },
+  "clean-mid":     { weight:fw(F_SPACE),   font:F_SPACE,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.5)",  bg:"rgba(0,0,0,0.5)",   showAll:true,  yRatio:0.50, glow:null,        outline:null },
 
-  // ── Anton (condensed impact) ──────────────────────────────────────────────
-  "word-pop":      { weight:"900", font:F_ANTON,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.35)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:3} },
-  "bold-center":   { weight:"900", font:F_ANTON,   activeColor:"#fff",      inactiveColor:"transparent",           bg:"rgba(0,0,0,0.65)",  showAll:false, yRatio:0.76, glow:null,        outline:null },
-  bounce:          { weight:"900", font:F_ANTON,   activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.78, glow:null,        outline:{color:"#000",width:3} },
-  "solo-pop":      { weight:"900", font:F_ANTON,   activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
-  "solo-red":      { weight:"900", font:F_ANTON,   activeColor:"#FF2D2D",   inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:"#FF2D2D",   outline:{color:"#000",width:5} },
+  // ── Anton (condensed impact — single-weight 400, inherently bold) ─────────
+  "word-pop":      { weight:fw(F_ANTON),   font:F_ANTON,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.35)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:3} },
+  "bold-center":   { weight:fw(F_ANTON),   font:F_ANTON,   activeColor:"#fff",      inactiveColor:"transparent",           bg:"rgba(0,0,0,0.65)",  showAll:false, yRatio:0.76, glow:null,        outline:null },
+  bounce:          { weight:fw(F_ANTON),   font:F_ANTON,   activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.78, glow:null,        outline:{color:"#000",width:3} },
+  "solo-pop":      { weight:fw(F_ANTON),   font:F_ANTON,   activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
+  "solo-red":      { weight:fw(F_ANTON),   font:F_ANTON,   activeColor:"#FF2D2D",   inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:"#FF2D2D",   outline:{color:"#000",width:5} },
 
-  // ── Oswald (condensed grotesque) ──────────────────────────────────────────
-  "mr-beast":      { weight:"900", font:F_OSWALD,  activeColor:"#FF0000",   inactiveColor:"rgba(255,255,255,1.0)",  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:6} },
-  "stack-reveal":  { weight:"900", font:F_OSWALD,  activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.45, glow:null,        outline:{color:"#000",width:4} },
-  shake:           { weight:"900", font:F_OSWALD,  activeColor:"#FF3333",   inactiveColor:"rgba(255,255,255,0.8)",  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:4} },
-  "solo-shake":    { weight:"900", font:F_OSWALD,  activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:null,        outline:{color:"#FF0000",width:5} },
-  fire:            { weight:"900", font:F_OSWALD,  activeColor:"#FF4500",   inactiveColor:"rgba(255,165,0,0.5)",    bg:null,                showAll:true,  yRatio:0.80, glow:"#FF4500",   outline:{color:"#000",width:2} },
-  "gradient-gold": { weight:"900", font:F_OSWALD,  activeColor:"gradient",  inactiveColor:"rgba(255,215,0,0.3)",    bg:null,                showAll:true,  yRatio:0.80, glow:"#FFD700",   outline:{color:"#000",width:2} },
+  // ── Oswald (condensed grotesque — single-weight 400) ─────────────────────
+  "mr-beast":      { weight:fw(F_OSWALD),  font:F_OSWALD,  activeColor:"#FF0000",   inactiveColor:"rgba(255,255,255,1.0)",  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:6} },
+  "stack-reveal":  { weight:fw(F_OSWALD),  font:F_OSWALD,  activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.45, glow:null,        outline:{color:"#000",width:4} },
+  shake:           { weight:fw(F_OSWALD),  font:F_OSWALD,  activeColor:"#FF3333",   inactiveColor:"rgba(255,255,255,0.8)",  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:4} },
+  "solo-shake":    { weight:fw(F_OSWALD),  font:F_OSWALD,  activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:null,        outline:{color:"#FF0000",width:5} },
+  fire:            { weight:fw(F_OSWALD),  font:F_OSWALD,  activeColor:"#FF4500",   inactiveColor:"rgba(255,165,0,0.5)",    bg:null,                showAll:true,  yRatio:0.80, glow:"#FF4500",   outline:{color:"#000",width:2} },
+  "gradient-gold": { weight:fw(F_OSWALD),  font:F_OSWALD,  activeColor:"gradient",  inactiveColor:"rgba(255,215,0,0.3)",    bg:null,                showAll:true,  yRatio:0.80, glow:"#FFD700",   outline:{color:"#000",width:2} },
 
-  // ── Bangers (comic-book) ──────────────────────────────────────────────────
-  comic:           { weight:"900", font:F_BANGERS, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.4)",  bg:"rgba(30,30,200,0.85)",showAll:false,yRatio:0.78, glow:null,       outline:{color:"#000",width:4} },
-  rainbow:         { weight:"900", font:F_BANGERS, activeColor:"gradient",  inactiveColor:"rgba(255,255,255,0.35)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:2} },
-  "highlight-box": { weight:"900", font:F_BANGERS, activeColor:"#000",      inactiveColor:"rgba(255,255,255,0.5)",  bg:"#FFE600",           showAll:true,  yRatio:0.80, glow:null,        outline:null },
+  // ── Bangers (comic-book — single-weight 400) ──────────────────────────────
+  comic:           { weight:fw(F_BANGERS), font:F_BANGERS, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.4)",  bg:"rgba(30,30,200,0.85)",showAll:false,yRatio:0.78, glow:null,       outline:{color:"#000",width:4} },
+  rainbow:         { weight:fw(F_BANGERS), font:F_BANGERS, activeColor:"gradient",  inactiveColor:"rgba(255,255,255,0.35)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:2} },
+  "highlight-box": { weight:fw(F_BANGERS), font:F_BANGERS, activeColor:"#000",      inactiveColor:"rgba(255,255,255,0.5)",  bg:"#FFE600",           showAll:true,  yRatio:0.80, glow:null,        outline:null },
 
-  // ── Bebas Neue (tall condensed / glow) ────────────────────────────────────
-  neon:            { weight:"900", font:F_BEBAS,   activeColor:"#00ff88",   inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.80, glow:"#00ff88",   outline:null },
-  "electric-blue": { weight:"900", font:F_BEBAS,   activeColor:"#00D4FF",   inactiveColor:"rgba(255,255,255,0.4)",  bg:null,                showAll:true,  yRatio:0.50, glow:"#00D4FF",   outline:{color:"#000",width:3} },
-  "solo-glow":     { weight:"900", font:F_BEBAS,   activeColor:"#00FF88",   inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:"#00FF88",   outline:{color:"#000",width:4} },
-  "gradient-pop":  { weight:"900", font:F_BEBAS,   activeColor:"gradient",  inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.50, glow:"#A855F7",   outline:{color:"#000",width:3} },
-  "solo-gradient": { weight:"900", font:F_BEBAS,   activeColor:"gradient",  inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:"#A855F7",   outline:{color:"#000",width:4} },
+  // ── Bebas Neue (tall condensed — single-weight 400) ───────────────────────
+  neon:            { weight:fw(F_BEBAS),   font:F_BEBAS,   activeColor:"#00ff88",   inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.80, glow:"#00ff88",   outline:null },
+  "electric-blue": { weight:fw(F_BEBAS),   font:F_BEBAS,   activeColor:"#00D4FF",   inactiveColor:"rgba(255,255,255,0.4)",  bg:null,                showAll:true,  yRatio:0.50, glow:"#00D4FF",   outline:{color:"#000",width:3} },
+  "solo-glow":     { weight:fw(F_BEBAS),   font:F_BEBAS,   activeColor:"#00FF88",   inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:"#00FF88",   outline:{color:"#000",width:4} },
+  "gradient-pop":  { weight:fw(F_BEBAS),   font:F_BEBAS,   activeColor:"gradient",  inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.50, glow:"#A855F7",   outline:{color:"#000",width:3} },
+  "solo-gradient": { weight:fw(F_BEBAS),   font:F_BEBAS,   activeColor:"gradient",  inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:"#A855F7",   outline:{color:"#000",width:4} },
 
-  // ── Permanent Marker (hand-written) ───────────────────────────────────────
-  karaoke:         { weight:"900", font:F_MARKER,  activeColor:"#FFE600",   inactiveColor:"rgba(255,255,255,0.5)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:3} },
-  wave:            { weight:"900", font:F_MARKER,  activeColor:"#ffffff",   inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.82, glow:null,        outline:{color:"#000",width:3} },
+  // ── Permanent Marker (hand-written — single-weight 400) ───────────────────
+  karaoke:         { weight:fw(F_MARKER),  font:F_MARKER,  activeColor:"#FFE600",   inactiveColor:"rgba(255,255,255,0.5)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:3} },
+  wave:            { weight:fw(F_MARKER),  font:F_MARKER,  activeColor:"#ffffff",   inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.82, glow:null,        outline:{color:"#000",width:3} },
 
-  // ── Press Start 2P (pixel / retro) ────────────────────────────────────────
-  typewriter:      { weight:"900", font:F_PIXEL,   activeColor:"#00FF41",   inactiveColor:"rgba(0,255,65,0.3)",     bg:"rgba(0,0,0,0.85)",  showAll:true,  yRatio:0.80, glow:"#00FF41",   outline:null },
-  glitch:          { weight:"900", font:F_PIXEL,   activeColor:"#ff00ff",   inactiveColor:"rgba(255,255,255,0.25)", bg:null,                showAll:true,  yRatio:0.80, glow:"#ff00ff",   outline:{color:"#00ffff",width:2} },
+  // ── Press Start 2P (pixel — single-weight 400) ────────────────────────────
+  typewriter:      { weight:fw(F_PIXEL),   font:F_PIXEL,   activeColor:"#00FF41",   inactiveColor:"rgba(0,255,65,0.3)",     bg:"rgba(0,0,0,0.85)",  showAll:true,  yRatio:0.80, glow:"#00FF41",   outline:null },
+  glitch:          { weight:fw(F_PIXEL),   font:F_PIXEL,   activeColor:"#ff00ff",   inactiveColor:"rgba(255,255,255,0.25)", bg:null,                showAll:true,  yRatio:0.80, glow:"#ff00ff",   outline:{color:"#00ffff",width:2} },
 
   // ── Space Grotesk (geometric modern) ─────────────────────────────────────
-  "outline-white": { weight:"900", font:F_SPACE,   activeColor:"transparent",inactiveColor:"transparent",          bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#fff",width:2} },
-  "outline-black": { weight:"900", font:F_SPACE,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:4} },
-  "solo-box":      { weight:"900", font:F_SPACE,   activeColor:"#000",      inactiveColor:"transparent",           bg:"#FFE600",           showAll:false, yRatio:0.50, glow:null,        outline:null },
+  "outline-white": { weight:fw(F_SPACE),   font:F_SPACE,   activeColor:"transparent",inactiveColor:"transparent",          bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#fff",width:2} },
+  "outline-black": { weight:fw(F_SPACE),   font:F_SPACE,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:4} },
+  "solo-box":      { weight:fw(F_SPACE),   font:F_SPACE,   activeColor:"#000",      inactiveColor:"transparent",           bg:"#FFE600",           showAll:false, yRatio:0.50, glow:null,        outline:null },
 
-  // ── UnifrakturCook (gothic blackletter — stacked) ─────────────────────────
-  gothic:          { weight:"900", font:F_GOTHIC,  activeColor:"#fff",      inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:3} },
+  // ── UnifrakturCook (gothic blackletter — weight 700) ──────────────────────
+  gothic:          { weight:fw(F_GOTHIC),  font:F_GOTHIC,  activeColor:"#fff",      inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:3} },
 
-  // ── Nunito (rounded bold — vertical word-stack) ───────────────────────────
-  "word-stack":    { weight:"900", font:F_NUNITO,  activeColor:"#fff",      inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:4} },
+  // ── Nunito (rounded black — weight 900) ───────────────────────────────────
+  "word-stack":    { weight:fw(F_NUNITO),  font:F_NUNITO,  activeColor:"#fff",      inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:4} },
 
   // ── Display stack variants (animated 3-row) ───────────────────────────────
-  "stack-shake":   { weight:"900", font:F_OSWALD,  activeColor:"#FF3333",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
-  "stack-wave":    { weight:"900", font:F_MARKER,  activeColor:"#fff",      inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:3} },
-  "stack-neon":    { weight:"900", font:F_BEBAS,   activeColor:"#00FF88",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:"#00FF88",   outline:null },
-  "stack-fire":    { weight:"900", font:F_ANTON,   activeColor:"#FF4500",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:"#FF4500",   outline:{color:"#000",width:3} },
-  "stack-comic":   { weight:"900", font:F_BANGERS, activeColor:"#fff",      inactiveColor:"#fff",                  bg:"rgba(20,20,200,0.9)",showAll:true, yRatio:0.50, glow:null,        outline:{color:"#000",width:3} },
-  "stack-gold":    { weight:"900", font:F_OSWALD,  activeColor:"#FFD700",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:"#FFD700",   outline:{color:"#000",width:3} },
-  "stack-sunny":   { weight:"900", font:F_ANTON,   activeColor:"#FFE600",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
+  "stack-shake":   { weight:fw(F_OSWALD),  font:F_OSWALD,  activeColor:"#FF3333",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
+  "stack-wave":    { weight:fw(F_MARKER),  font:F_MARKER,  activeColor:"#fff",      inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:3} },
+  "stack-neon":    { weight:fw(F_BEBAS),   font:F_BEBAS,   activeColor:"#00FF88",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:"#00FF88",   outline:null },
+  "stack-fire":    { weight:fw(F_ANTON),   font:F_ANTON,   activeColor:"#FF4500",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:"#FF4500",   outline:{color:"#000",width:3} },
+  "stack-comic":   { weight:fw(F_BANGERS), font:F_BANGERS, activeColor:"#fff",      inactiveColor:"#fff",                  bg:"rgba(20,20,200,0.9)",showAll:true, yRatio:0.50, glow:null,        outline:{color:"#000",width:3} },
+  "stack-gold":    { weight:fw(F_OSWALD),  font:F_OSWALD,  activeColor:"#FFD700",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:"#FFD700",   outline:{color:"#000",width:3} },
+  "stack-sunny":   { weight:fw(F_ANTON),   font:F_ANTON,   activeColor:"#FFE600",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
 };
 
 // Rainbow colors cycle
@@ -334,13 +349,15 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
       }
 
       const totalW = measured.reduce((s, m) => s + m.width, 0);
-      let x = cx - totalW / 2;
+      const maxRowW = canvasW * 0.92;
+      const rowScale = totalW > maxRowW ? maxRowW / totalW : 1;
+      let x = cx - (totalW * rowScale) / 2;
 
       measured.forEach((m) => {
         const isA = m.isActive;
 
-        // wfs is pre-computed during measurement so layout and render use the same size
-        const wfs = m.wfs;
+        // Apply row scale to keep text within canvas bounds
+        const wfs = m.wfs * rowScale;
         ctx.font = `${cfg.weight} ${wfs}px ${cfg.font}`;
 
         // Y animation
@@ -374,7 +391,7 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
         }
 
         const color = isA ? cfg.activeColor : cfg.inactiveColor;
-        if (color === "transparent" && !cfg.outline) { x += m.width; return; }
+        if (color === "transparent" && !cfg.outline) { x += m.width * rowScale; return; }
 
         // Background pill
         if (cfg.bg && isA) {
@@ -426,7 +443,7 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
         } else if (style === "outline-white" && isA) {
           // Outline-only — no fill, just stroke was applied above
           ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
-          x += m.width; return;
+          x += m.width * rowScale; return;
         } else {
           ctx.fillStyle = isA ? color : cfg.inactiveColor;
         }
@@ -437,7 +454,7 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
         ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
         ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
 
-        x += m.width;
+        x += m.width * rowScale;
       });
 
       rafRef.current = requestAnimationFrame(draw);

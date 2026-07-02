@@ -40,24 +40,50 @@ const MULTILINGUAL_FALLBACK =
  */
 export const CAPTION_FONT_STACK = MULTILINGUAL_FALLBACK;
 
-/** Condensed display fonts — bold/impactful word-by-word styles */
+/**
+ * Display font stacks.
+ *
+ * IMPORTANT — weight notes for @napi-rs/canvas:
+ * All bundled display TTFs are single-weight files.  The CSS weight passed to
+ * ctx.font must exactly match the weight stored in the font file, otherwise
+ * napi-rs silently falls back to the system default (usually Helvetica).
+ * Use weight "400" for all display fonts whose TTF reports weight 400, and
+ * "bold" (700) for UnifrakturCook which reports 700.
+ * The "boldness" of Anton / Bangers / Bebas Neue etc. comes from the typeface
+ * design, not a CSS weight axis.
+ */
+
+/** Condensed display fonts — bold/impactful word-by-word styles. TTF weight: 400 */
 export const FONT_ANTON    = `"Anton",${MULTILINGUAL_FALLBACK}`;
-/** Wide comic-book display font */
+/** Wide comic-book display font. TTF weight: 400 */
 export const FONT_BANGERS  = `"Bangers",${MULTILINGUAL_FALLBACK}`;
-/** Condensed grotesque — clean titles, mr-beast style */
+/** Condensed grotesque — clean titles. TTF weight: 400 */
 export const FONT_OSWALD   = `"Oswald",${MULTILINGUAL_FALLBACK}`;
-/** Tall condensed sans — bold headlines */
+/** Tall condensed sans — bold headlines. TTF weight: 400 */
 export const FONT_BEBAS    = `"Bebas Neue",${MULTILINGUAL_FALLBACK}`;
-/** Hand-written marker feel */
+/** Hand-written marker feel. TTF weight: 400 */
 export const FONT_MARKER   = `"Permanent Marker",${MULTILINGUAL_FALLBACK}`;
-/** Retro pixel / arcade */
+/** Retro pixel / arcade. TTF weight: 400 */
 export const FONT_PIXEL    = `"Press Start 2P",${MULTILINGUAL_FALLBACK}`;
-/** Geometric modern sans */
+/** Geometric modern sans. TTF weight: 300 (single-weight) */
 export const FONT_SPACE    = `"Space Grotesk",${MULTILINGUAL_FALLBACK}`;
-/** Gothic/blackletter display */
+/** Gothic/blackletter display. TTF weight: 700 */
 export const FONT_GOTHIC   = `"UnifrakturCook",${MULTILINGUAL_FALLBACK}`;
-/** Rounded humanist sans */
-export const FONT_NUNITO   = `"Nunito",${MULTILINGUAL_FALLBACK}`;
+/** Rounded humanist sans — Black (900) weight variant. TTF family: "Nunito ExtraLight" weight 900 */
+export const FONT_NUNITO   = `"Nunito ExtraLight",${MULTILINGUAL_FALLBACK}`;
+
+/** Registered weight for each font family (must match what the TTF reports). */
+export const FONT_WEIGHT: Record<string, string> = {
+  "Anton":            "400",
+  "Bangers":          "400",
+  "Bebas Neue":       "400",
+  "Oswald":           "400",
+  "Permanent Marker": "400",
+  "Press Start 2P":   "400",
+  "Space Grotesk":    "300",
+  "UnifrakturCook":   "bold",
+  "Nunito ExtraLight":"900",
+};
 
 let registered = false;
 

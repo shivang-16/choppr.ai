@@ -17,7 +17,14 @@ import {
   FONT_SPACE,
   FONT_GOTHIC,
   FONT_NUNITO,
+  FONT_WEIGHT,
 } from "../utils/fonts.js";
+
+/** Return the registered CSS weight for a given font stack (uses first family name). */
+function fw(fontStack: string): string {
+  const first = fontStack.match(/"([^"]+)"/)?.[1] ?? "";
+  return FONT_WEIGHT[first] ?? "400";
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -60,66 +67,66 @@ interface StyleCfg {
 
 const CFG: Record<CaptionStyle, StyleCfg> = {
   // ── Font: default Noto Sans ────────────────────────────────────────────────
-  none:             { weight:"900", font:CAPTION_FONT_STACK, activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.80, glow:null,       outline:null },
-  subtitle:         { weight:"bold",font:CAPTION_FONT_STACK, activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.6)",   bg:"rgba(0,0,0,0.7)",    showAll:true,  yRatio:0.88, glow:null,       outline:null },
-  "full-line":      { weight:"600", font:CAPTION_FONT_STACK, activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.45)",  bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:2} },
-  shadow:           { weight:"900", font:CAPTION_FONT_STACK, activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.4)",   bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:null },
-  "clean-mid":      { weight:"900", font:FONT_SPACE,         activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.5)",   bg:"rgba(0,0,0,0.5)",    showAll:true,  yRatio:0.50, glow:null,       outline:null },
+  none:             { weight:"bold", font:CAPTION_FONT_STACK, activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.80, glow:null,       outline:null },
+  subtitle:         { weight:"bold", font:CAPTION_FONT_STACK, activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.6)",   bg:"rgba(0,0,0,0.7)",    showAll:true,  yRatio:0.88, glow:null,       outline:null },
+  "full-line":      { weight:"bold", font:CAPTION_FONT_STACK, activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.45)",  bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:2} },
+  shadow:           { weight:"bold", font:CAPTION_FONT_STACK, activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.4)",   bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:null },
+  "clean-mid":      { weight:fw(FONT_SPACE),  font:FONT_SPACE,         activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.5)",   bg:"rgba(0,0,0,0.5)",    showAll:true,  yRatio:0.50, glow:null,       outline:null },
 
-  // ── Font: Anton (condensed impact) ────────────────────────────────────────
-  "word-pop":       { weight:"900", font:FONT_ANTON,         activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.35)",  bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:3} },
-  "bold-center":    { weight:"900", font:FONT_ANTON,         activeColor:"#fff",       inactiveColor:"transparent",            bg:"rgba(0,0,0,0.65)",   showAll:false, yRatio:0.76, glow:null,       outline:null },
-  bounce:           { weight:"900", font:FONT_ANTON,         activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.78, glow:null,       outline:{color:"#000",width:3} },
-  "solo-pop":       { weight:"900", font:FONT_ANTON,         activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:null,       outline:{color:"#000",width:5} },
-  "solo-red":       { weight:"900", font:FONT_ANTON,         activeColor:"#FF2D2D",    inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:"#FF2D2D",  outline:{color:"#000",width:5} },
+  // ── Font: Anton (condensed impact — single-weight 400, inherently bold) ───
+  "word-pop":       { weight:fw(FONT_ANTON),  font:FONT_ANTON,         activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.35)",  bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:3} },
+  "bold-center":    { weight:fw(FONT_ANTON),  font:FONT_ANTON,         activeColor:"#fff",       inactiveColor:"transparent",            bg:"rgba(0,0,0,0.65)",   showAll:false, yRatio:0.76, glow:null,       outline:null },
+  bounce:           { weight:fw(FONT_ANTON),  font:FONT_ANTON,         activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.78, glow:null,       outline:{color:"#000",width:3} },
+  "solo-pop":       { weight:fw(FONT_ANTON),  font:FONT_ANTON,         activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:null,       outline:{color:"#000",width:5} },
+  "solo-red":       { weight:fw(FONT_ANTON),  font:FONT_ANTON,         activeColor:"#FF2D2D",    inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:"#FF2D2D",  outline:{color:"#000",width:5} },
 
-  // ── Font: Oswald (condensed grotesque — Mr Beast / stack styles) ──────────
-  "mr-beast":       { weight:"900", font:FONT_OSWALD,        activeColor:"#FF0000",    inactiveColor:"rgba(255,255,255,1.0)",   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:6} },
-  "stack-reveal":   { weight:"900", font:FONT_OSWALD,        activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.45, glow:null,       outline:{color:"#000",width:4} },
-  shake:            { weight:"900", font:FONT_OSWALD,        activeColor:"#FF3333",    inactiveColor:"rgba(255,255,255,0.8)",   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:4} },
-  "solo-shake":     { weight:"900", font:FONT_OSWALD,        activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:null,       outline:{color:"#FF0000",width:5} },
+  // ── Font: Oswald (condensed grotesque — single-weight 400) ────────────────
+  "mr-beast":       { weight:fw(FONT_OSWALD), font:FONT_OSWALD,        activeColor:"#FF0000",    inactiveColor:"rgba(255,255,255,1.0)",   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:6} },
+  "stack-reveal":   { weight:fw(FONT_OSWALD), font:FONT_OSWALD,        activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.45, glow:null,       outline:{color:"#000",width:4} },
+  shake:            { weight:fw(FONT_OSWALD), font:FONT_OSWALD,        activeColor:"#FF3333",    inactiveColor:"rgba(255,255,255,0.8)",   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:4} },
+  "solo-shake":     { weight:fw(FONT_OSWALD), font:FONT_OSWALD,        activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:null,       outline:{color:"#FF0000",width:5} },
 
-  // ── Font: Bangers (comic-book) ─────────────────────────────────────────────
-  comic:            { weight:"900", font:FONT_BANGERS,       activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.4)",   bg:"rgba(30,30,200,0.85)",showAll:false, yRatio:0.78, glow:null,       outline:{color:"#000",width:4} },
-  rainbow:          { weight:"900", font:FONT_BANGERS,       activeColor:"gradient",   inactiveColor:"rgba(255,255,255,0.35)",  bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:2} },
-  "highlight-box":  { weight:"900", font:FONT_BANGERS,       activeColor:"#000",       inactiveColor:"rgba(255,255,255,0.5)",   bg:"#FFE600",            showAll:true,  yRatio:0.80, glow:null,       outline:null },
+  // ── Font: Bangers (comic-book — single-weight 400) ────────────────────────
+  comic:            { weight:fw(FONT_BANGERS),font:FONT_BANGERS,       activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.4)",   bg:"rgba(30,30,200,0.85)",showAll:false, yRatio:0.78, glow:null,       outline:{color:"#000",width:4} },
+  rainbow:          { weight:fw(FONT_BANGERS),font:FONT_BANGERS,       activeColor:"gradient",   inactiveColor:"rgba(255,255,255,0.35)",  bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:2} },
+  "highlight-box":  { weight:fw(FONT_BANGERS),font:FONT_BANGERS,       activeColor:"#000",       inactiveColor:"rgba(255,255,255,0.5)",   bg:"#FFE600",            showAll:true,  yRatio:0.80, glow:null,       outline:null },
 
-  // ── Font: Bebas Neue (tall condensed — neon / glow styles) ────────────────
-  neon:             { weight:"900", font:FONT_BEBAS,         activeColor:"#00ff88",    inactiveColor:"rgba(255,255,255,0.3)",   bg:null,                 showAll:true,  yRatio:0.80, glow:"#00ff88",  outline:null },
-  "electric-blue":  { weight:"900", font:FONT_BEBAS,         activeColor:"#00D4FF",    inactiveColor:"rgba(255,255,255,0.4)",   bg:null,                 showAll:true,  yRatio:0.50, glow:"#00D4FF",  outline:{color:"#000",width:3} },
-  "solo-glow":      { weight:"900", font:FONT_BEBAS,         activeColor:"#00FF88",    inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:"#00FF88",  outline:{color:"#000",width:4} },
-  "gradient-pop":   { weight:"900", font:FONT_BEBAS,         activeColor:"gradient",   inactiveColor:"rgba(255,255,255,0.3)",   bg:null,                 showAll:true,  yRatio:0.50, glow:"#A855F7",  outline:{color:"#000",width:3} },
-  "solo-gradient":  { weight:"900", font:FONT_BEBAS,         activeColor:"gradient",   inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:"#A855F7",  outline:{color:"#000",width:4} },
+  // ── Font: Bebas Neue (tall condensed — single-weight 400) ─────────────────
+  neon:             { weight:fw(FONT_BEBAS),  font:FONT_BEBAS,         activeColor:"#00ff88",    inactiveColor:"rgba(255,255,255,0.3)",   bg:null,                 showAll:true,  yRatio:0.80, glow:"#00ff88",  outline:null },
+  "electric-blue":  { weight:fw(FONT_BEBAS),  font:FONT_BEBAS,         activeColor:"#00D4FF",    inactiveColor:"rgba(255,255,255,0.4)",   bg:null,                 showAll:true,  yRatio:0.50, glow:"#00D4FF",  outline:{color:"#000",width:3} },
+  "solo-glow":      { weight:fw(FONT_BEBAS),  font:FONT_BEBAS,         activeColor:"#00FF88",    inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:"#00FF88",  outline:{color:"#000",width:4} },
+  "gradient-pop":   { weight:fw(FONT_BEBAS),  font:FONT_BEBAS,         activeColor:"gradient",   inactiveColor:"rgba(255,255,255,0.3)",   bg:null,                 showAll:true,  yRatio:0.50, glow:"#A855F7",  outline:{color:"#000",width:3} },
+  "solo-gradient":  { weight:fw(FONT_BEBAS),  font:FONT_BEBAS,         activeColor:"gradient",   inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:"#A855F7",  outline:{color:"#000",width:4} },
 
-  // ── Font: Permanent Marker (hand-written) ─────────────────────────────────
-  karaoke:          { weight:"900", font:FONT_MARKER,        activeColor:"#FFE600",    inactiveColor:"rgba(255,255,255,0.5)",   bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:3} },
-  wave:             { weight:"900", font:FONT_MARKER,        activeColor:"#ffffff",    inactiveColor:"rgba(255,255,255,0.3)",   bg:null,                 showAll:true,  yRatio:0.82, glow:null,       outline:{color:"#000",width:3} },
+  // ── Font: Permanent Marker (hand-written — single-weight 400) ────────────
+  karaoke:          { weight:fw(FONT_MARKER), font:FONT_MARKER,        activeColor:"#FFE600",    inactiveColor:"rgba(255,255,255,0.5)",   bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:3} },
+  wave:             { weight:fw(FONT_MARKER), font:FONT_MARKER,        activeColor:"#ffffff",    inactiveColor:"rgba(255,255,255,0.3)",   bg:null,                 showAll:true,  yRatio:0.82, glow:null,       outline:{color:"#000",width:3} },
 
-  // ── Font: Press Start 2P (pixel / retro) ──────────────────────────────────
-  typewriter:       { weight:"900", font:FONT_PIXEL,         activeColor:"#00FF41",    inactiveColor:"rgba(0,255,65,0.3)",      bg:"rgba(0,0,0,0.85)",   showAll:true,  yRatio:0.80, glow:"#00FF41",  outline:null },
-  glitch:           { weight:"900", font:FONT_PIXEL,         activeColor:"#ff00ff",    inactiveColor:"rgba(255,255,255,0.25)",  bg:null,                 showAll:true,  yRatio:0.80, glow:"#ff00ff",  outline:{color:"#00ffff",width:2} },
+  // ── Font: Press Start 2P (pixel / retro — single-weight 400) ─────────────
+  typewriter:       { weight:fw(FONT_PIXEL),  font:FONT_PIXEL,         activeColor:"#00FF41",    inactiveColor:"rgba(0,255,65,0.3)",      bg:"rgba(0,0,0,0.85)",   showAll:true,  yRatio:0.80, glow:"#00FF41",  outline:null },
+  glitch:           { weight:fw(FONT_PIXEL),  font:FONT_PIXEL,         activeColor:"#ff00ff",    inactiveColor:"rgba(255,255,255,0.25)",  bg:null,                 showAll:true,  yRatio:0.80, glow:"#ff00ff",  outline:{color:"#00ffff",width:2} },
 
-  // ── Font: Oswald / Space Grotesk (fire / gold / box styles) ───────────────
-  fire:             { weight:"900", font:FONT_OSWALD,        activeColor:"#FF4500",    inactiveColor:"rgba(255,165,0,0.5)",     bg:null,                 showAll:true,  yRatio:0.80, glow:"#FF4500",  outline:{color:"#000",width:2} },
-  "gradient-gold":  { weight:"900", font:FONT_OSWALD,        activeColor:"gradient",   inactiveColor:"rgba(255,215,0,0.3)",     bg:null,                 showAll:true,  yRatio:0.80, glow:"#FFD700",  outline:{color:"#000",width:2} },
-  "outline-white":  { weight:"900", font:FONT_SPACE,         activeColor:"transparent",inactiveColor:"transparent",            bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#fff",width:2} },
-  "outline-black":  { weight:"900", font:FONT_SPACE,         activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.3)",   bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:4} },
-  "solo-box":       { weight:"900", font:FONT_SPACE,         activeColor:"#000",       inactiveColor:"transparent",            bg:"#FFE600",            showAll:false, yRatio:0.50, glow:null,       outline:null },
+  // ── Font: Oswald / Space Grotesk ──────────────────────────────────────────
+  fire:             { weight:fw(FONT_OSWALD), font:FONT_OSWALD,        activeColor:"#FF4500",    inactiveColor:"rgba(255,165,0,0.5)",     bg:null,                 showAll:true,  yRatio:0.80, glow:"#FF4500",  outline:{color:"#000",width:2} },
+  "gradient-gold":  { weight:fw(FONT_OSWALD), font:FONT_OSWALD,        activeColor:"gradient",   inactiveColor:"rgba(255,215,0,0.3)",     bg:null,                 showAll:true,  yRatio:0.80, glow:"#FFD700",  outline:{color:"#000",width:2} },
+  "outline-white":  { weight:fw(FONT_SPACE),  font:FONT_SPACE,         activeColor:"transparent",inactiveColor:"transparent",            bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#fff",width:2} },
+  "outline-black":  { weight:fw(FONT_SPACE),  font:FONT_SPACE,         activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.3)",   bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:4} },
+  "solo-box":       { weight:fw(FONT_SPACE),  font:FONT_SPACE,         activeColor:"#000",       inactiveColor:"transparent",            bg:"#FFE600",            showAll:false, yRatio:0.50, glow:null,       outline:null },
 
-  // ── Font: UnifrakturCook (gothic blackletter — stacked style) ─────────────
-  gothic:           { weight:"900", font:FONT_GOTHIC,        activeColor:"#fff",       inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:3} },
+  // ── Font: UnifrakturCook (gothic blackletter — weight 700) ────────────────
+  gothic:           { weight:fw(FONT_GOTHIC), font:FONT_GOTHIC,        activeColor:"#fff",       inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:3} },
 
-  // ── Font: Nunito (rounded bold — vertical word-stack) ─────────────────────
-  "word-stack":     { weight:"900", font:FONT_NUNITO,        activeColor:"#fff",       inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:4} },
+  // ── Font: Nunito ExtraLight (Black weight variant — 900) ──────────────────
+  "word-stack":     { weight:fw(FONT_NUNITO), font:FONT_NUNITO,        activeColor:"#fff",       inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:4} },
 
   // ── Display stack variants (all 3-row animated) ────────────────────────────
-  "stack-shake":    { weight:"900", font:FONT_OSWALD,        activeColor:"#FF3333",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:5} },
-  "stack-wave":     { weight:"900", font:FONT_MARKER,        activeColor:"#fff",       inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:3} },
-  "stack-neon":     { weight:"900", font:FONT_BEBAS,         activeColor:"#00FF88",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:"#00FF88",  outline:null },
-  "stack-fire":     { weight:"900", font:FONT_ANTON,         activeColor:"#FF4500",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:"#FF4500",  outline:{color:"#000",width:3} },
-  "stack-comic":    { weight:"900", font:FONT_BANGERS,       activeColor:"#fff",       inactiveColor:"#fff",                   bg:"rgba(20,20,200,0.9)",showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:3} },
-  "stack-gold":     { weight:"900", font:FONT_OSWALD,        activeColor:"#FFD700",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:"#FFD700",  outline:{color:"#000",width:3} },
-  "stack-sunny":    { weight:"900", font:FONT_ANTON,         activeColor:"#FFE600",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:5} },
+  "stack-shake":    { weight:fw(FONT_OSWALD), font:FONT_OSWALD,        activeColor:"#FF3333",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:5} },
+  "stack-wave":     { weight:fw(FONT_MARKER), font:FONT_MARKER,        activeColor:"#fff",       inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:3} },
+  "stack-neon":     { weight:fw(FONT_BEBAS),  font:FONT_BEBAS,         activeColor:"#00FF88",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:"#00FF88",  outline:null },
+  "stack-fire":     { weight:fw(FONT_ANTON),  font:FONT_ANTON,         activeColor:"#FF4500",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:"#FF4500",  outline:{color:"#000",width:3} },
+  "stack-comic":    { weight:fw(FONT_BANGERS),font:FONT_BANGERS,       activeColor:"#fff",       inactiveColor:"#fff",                   bg:"rgba(20,20,200,0.9)",showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:3} },
+  "stack-gold":     { weight:fw(FONT_OSWALD), font:FONT_OSWALD,        activeColor:"#FFD700",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:"#FFD700",  outline:{color:"#000",width:3} },
+  "stack-sunny":    { weight:fw(FONT_ANTON),  font:FONT_ANTON,         activeColor:"#FFE600",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:5} },
 };
 
 // Gradient palettes
@@ -413,13 +420,16 @@ export function renderCaptionFrame(
   }
 
   const totalW = measured.reduce((s, m) => s + m.width, 0);
-  let x = cx - totalW / 2;
+  // Auto-scale down if the row is wider than 92% of canvas width
+  const maxRowW = canvasW * 0.92;
+  const rowScale = totalW > maxRowW ? maxRowW / totalW : 1;
+  let x = cx - (totalW * rowScale) / 2;
 
   for (const m of measured) {
     const isA = m.isActive;
 
-    // wfs is pre-computed during measurement so layout and render use the same size
-    const wfs = m.wfs;
+    // Apply row scale to keep text within canvas bounds
+    const wfs = m.wfs * rowScale;
     ctx.font = `${cfg.weight} ${wfs}px ${cfg.font}`;
 
     // Y animation
@@ -529,6 +539,6 @@ export function renderCaptionFrame(
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
 
-    x += m.width;
+    x += m.width * rowScale;
   }
 }
