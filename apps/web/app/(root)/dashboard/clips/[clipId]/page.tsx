@@ -254,6 +254,13 @@ const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
         renderPreview: () => <span className="font-black text-[20px] text-white [text-shadow:-2px_-2px_0_red,2px_-2px_0_red] translate-x-0.5 inline-block" style={{ fontFamily: PF_OSWALD }}>SHK</span> },
     ],
   },
+  {
+    category: "Exclusive",
+    styles: [
+      { id: "font-cycle", label: "Font Cycle", desc: "Solo word · rotating fonts", preview: null, previewClass: "",
+        renderPreview: () => <span className="text-white font-normal text-[14px] [text-shadow:-1px_-1px_0_black]" style={{ fontFamily: PF_MARKER }}>word</span> },
+    ],
+  },
 ];
 
 
@@ -1798,19 +1805,41 @@ export default function ClipRefinePage() {
 
           <div className={cn(
             "relative flex items-center justify-center w-full h-full overflow-hidden",
-            !isMobile && "px-6 py-8"
+            !isMobile && "px-6 py-8",
+            isMobile && "px-2 py-3"
           )}>
             {src ? (
               <div
                 ref={videoContainerRef}
-                className="relative md:rounded-2xl overflow-hidden shadow-2xl shadow-black/80"
-                style={isMobile ? {
-                  aspectRatio: aspectRatio === "16:9" ? "16/9" : aspectRatio === "1:1" ? "1/1" : "9/16",
-                  width: "100%",
-                  height: "100%",
-                  maxWidth: "100%",
-                  maxHeight: "100%",
-                } : aspectRatio === "9:16" ? {
+                className={cn(
+                  "relative overflow-hidden shadow-2xl shadow-black/80 shrink-0",
+                  !isMobile && "md:rounded-2xl",
+                  isMobile && "rounded-xl"
+                )}
+                style={isMobile ? (
+                  aspectRatio === "9:16" ? {
+                    // Portrait: fill available height, width follows aspect ratio
+                    aspectRatio: "9/16",
+                    height: "100%",
+                    width: "auto",
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                  } : aspectRatio === "1:1" ? {
+                    // Square: full width, height capped — clearly shorter than 9:16
+                    aspectRatio: "1/1",
+                    width: "100%",
+                    height: "auto",
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                  } : {
+                    // Landscape: full width, height shrinks — letterbox visible above/below
+                    aspectRatio: "16/9",
+                    width: "100%",
+                    height: "auto",
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                  }
+                ) : aspectRatio === "9:16" ? {
                   // Portrait: height-driven — fill the tall container
                   aspectRatio: "9/16",
                   height: "100%",

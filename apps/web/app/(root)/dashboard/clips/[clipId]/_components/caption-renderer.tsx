@@ -43,6 +43,7 @@ const DEVA_WEIGHT: Partial<Record<CaptionStyle, string>> = {
   "stack-sunny":   "900",
   gothic:          "900",
   "word-stack":    "900",
+  "font-cycle":  "400",
   // Semi-bold styles
   "mr-beast":      "700",
   "stack-reveal":  "700",
@@ -106,7 +107,8 @@ export type CaptionStyle =
   | "gothic"
   | "word-stack"
   | "stack-shake" | "stack-wave" | "stack-neon" | "stack-fire" | "stack-comic"
-  | "stack-gold" | "stack-sunny";
+  | "stack-gold" | "stack-sunny"
+  | "font-cycle";
 
 export interface CaptionWord {
   word:  string;
@@ -224,6 +226,9 @@ const CFG: Record<CaptionStyle, {
   "stack-comic":   { weight:fw(F_BANGERS), font:F_BANGERS, activeColor:"#fff",      inactiveColor:"#fff",                  bg:"rgba(20,20,200,0.9)",showAll:true, yRatio:0.50, glow:null,        outline:{color:"#000",width:3} },
   "stack-gold":    { weight:fw(F_OSWALD),  font:F_OSWALD,  activeColor:"#FFD700",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:"#FFD700",   outline:{color:"#000",width:3} },
   "stack-sunny":   { weight:fw(F_ANTON),   font:F_ANTON,   activeColor:"#FFE600",   inactiveColor:"#fff",                  bg:null,                showAll:true,  yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
+
+  // ── Font Cycle (solo word + cycling font/color) ─────────────────────────
+  "font-cycle":  { weight:"400",         font:F_ANTON,   activeColor:"#FFFFFF",   inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.50, glow:null,        outline:{color:"#000",width:5} },
 };
 
 // Rainbow colors cycle
@@ -232,6 +237,18 @@ const RAINBOW = ["#FF0000","#FF7F00","#FFFF00","#00FF00","#0000FF","#8B00FF"];
 const GOLD    = ["#FFD700","#FFA500","#FFD700","#FFFACD","#FFD700"];
 // Purple-pink gradient for gradient-pop
 const PURPLE_POP = ["#A855F7","#EC4899","#F97316","#EAB308","#A855F7"];
+
+// ── Font Cycle: font rotation only — white text, regular weight ─────────────
+const ST_FONTS = [
+  { font: F_ANTON,   weight: "400" },
+  { font: F_BANGERS, weight: "400" },
+  { font: F_MARKER,  weight: "400" },
+  { font: F_BEBAS,   weight: "400" },
+  { font: F_OSWALD,  weight: "400" },
+  { font: F_NUNITO,  weight: "400" },
+  { font: F_SPACE,   weight: "400" },
+  { font: F_DEFAULT, weight: "400" },
+];
 
 export default function CaptionRenderer({ videoRef, words, style, fontSize = 50, aspectRatio = "9:16", posOffset = 0, hOffset = 0, language }: Props) {
   ensureGFontsLoaded();
@@ -383,6 +400,28 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
         return;
       }
 
+
+      // ── Font Cycle: solo word, cycling font per word index (white only) ─
+      if (style === "font-cycle") {
+        const stSlot = ST_FONTS[activeIdx % ST_FONTS.length]!;
+        const stFont  = isDevanagari ? F_DEVA : stSlot.font;
+        const stW     = isDevanagari ? "400" : stSlot.weight;
+        const stFs    = fs * 1.6;
+
+        ctx.font = `${stW} ${stFs}px ${stFont}`;
+        const tw = ctx.measureText(active.word).width;
+
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth   = 4;
+        ctx.lineJoin    = "round";
+        ctx.strokeText(active.word, cx - tw / 2, cy);
+
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillText(active.word, cx - tw / 2, cy);
+
+        rafRef.current = requestAnimationFrame(draw);
+        return;
+      }
 
       // ── All display-stack styles (3-row unified layout) ──────────────────
       if (DISPLAY_STACK_STYLES.has(style)) {

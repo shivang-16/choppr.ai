@@ -38,7 +38,8 @@ export type CaptionStyle =
   | "solo-box" | "solo-gradient" | "solo-shake"
   | "gothic" | "word-stack"
   | "stack-shake" | "stack-wave" | "stack-neon" | "stack-fire" | "stack-comic"
-  | "stack-gold" | "stack-sunny";
+  | "stack-gold" | "stack-sunny"
+  | "font-cycle";
 
 export interface CaptionWord {
   word:  string;
@@ -127,12 +128,27 @@ const CFG: Record<CaptionStyle, StyleCfg> = {
   "stack-comic":    { weight:fw(FONT_BANGERS),font:FONT_BANGERS,       activeColor:"#fff",       inactiveColor:"#fff",                   bg:"rgba(20,20,200,0.9)",showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:3} },
   "stack-gold":     { weight:fw(FONT_OSWALD), font:FONT_OSWALD,        activeColor:"#FFD700",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:"#FFD700",  outline:{color:"#000",width:3} },
   "stack-sunny":    { weight:fw(FONT_ANTON),  font:FONT_ANTON,         activeColor:"#FFE600",    inactiveColor:"#fff",                   bg:null,                 showAll:true,  yRatio:0.50, glow:null,       outline:{color:"#000",width:5} },
+
+  // ── Font Cycle (solo word + per-word cycling font / colour) ────────────
+  "font-cycle":   { weight:"400",           font:FONT_ANTON,         activeColor:"#FFFFFF",    inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:null,       outline:{color:"#000",width:5} },
 };
 
 // Gradient palettes
 const RAINBOW    = ["#FF0000","#FF7F00","#FFFF00","#00FF00","#0000FF","#8B00FF"];
 const GOLD       = ["#FFD700","#FFA500","#FFD700","#FFFACD","#FFD700"];
 const PURPLE_POP = ["#A855F7","#EC4899","#F97316","#EAB308","#A855F7"];
+
+// ── Font Cycle: font rotation only — white text, regular weight ─────────────
+const ST_FONTS = [
+  { font: FONT_ANTON,   weight: "400" },
+  { font: FONT_BANGERS, weight: "400" },
+  { font: FONT_MARKER,  weight: "400" },
+  { font: FONT_BEBAS,   weight: "400" },
+  { font: FONT_OSWALD,  weight: "400" },
+  { font: FONT_NUNITO,  weight: "400" },
+  { font: FONT_SPACE,   weight: "400" },
+  { font: CAPTION_FONT_STACK, weight: "400" },
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -381,6 +397,24 @@ export function renderCaptionFrame(
         rx += m.width;
       }
     }
+    return;
+  }
+
+  // ── Font Cycle: solo word, cycling font per word index (white only) ───
+  if (style === "font-cycle") {
+    const stSlot = ST_FONTS[activeIdx % ST_FONTS.length]!;
+    const stFs   = fs * 1.6;
+
+    ctx.font = `${stSlot.weight} ${stFs}px ${stSlot.font}`;
+    const tw = ctx.measureText(active.word).width;
+
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth   = 4;
+    ctx.lineJoin    = "round";
+    ctx.strokeText(active.word, cx - tw / 2, cy);
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillText(active.word, cx - tw / 2, cy);
     return;
   }
 
