@@ -1626,7 +1626,7 @@ export default function ClipRefinePage() {
                     onPlay={() => setPlaying(true)}
                     onPause={() => setPlaying(false)}
                   />
-                  <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} posOffset={captionPosY} hOffset={captionPosX} />
+                  <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} posOffset={captionPosY} hOffset={captionPosX} language={activeLang} />
                   {/* Caption drag + play/pause overlay — covers full preview */}
                   <div
                     className="absolute inset-0 flex items-center justify-center select-none"

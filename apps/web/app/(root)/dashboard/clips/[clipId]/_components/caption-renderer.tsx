@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 // Google Fonts loaded via a <link> injected once — provides the display fonts
 // that match the server-side TTFs in assets/fonts/.
 const GFONTS_URL =
-  "https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Nunito:ital,wght@0,400;0,700;0,900;1,400;1,700;1,900&family=Oswald:wght@400;700;900&family=Permanent+Marker&family=Press+Start+2P&family=Space+Grotesk:wght@400;700;900&family=UnifrakturCook:wght@700&display=swap";
+  "https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Nunito:ital,wght@0,400;0,700;0,900;1,400;1,700;1,900&family=Oswald:wght@400;700;900&family=Permanent+Marker&family=Press+Start+2P&family=Space+Grotesk:wght@400;700;900&family=UnifrakturCook:wght@700&family=Noto+Sans+Devanagari:wght@100;300;400;500;700;900&display=swap";
 
 function ensureGFontsLoaded() {
   if (typeof document === "undefined") return;
@@ -16,6 +16,60 @@ function ensureGFontsLoaded() {
   link.setAttribute("data-choppr-fonts", "1");
   document.head.appendChild(link);
 }
+
+// Detect if a string contains Devanagari (Hindi/Marathi/etc.) characters
+function hasDevanagari(text: string): boolean {
+  return /[\u0900-\u097F]/.test(text);
+}
+
+// Check if the active word set contains Devanagari script
+function wordsHaveDevanagari(words: { word: string }[]): boolean {
+  return words.some(w => hasDevanagari(w.word));
+}
+
+// Devanagari font family — Noto Sans Devanagari supports all weights 100–900
+const F_DEVA = `"Noto Sans Devanagari",system-ui,sans-serif`;
+
+// Per-style Devanagari overrides: map each style to a weight that visually
+// differentiates it since Devanagari fonts can't replicate Latin glyph shapes.
+const DEVA_WEIGHT: Partial<Record<CaptionStyle, string>> = {
+  // Ultra-bold / condensed styles → heaviest weight
+  "word-pop":      "900",
+  "bold-center":   "900",
+  bounce:          "900",
+  "solo-pop":      "900",
+  "solo-red":      "900",
+  "stack-fire":    "900",
+  "stack-sunny":   "900",
+  gothic:          "900",
+  "word-stack":    "900",
+  // Semi-bold styles
+  "mr-beast":      "700",
+  "stack-reveal":  "700",
+  shake:           "700",
+  "solo-shake":    "700",
+  fire:            "700",
+  "gradient-gold": "700",
+  "stack-shake":   "700",
+  "stack-gold":    "700",
+  // Normal weight but styled
+  comic:           "500",
+  rainbow:         "500",
+  "highlight-box": "500",
+  neon:            "500",
+  "electric-blue": "500",
+  "solo-glow":     "500",
+  "gradient-pop":  "500",
+  "solo-gradient": "500",
+  "stack-neon":    "500",
+  "stack-comic":   "500",
+  karaoke:         "400",
+  wave:            "400",
+  "stack-wave":    "400",
+  // Light styles
+  typewriter:      "300",
+  glitch:          "300",
+};
 
 export type CaptionStyle =
   | "none"
@@ -68,6 +122,7 @@ interface Props {
   aspectRatio?: string;
   posOffset?:  number; // vertical offset in % of height (- = up, + = down)
   hOffset?:    number; // horizontal offset in % of width (- = left, + = right)
+  language?:   string; // BCP-47 language code, e.g. "hi", "mr", "en"
 }
 
 // ── Per-style font families (match server-side assets/fonts TTFs) ─────────────
@@ -178,7 +233,7 @@ const GOLD    = ["#FFD700","#FFA500","#FFD700","#FFFACD","#FFD700"];
 // Purple-pink gradient for gradient-pop
 const PURPLE_POP = ["#A855F7","#EC4899","#F97316","#EAB308","#A855F7"];
 
-export default function CaptionRenderer({ videoRef, words, style, fontSize = 50, aspectRatio = "9:16", posOffset = 0, hOffset = 0 }: Props) {
+export default function CaptionRenderer({ videoRef, words, style, fontSize = 50, aspectRatio = "9:16", posOffset = 0, hOffset = 0, language }: Props) {
   ensureGFontsLoaded();
   const canvasW = aspectRatio === "16:9" ? 1920 : 1080;
   const canvasH = aspectRatio === "16:9" ? 1080 : aspectRatio === "1:1" ? 1080 : 1920;
@@ -186,6 +241,11 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
   const rafRef    = useRef(0);
   const bounceRef = useRef<Record<string, number>>({});
   const waveRef   = useRef<Record<string, number>>({});
+
+  // Detect Devanagari script either from the language code or from the words themselves
+  const isDevanagari = language
+    ? ["hi", "mr", "ne", "kok", "bho", "mai", "dgo"].some(l => language.startsWith(l))
+    : wordsHaveDevanagari(words);
 
   useEffect(() => {
     if (style === "none") return;
@@ -195,7 +255,12 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const cfg = CFG[style];
+    const baseCfg = CFG[style];
+    // When rendering Devanagari script, override the font to Noto Sans Devanagari
+    // and use a differentiated font weight so each style still looks visually distinct.
+    const cfg = isDevanagari
+      ? { ...baseCfg, font: F_DEVA, weight: DEVA_WEIGHT[style] ?? "700" }
+      : baseCfg;
 
     const draw = () => {
       const t  = video.currentTime;
@@ -462,7 +527,7 @@ export default function CaptionRenderer({ videoRef, words, style, fontSize = 50,
 
     draw();
     return () => cancelAnimationFrame(rafRef.current);
-  }, [videoRef, words, style, fontSize, posOffset, hOffset, aspectRatio]);
+  }, [videoRef, words, style, fontSize, posOffset, hOffset, aspectRatio, isDevanagari]);
 
   if (style === "none") return null;
 
