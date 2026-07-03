@@ -42,8 +42,6 @@ function thumbnailFromUrl(url: string): string | null {
 
 // ── Validation schemas ──────────────────────────────────────────────────────
 
-const BACKGROUND_FILLS = ["blur", "black", "white", "none"] as const;
-
 const CreateJobSchema = z.object({
   url:            z.string().url("Must be a valid URL").optional(),
   s3Key:          z.string().optional(),
@@ -51,11 +49,10 @@ const CreateJobSchema = z.object({
   clipModel:      z.string().default("Auto"),
   genre:          z.string().default("Auto"),
   clipLength:     z.string().default("Auto (0m-3m)"),
-  aspectRatio:    z.string().default("9:16"),
-  backgroundFill: z.enum(BACKGROUND_FILLS).default("blur"),
   maxClips:       z.number().int().min(1).max(20).default(10),
   durationSecs:   z.number().min(0).optional(),
   language:       z.string().optional(),
+  editFull:       z.boolean().default(false),
 }).refine(data => data.url || data.s3Key, {
   message: "Either url or s3Key is required",
 });
@@ -75,7 +72,9 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    const { url, s3Key, query, clipModel, genre, clipLength, aspectRatio, backgroundFill, maxClips, durationSecs, language } = parsed.data;
+    const { url, s3Key, query, clipModel, genre, clipLength, maxClips, durationSecs, language, editFull } = parsed.data;
+    const aspectRatio    = "9:16";
+    const backgroundFill = "blur";
     const userId = (req as any).user?._id ?? (req as any).auth?.userId;
     if (!userId) {
       res.status(401).json({ error: "Unauthorized" });
@@ -125,6 +124,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
         maxClips,
         query,
         ...(language ? { language } : {}),
+        ...(editFull ? { editFull: true } : {}),
         jobId,
         totalClips:     0,
       }),
@@ -141,7 +141,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
     ]);
 
   // 2. Push to SQS with all clip settings
-    await enqueueJob({ jobId, userId, url: url ?? "", s3Key: s3Key ?? "", query, projectId, clipModel, genre, clipLength, aspectRatio, backgroundFill, maxClips, ...(language ? { language } : {}) });
+    await enqueueJob({ jobId, userId, url: url ?? "", s3Key: s3Key ?? "", query, projectId, clipModel, genre, clipLength, maxClips, ...(language ? { language } : {}), ...(editFull ? { editFull: true } : {}) });
 
     logger.info("Job created and enqueued", {
       jobId,

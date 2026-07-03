@@ -1032,12 +1032,17 @@ function EditPanelContent({
 }
 
 function ExportSection({
-  exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
+  exportPhase, exportProgress, exportUrl, handleExport, handlePrimaryExportAction, setExportPhase, setExportUrl,
+  exportReadyToDownload,
   compact = false,
-}: Pick<EditPanelProps, "exportPhase" | "exportProgress" | "exportUrl" | "handleExport" | "setExportPhase" | "setExportUrl"> & { compact?: boolean }) {
+}: Pick<EditPanelProps, "exportPhase" | "exportProgress" | "exportUrl" | "handleExport" | "setExportPhase" | "setExportUrl"> & {
+  handlePrimaryExportAction: () => void;
+  exportReadyToDownload: boolean;
+  compact?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-2">
-      {exportPhase === "idle" && (
+      {(exportPhase === "idle" || (exportPhase === "done" && !exportReadyToDownload)) && (
         <button
           onClick={handleExport}
           className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
@@ -1058,16 +1063,22 @@ function ExportSection({
         </>
       )}
 
-      {exportPhase === "done" && exportUrl && (
+      {exportReadyToDownload && exportUrl && (
         <>
           <div className="flex items-center gap-2 text-[12px] text-green-400 mb-1">
             <CheckCircle className="h-4 w-4" /> Export ready!
           </div>
           <button
-            onClick={() => openAndDownload(exportUrl, "clip.mp4")}
+            onClick={handlePrimaryExportAction}
             className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
           >
             Download
+          </button>
+          <button
+            onClick={handleExport}
+            className="text-[11px] text-white/35 hover:text-white/60 transition-colors text-center py-1"
+          >
+            Export again
           </button>
         </>
       )}
@@ -1103,7 +1114,7 @@ function ExportSection({
         </>
       )}
 
-      {!compact && exportPhase === "idle" && (
+      {!compact && (exportPhase === "idle" || (exportPhase === "done" && !exportReadyToDownload)) && (
         <p className="text-[11px] text-white/20 text-center">Settings applied on export</p>
       )}
     </div>
@@ -1201,6 +1212,7 @@ export default function ClipRefinePage() {
   const [exportProgress, setExportProgress] = useState(0);
   const [exportUrl, setExportUrl]           = useState<string | null>(null);
   const exportPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const exportSnapshotRef = useRef<string | null>(null);
 
   // Sticker drag state — using refs so no stale closures
   const dragRef = useRef<{ idx: number; rectLeft: number; rectTop: number; rectW: number; rectH: number } | null>(null);
@@ -1209,13 +1221,32 @@ export default function ClipRefinePage() {
   const videoContainerRef = useRef<HTMLDivElement>(null);
 
   // Load project aspect ratio
+  const [arDropdownOpen, setArDropdownOpen] = useState(false);
+  const arDropdownRef = useRef<HTMLDivElement>(null);
+  const [backgroundFill, setBackgroundFill] = useState<string>("blur");
+
   useEffect(() => {
     if (!projectId) return;
     apiFetch(`${API_URL}/api/projects/${projectId}`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.aspectRatio) setAspectRatio(data.aspectRatio); })
+      .then(data => {
+        if (data?.aspectRatio) setAspectRatio(data.aspectRatio);
+        else if (data?.editFull) setAspectRatio("16:9");
+      })
       .catch(() => {});
   }, [projectId]);
+
+  // Close AR dropdown on outside click
+  useEffect(() => {
+    if (!arDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (arDropdownRef.current && !arDropdownRef.current.contains(e.target as Node)) {
+        setArDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [arDropdownOpen]);
 
   // Load clip captions on mount — always start fresh with original captions
   useEffect(() => {
@@ -1253,10 +1284,37 @@ export default function ClipRefinePage() {
     saveSettings({ captionStyle, captionFontSize, captionPosY, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation });
   }, [captionStyle, captionFontSize, captionPosY, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation]);
 
-  // Reset export button back to idle when user changes any setting after a successful export
+  const buildExportSnapshot = useCallback(() => JSON.stringify({
+    aspectRatio, backgroundFill, captionStyle, captionFontSize, captionPosY, captionPosX,
+    speed, trimStart, trimEnd, brightness, contrast, saturation,
+    placedStickers, textOverlays, captionWords,
+  }), [aspectRatio, backgroundFill, captionStyle, captionFontSize, captionPosY, captionPosX, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers, textOverlays, captionWords]);
+
+  const invalidateExport = useCallback(() => {
+    if (exportPollRef.current) {
+      clearInterval(exportPollRef.current);
+      exportPollRef.current = null;
+    }
+    exportSnapshotRef.current = null;
+    setExportPhase("idle");
+    setExportProgress(0);
+    setExportUrl(null);
+  }, []);
+
+  const markExportCurrent = useCallback(() => {
+    exportSnapshotRef.current = buildExportSnapshot();
+  }, [buildExportSnapshot]);
+
+  const isExportStale = useCallback(() => {
+    if (!exportSnapshotRef.current) return true;
+    return exportSnapshotRef.current !== buildExportSnapshot();
+  }, [buildExportSnapshot]);
+
+  // Reset export when any edit setting changes after a successful export
   useEffect(() => {
-    if (exportPhase === "done") { setExportPhase("idle"); setExportUrl(null); }
-  }, [captionStyle, captionFontSize, captionPosY, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers, textOverlays]);
+    if (exportPhase === "done") invalidateExport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only invalidate when settings change, not when exportPhase flips to done
+  }, [captionStyle, captionFontSize, captionPosY, captionPosX, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers, textOverlays, aspectRatio, backgroundFill]);
 
   const handleTranslate = async (lang: string) => {
     if (!lang || lang === activeLang || translating) return;
@@ -1279,26 +1337,6 @@ export default function ClipRefinePage() {
 
   const handleExport = async () => {
     if (!src || exportPhase === "exporting") return;
-
-    // If nothing has been changed from defaults, skip the pipeline entirely
-    // and directly download the original S3 clip — no credits consumed.
-    const isUnchanged =
-      captionStyle === "none" &&
-      speed === 1.0 &&
-      trimStart === 0 &&
-      (trimEnd === 0 || trimEnd >= duration) &&
-      brightness === 100 &&
-      contrast === 100 &&
-      saturation === 100 &&
-      placedStickers.length === 0 &&
-      textOverlays.length === 0;
-
-    if (isUnchanged) {
-      setExportPhase("done");
-      setExportUrl(src);
-      openAndDownload(src, `clip-${index}.mp4`);
-      return;
-    }
 
     setExportPhase("exporting");
     setExportProgress(0);
@@ -1340,6 +1378,7 @@ export default function ClipRefinePage() {
           captionPosX,
           captionMap:     captionWords.length ? { [clipId]: captionWords } : {},
           aspectRatio,
+          backgroundFill,
           brightness,
           contrast,
           saturation,
@@ -1370,6 +1409,7 @@ export default function ClipRefinePage() {
             clearInterval(exportPollRef.current!);
             setExportUrl(data.s3Url);
             setExportPhase("done");
+            markExportCurrent();
             // Open the exported video in a new tab + force a local download.
             openAndDownload(data.s3Url, `clip-${index}.mp4`);
           } else if (data.status === "failed") {
@@ -1381,6 +1421,15 @@ export default function ClipRefinePage() {
     } catch {
       setExportPhase("error");
     }
+  };
+
+  const handlePrimaryExportAction = () => {
+    if (exportPhase === "exporting") return;
+    if (exportPhase === "done" && exportUrl && !isExportStale()) {
+      openAndDownload(exportUrl, `clip-${index}.mp4`);
+      return;
+    }
+    handleExport();
   };
 
   // Sync speed
@@ -1431,6 +1480,8 @@ export default function ClipRefinePage() {
 
   const filterStyle = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
 
+  const exportReadyToDownload = exportPhase === "done" && !!exportUrl && !isExportStale();
+
   const editPanelProps: EditPanelProps = {
     activeTab, captionStyle, setCaptionStyle, captionWords,
     onCaptionWordsChange: setCaptionWords,
@@ -1467,6 +1518,42 @@ export default function ClipRefinePage() {
 
   return (
     <div className="flex min-h-screen bg-[#0a0a0a]">
+      <style>{`
+        @keyframes chopprAurora {
+          0%   { transform: translate(0%,0%) scale(1.1); }
+          33%  { transform: translate(5%,-8%) scale(1.15); }
+          66%  { transform: translate(-6%,6%) scale(1.08); }
+          100% { transform: translate(3%,-4%) scale(1.13); }
+        }
+        @keyframes chopprMesh {
+          0%   { background-position: 0% 0%; }
+          25%  { background-position: 100% 0%; }
+          50%  { background-position: 100% 100%; }
+          75%  { background-position: 0% 100%; }
+          100% { background-position: 0% 0%; }
+        }
+        @keyframes chopprConic {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes chopprGrain {
+          0%,100% { transform: translate(0,0); }
+          10%     { transform: translate(-3%,-4%); }
+          20%     { transform: translate(-6%,2%); }
+          30%     { transform: translate(4%,-5%); }
+          40%     { transform: translate(3%,6%); }
+          50%     { transform: translate(-5%,1%); }
+          60%     { transform: translate(5%,-2%); }
+          70%     { transform: translate(-2%,4%); }
+          80%     { transform: translate(2%,-6%); }
+          90%     { transform: translate(-4%,3%); }
+        }
+        @keyframes chopprNeon {
+          0%   { background-position: 0% 50%; }
+          50%  { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+      `}</style>
       <Sidebar />
       <Topbar />
 
@@ -1563,10 +1650,150 @@ export default function ClipRefinePage() {
             <span>Back</span>
           </button>
 
-          <div className="absolute top-3 right-3 z-10 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1 backdrop-blur-sm">
-            <span className="text-[10px] text-white/40">Clip #{index}</span>
-            <span className="text-[10px] text-white/20">·</span>
-            <span className="text-[10px] font-semibold text-white/70">Score {score}</span>
+          {/* Aspect ratio + background fill picker */}
+          <div ref={arDropdownRef} className="absolute top-3 right-3 z-10">
+            <button
+              onClick={() => setArDropdownOpen(o => !o)}
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1 backdrop-blur-sm hover:border-white/20 transition-colors"
+            >
+              {aspectRatio === "9:16" && (
+                <svg viewBox="0 0 10 18" className="h-3 w-1.5 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="8" height="16" rx="1.5" /></svg>
+              )}
+              {aspectRatio === "1:1" && (
+                <svg viewBox="0 0 14 14" className="h-2.5 w-2.5 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="12" height="12" rx="1.5" /></svg>
+              )}
+              {aspectRatio === "16:9" && (
+                <svg viewBox="0 0 18 11" className="h-1.5 w-3 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="16" height="9" rx="1.5" /></svg>
+              )}
+              <span className="text-[10px] font-semibold text-white/70">{aspectRatio}</span>
+              <svg viewBox="0 0 10 6" className="h-2 w-2 text-white/30 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 1l4 4 4-4" /></svg>
+            </button>
+
+            {arDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1.5 flex flex-col rounded-2xl border border-white/10 bg-[#111] shadow-2xl overflow-hidden" style={{ minWidth: 200 }}>
+
+                {/* Aspect ratio section */}
+                <div className="px-3 pt-3 pb-1.5">
+                  <p className="text-[9px] uppercase tracking-widest text-white/25 mb-1.5">Aspect ratio</p>
+                  <div className="flex flex-col gap-0.5">
+                    {([
+                      { r: "9:16",  label: "9:16 · Vertical",   icon: <svg viewBox="0 0 10 18" className="h-3 w-1.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="8" height="16" rx="1.5" /></svg> },
+                      { r: "1:1",   label: "1:1 · Square",      icon: <svg viewBox="0 0 14 14" className="h-2.5 w-2.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="12" height="12" rx="1.5" /></svg> },
+                      { r: "16:9",  label: "16:9 · Landscape",  icon: <svg viewBox="0 0 18 11" className="h-1.5 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="16" height="9" rx="1.5" /></svg> },
+                    ] as const).map(({ r, label, icon }) => (
+                      <button
+                        key={r}
+                        onClick={() => { invalidateExport(); setAspectRatio(r); }}
+                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] transition-colors w-full text-left ${
+                          aspectRatio === r ? "bg-white/10 text-white font-semibold" : "text-white/50 hover:bg-white/6 hover:text-white/80"
+                        }`}
+                      >
+                        {icon} {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-px bg-white/8 mx-3" />
+
+                {/* Background fill section */}
+                <div className="px-3 pt-1.5 pb-3">
+                  <p className="text-[9px] uppercase tracking-widest text-white/25 mb-2">Background</p>
+
+                  {/* Blur + Crop quick options */}
+                  <div className="flex gap-1.5 mb-2">
+                    <button
+                      onClick={() => { invalidateExport(); setBackgroundFill("blur"); }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] transition-colors ${backgroundFill === "blur" ? "bg-white/15 text-white font-semibold" : "bg-white/4 text-white/50 hover:bg-white/8 hover:text-white/80"}`}
+                    >
+                      <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5" strokeOpacity="0.6"/><circle cx="8" cy="8" r="2.5" strokeOpacity="0.3"/></svg>
+                      Blur
+                    </button>
+                    <button
+                      onClick={() => { invalidateExport(); setBackgroundFill("none"); }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] transition-colors ${backgroundFill === "none" ? "bg-white/15 text-white font-semibold" : "bg-white/4 text-white/50 hover:bg-white/8 hover:text-white/80"}`}
+                    >
+                      <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 14L14 2M4 4h8v8H4z" strokeLinejoin="round"/></svg>
+                      Crop
+                    </button>
+                  </div>
+
+                  {/* Live backgrounds — disabled for now, implement later
+                  <p className="text-[9px] uppercase tracking-widest text-white/20 mb-1.5 mt-0.5">Live backgrounds</p>
+                  <div className="grid grid-cols-2 gap-1.5 mb-3">
+                    {([
+                      { id: "anim-aurora",   label: "Aurora",   preview: "linear-gradient(135deg,#0ea5e9,#8b5cf6,#ec4899,#0ea5e9)" },
+                      { id: "anim-mesh",     label: "Mesh",     preview: "linear-gradient(135deg,#f97316,#ec4899,#8b5cf6,#06b6d4)" },
+                      { id: "anim-conic",    label: "Conic",    preview: "conic-gradient(from 0deg,#f97316,#ec4899,#8b5cf6,#06b6d4,#f97316)" },
+                      { id: "anim-grain",    label: "Grain",    preview: "linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)" },
+                      { id: "anim-sunset",   label: "Sunset",   preview: "linear-gradient(135deg,#ff6b6b,#feca57,#ff9ff3,#54a0ff)" },
+                      { id: "anim-neon",     label: "Neon",     preview: "linear-gradient(135deg,#00ff88,#00d4ff,#ff00ff,#00ff88)" },
+                    ] as { id: string; label: string; preview: string }[]).map(({ id, label, preview }) => (
+                      <button
+                        key={id}
+                        onClick={() => setBackgroundFill(id)}
+                        className={`relative flex items-end justify-start p-2 rounded-xl h-10 overflow-hidden text-[10px] font-medium transition-all ${backgroundFill === id ? "ring-2 ring-white/70 ring-offset-1 ring-offset-[#111]" : "hover:ring-1 hover:ring-white/20"}`}
+                        style={{ background: preview }}
+                      >
+                        <span className="relative z-10 text-white drop-shadow-md">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  */}
+
+                  {/* Color swatches grid */}
+                  <div className="grid grid-cols-7 gap-1 mb-2">
+                    {[
+                      "#000000","#1a1a1a","#ffffff","#f0f0f0",
+                      "#0f172a","#1e3a5f","#312e81","#3b0764",
+                      "#1a1a2e","#0d2137","#134e4a","#14532d",
+                      "#450a0a","#431407","#78350f","#1c1917",
+                      "#f97316","#eab308","#22c55e","#06b6d4",
+                      "#3b82f6","#8b5cf6","#ec4899","#ef4444",
+                      "#fbbf24","#a3e635","#34d399","#818cf8",
+                    ].map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => { invalidateExport(); setBackgroundFill(color); }}
+                        title={color}
+                        className={`w-full aspect-square rounded-md transition-all ${backgroundFill === color ? "ring-2 ring-white ring-offset-1 ring-offset-[#111] scale-110" : "hover:scale-110"}`}
+                        style={{ background: color, border: color === "#ffffff" || color === "#f0f0f0" ? "1px solid rgba(255,255,255,0.15)" : "none" }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Custom color picker */}
+                  <label className="flex items-center gap-2 w-full cursor-pointer group">
+                    <div
+                      className="w-7 h-7 rounded-lg border border-white/20 shrink-0 overflow-hidden"
+                      style={{ background: backgroundFill.startsWith("#") ? backgroundFill : "#000000" }}
+                    >
+                      <input
+                        type="color"
+                        value={backgroundFill.startsWith("#") ? backgroundFill : "#000000"}
+                        onChange={(e) => { invalidateExport(); setBackgroundFill(e.target.value); }}
+                        className="w-full h-full opacity-0 cursor-pointer"
+                      />
+                    </div>
+                    <span className="text-[11px] text-white/40 group-hover:text-white/70 transition-colors">Custom color</span>
+                    {backgroundFill.startsWith("#") && (
+                      <span className="text-[10px] text-white/30 font-mono ml-auto">{backgroundFill.toUpperCase()}</span>
+                    )}
+                  </label>
+                </div>
+
+                {/* Done button */}
+                <div className="px-3 pb-3">
+                  <button
+                    onClick={() => setArDropdownOpen(false)}
+                    className="w-full rounded-xl bg-white/8 hover:bg-white/12 text-white/70 hover:text-white text-[11px] font-medium py-1.5 transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+
+              </div>
+            )}
           </div>
 
           <div className={cn(
@@ -1576,7 +1803,7 @@ export default function ClipRefinePage() {
             {src ? (
               <div
                 ref={videoContainerRef}
-                className="relative md:rounded-2xl shadow-2xl shadow-black/80"
+                className="relative md:rounded-2xl overflow-hidden shadow-2xl shadow-black/80"
                 style={isMobile ? {
                   aspectRatio: aspectRatio === "16:9" ? "16/9" : aspectRatio === "1:1" ? "1/1" : "9/16",
                   width: "100%",
@@ -1598,13 +1825,71 @@ export default function ClipRefinePage() {
                 }}
               >
                 {/* Clip the video/canvas layers but NOT the drag handles */}
-                <div className={cn("absolute inset-0 overflow-hidden", !isMobile && "rounded-2xl")}>
+                <div className="absolute inset-0 overflow-hidden">
+                  {/* Background fill layer — visible when video has letterbox space */}
+                  {backgroundFill === "blur" && (
+                    <video
+                      src={src}
+                      muted
+                      playsInline
+                      loop
+                      ref={(el) => {
+                        if (el && videoRef.current) {
+                          el.currentTime = videoRef.current.currentTime;
+                          if (!videoRef.current.paused) el.play().catch(() => {});
+                        }
+                      }}
+                      className="absolute inset-0 w-full h-full object-cover scale-110"
+                      style={{ filter: "blur(20px) brightness(0.5)", transform: "scale(1.15)" }}
+                    />
+                  )}
+                  {backgroundFill === "black" && (
+                    <div className="absolute inset-0 bg-black" />
+                  )}
+                  {backgroundFill === "white" && (
+                    <div className="absolute inset-0 bg-white" />
+                  )}
+                  {backgroundFill === "anim-aurora" && (
+                    <div className="absolute inset-0 overflow-hidden" style={{ background: "#0a0a18" }}>
+                      <div className="absolute -inset-1/4 opacity-70" style={{ background: "radial-gradient(ellipse 80% 60% at 20% 30%, #8b5cf6cc 0%, transparent 60%), radial-gradient(ellipse 60% 80% at 80% 70%, #06b6d4cc 0%, transparent 60%), radial-gradient(ellipse 70% 50% at 50% 90%, #ec4899cc 0%, transparent 60%)", filter: "blur(32px)", animation: "chopprAurora 8s ease-in-out infinite alternate" }} />
+                    </div>
+                  )}
+                  {backgroundFill === "anim-mesh" && (
+                    <div className="absolute inset-0 overflow-hidden" style={{ background: "#0f0518" }}>
+                      <div className="absolute -inset-1/4" style={{ backgroundImage: "radial-gradient(ellipse 60% 50% at 10% 20%, #f97316cc 0%, transparent 55%), radial-gradient(ellipse 55% 65% at 90% 10%, #ec4899cc 0%, transparent 55%), radial-gradient(ellipse 65% 55% at 80% 90%, #8b5cf6cc 0%, transparent 55%), radial-gradient(ellipse 50% 60% at 20% 80%, #06b6d4cc 0%, transparent 55%)", backgroundSize: "300% 300%", filter: "blur(28px)", animation: "chopprMesh 12s ease-in-out infinite" }} />
+                    </div>
+                  )}
+                  {backgroundFill === "anim-conic" && (
+                    <div className="absolute inset-0 overflow-hidden">
+                      <div className="absolute inset-[-50%]" style={{ background: "conic-gradient(from 0deg, #f97316, #ec4899, #8b5cf6, #06b6d4, #22c55e, #f97316)", filter: "blur(16px) brightness(0.8)", animation: "chopprConic 6s linear infinite", transformOrigin: "center" }} />
+                    </div>
+                  )}
+                  {backgroundFill === "anim-grain" && (
+                    <div className="absolute inset-0 overflow-hidden" style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%)" }}>
+                      <div className="absolute inset-0" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`, opacity: 0.18, animation: "chopprGrain 0.4s steps(8) infinite" }} />
+                    </div>
+                  )}
+                  {backgroundFill === "anim-sunset" && (
+                    <div className="absolute inset-0 overflow-hidden" style={{ background: "#1a0520" }}>
+                      <div className="absolute -inset-1/4" style={{ backgroundImage: "radial-gradient(ellipse 70% 55% at 15% 25%, #ff6b6bcc 0%, transparent 55%), radial-gradient(ellipse 60% 70% at 85% 15%, #feca57cc 0%, transparent 55%), radial-gradient(ellipse 65% 60% at 75% 85%, #ff9ff3cc 0%, transparent 55%), radial-gradient(ellipse 55% 65% at 25% 75%, #54a0ffcc 0%, transparent 55%)", backgroundSize: "280% 280%", filter: "blur(30px)", animation: "chopprMesh 10s ease-in-out infinite reverse" }} />
+                    </div>
+                  )}
+                  {backgroundFill === "anim-neon" && (
+                    <div className="absolute inset-0 overflow-hidden" style={{ background: "#050510" }}>
+                      <div className="absolute -inset-1/4" style={{ backgroundImage: "radial-gradient(ellipse 50% 60% at 20% 40%, #00ff8899 0%, transparent 50%), radial-gradient(ellipse 60% 50% at 80% 30%, #00d4ff99 0%, transparent 50%), radial-gradient(ellipse 55% 55% at 50% 80%, #ff00ff99 0%, transparent 50%)", backgroundSize: "250% 250%", filter: "blur(24px)", animation: "chopprNeon 7s ease-in-out infinite alternate" }} />
+                    </div>
+                  )}
+                  {backgroundFill !== "blur" && backgroundFill !== "black" && backgroundFill !== "white" && backgroundFill !== "none" && !backgroundFill.startsWith("anim-") && (
+                    <div className="absolute inset-0" style={{ background: backgroundFill }} />
+                  )}
                   <BackgroundRenderer
                     videoRef={videoRef}
                     placedStickers={placedStickers}
                     segmentationReady={segmentationReady}
                     segmenter={segmenterRef}
                     filterStyle={filterStyle}
+                    aspectRatio={aspectRatio}
+                    backgroundFill={backgroundFill}
                   />
                   <video
                     ref={videoRef}
@@ -1612,8 +1897,9 @@ export default function ClipRefinePage() {
                     muted={muted}
                     playsInline
                     loop
-                    className="w-full h-full object-cover"
+                    className="w-full h-full"
                     style={{
+                      objectFit: backgroundFill === "none" ? "cover" : "contain",
                       filter: filterStyle,
                       opacity: placedStickers.length > 0 && segmentationReady ? 0 : 1,
                     }}
@@ -1857,6 +2143,8 @@ export default function ClipRefinePage() {
                     exportProgress={exportProgress}
                     exportUrl={exportUrl}
                     handleExport={handleExport}
+                    handlePrimaryExportAction={handlePrimaryExportAction}
+                    exportReadyToDownload={exportReadyToDownload}
                     setExportPhase={setExportPhase}
                     setExportUrl={setExportUrl}
                   />
@@ -1893,12 +2181,12 @@ export default function ClipRefinePage() {
                       </svg>
                     )}
                     <button
-                      onClick={exportPhase === "done" && exportUrl ? () => openAndDownload(exportUrl, "clip.mp4") : exportPhase === "idle" ? handleExport : undefined}
+                      onClick={handlePrimaryExportAction}
                       disabled={exportPhase === "exporting"}
-                      title={exportPhase === "done" ? "Download" : exportPhase === "exporting" ? `${exportProgress}%` : "Export clip"}
+                      title={exportReadyToDownload ? "Download" : exportPhase === "exporting" ? `${exportProgress}%` : "Export clip"}
                       className={cn(
                         "absolute inset-0 flex items-center justify-center rounded-full transition-all duration-150",
-                        exportPhase === "done"
+                        exportReadyToDownload
                           ? "bg-green-500 hover:bg-green-400 active:bg-green-600 text-white cursor-pointer"
                           : exportPhase === "exporting"
                             ? "bg-white/8 text-white/50 cursor-not-allowed"
@@ -1907,15 +2195,23 @@ export default function ClipRefinePage() {
                     >
                       {exportPhase === "exporting"
                         ? <Loader2 className="h-4 w-4 animate-spin" />
-                        : exportPhase === "done"
+                        : exportReadyToDownload
                           ? <Download className="h-4 w-4" />
                           : <Download className="h-4 w-4" />
                       }
                     </button>
                   </div>
                   <span className="text-[9px] font-medium text-white/60">
-                    {exportPhase === "done" ? "Download" : exportPhase === "exporting" ? `${exportProgress}%` : "Export"}
+                    {exportReadyToDownload ? "Download" : exportPhase === "exporting" ? `${exportProgress}%` : "Export"}
                   </span>
+                  {exportReadyToDownload && exportUrl && (
+                    <button
+                      onClick={handleExport}
+                      className="text-[8px] text-white/30 hover:text-white/55 transition-colors leading-tight"
+                    >
+                      Export again
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -2006,6 +2302,8 @@ export default function ClipRefinePage() {
             exportProgress={exportProgress}
             exportUrl={exportUrl}
             handleExport={handleExport}
+            handlePrimaryExportAction={handlePrimaryExportAction}
+            exportReadyToDownload={exportReadyToDownload}
             setExportPhase={setExportPhase}
             setExportUrl={setExportUrl}
             compact

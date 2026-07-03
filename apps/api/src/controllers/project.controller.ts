@@ -90,8 +90,6 @@ export async function retryProject(req: Request, res: Response, next: NextFuncti
       clipModel:      "Auto",
       genre:          "Auto",
       clipLength:     "Auto (0m-3m)",
-      aspectRatio:    (project as any).aspectRatio    ?? "9:16",
-      backgroundFill: (project as any).backgroundFill ?? "blur",
       maxClips:       10,
     });
 

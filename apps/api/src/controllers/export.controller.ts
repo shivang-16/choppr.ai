@@ -51,8 +51,6 @@ const TextOverlaySchema = z.object({
   italic:   z.boolean().default(false),
 });
 
-const BACKGROUND_FILLS = ["blur", "black", "white", "none"] as const;
-
 const CreateExportSchema = z.object({
   projectId:      z.string(),
   tracks:         z.array(TrackSchema),
@@ -64,7 +62,7 @@ const CreateExportSchema = z.object({
   captionPosX:    z.number().min(-100).max(100).default(0),
   captionMap:     z.record(z.string(), z.array(CaptionWordSchema)).default({}),
   aspectRatio:    z.string().default("9:16"),
-  backgroundFill: z.enum(BACKGROUND_FILLS).default("blur"),
+  backgroundFill: z.string().default("blur"),
   brightness:     z.number().min(0).max(400).default(100),
   contrast:       z.number().min(0).max(400).default(100),
   saturation:     z.number().min(0).max(400).default(100),

@@ -14,16 +14,14 @@ export interface JobMessage {
   projectId:      string;
   userId:         string;
   url:            string;
-  s3Key:          string;   // non-empty when source is a direct S3 upload
-  // Clip settings from dashboard
-  query:          string;   // user's specific moment prompt (most important)
-  clipModel:      string;   // "Auto" | "Viral" | "Educational"
-  genre:          string;   // "Auto" | "Gaming" | "Podcast" | "Sports" etc.
-  clipLength:     string;   // "Auto (0m-3m)" | "Short (0-60s)" | "Long (1-3m)"
-  aspectRatio:    string;   // "9:16" | "1:1" | "16:9"
-  backgroundFill: string;   // "blur" | "black" | "white" | "none"
+  s3Key:          string;
+  query:          string;
+  clipModel:      string;
+  genre:          string;
+  clipLength:     string;
   maxClips:       number;
-  language?:      string;   // 2-letter ISO code (e.g. "hi", "en") — only set for uploads
+  language?:      string;
+  editFull?:      boolean;
 }
 
 export async function enqueueJob(payload: JobMessage): Promise<void> {

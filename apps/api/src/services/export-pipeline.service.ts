@@ -16,6 +16,7 @@ import { createWriteStream, promises as fsp } from "fs";
 import { pipeline }          from "stream/promises";
 import { Readable }          from "stream";
 import { tmpdir }            from "os";
+import { createCanvas }      from "@napi-rs/canvas";
 import { join }              from "path";
 import { randomUUID }        from "crypto";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
@@ -100,19 +101,121 @@ const ASPECT_DIMS: Record<string, [number, number]> = {
   "4:3":  [1440, 1080],
 };
 
+// ── Animated background gradient definitions ──────────────────────────────
+type GradientStop = { color: string; pos: number };
+type GradientBlob = { x: number; y: number; rx: number; ry: number; color: string; alpha: number };
+
+const ANIM_GRADIENTS: Record<string, { base: string; blobs: GradientBlob[] }> = {
+  "anim-aurora": {
+    base: "#0a0a18",
+    blobs: [
+      { x: 0.2,  y: 0.3,  rx: 0.5, ry: 0.4, color: "#8b5cf6", alpha: 0.65 },
+      { x: 0.8,  y: 0.65, rx: 0.45, ry: 0.55, color: "#06b6d4", alpha: 0.60 },
+      { x: 0.5,  y: 0.85, rx: 0.55, ry: 0.35, color: "#ec4899", alpha: 0.55 },
+    ],
+  },
+  "anim-mesh": {
+    base: "#0f0518",
+    blobs: [
+      { x: 0.1,  y: 0.2,  rx: 0.5, ry: 0.45, color: "#f97316", alpha: 0.65 },
+      { x: 0.9,  y: 0.1,  rx: 0.45, ry: 0.55, color: "#ec4899", alpha: 0.60 },
+      { x: 0.8,  y: 0.88, rx: 0.55, ry: 0.45, color: "#8b5cf6", alpha: 0.60 },
+      { x: 0.2,  y: 0.75, rx: 0.45, ry: 0.50, color: "#06b6d4", alpha: 0.55 },
+    ],
+  },
+  "anim-conic": {
+    base: "#0a0a0a",
+    blobs: [
+      { x: 0.5,  y: 0.5,  rx: 0.6, ry: 0.6, color: "#f97316", alpha: 0.50 },
+      { x: 0.5,  y: 0.5,  rx: 0.4, ry: 0.4, color: "#8b5cf6", alpha: 0.55 },
+      { x: 0.25, y: 0.25, rx: 0.4, ry: 0.4, color: "#06b6d4", alpha: 0.50 },
+      { x: 0.75, y: 0.75, rx: 0.4, ry: 0.4, color: "#ec4899", alpha: 0.50 },
+    ],
+  },
+  "anim-grain": {
+    base: "#1a1a2e",
+    blobs: [
+      { x: 0.3,  y: 0.4,  rx: 0.55, ry: 0.50, color: "#1e3a5f", alpha: 0.80 },
+      { x: 0.7,  y: 0.6,  rx: 0.50, ry: 0.55, color: "#0f3460", alpha: 0.75 },
+    ],
+  },
+  "anim-sunset": {
+    base: "#1a0520",
+    blobs: [
+      { x: 0.15, y: 0.25, rx: 0.50, ry: 0.45, color: "#ff6b6b", alpha: 0.65 },
+      { x: 0.85, y: 0.15, rx: 0.45, ry: 0.55, color: "#feca57", alpha: 0.60 },
+      { x: 0.75, y: 0.85, rx: 0.55, ry: 0.45, color: "#ff9ff3", alpha: 0.60 },
+      { x: 0.25, y: 0.75, rx: 0.45, ry: 0.50, color: "#54a0ff", alpha: 0.55 },
+    ],
+  },
+  "anim-neon": {
+    base: "#050510",
+    blobs: [
+      { x: 0.2,  y: 0.4,  rx: 0.45, ry: 0.50, color: "#00ff88", alpha: 0.55 },
+      { x: 0.8,  y: 0.3,  rx: 0.50, ry: 0.45, color: "#00d4ff", alpha: 0.55 },
+      { x: 0.5,  y: 0.78, rx: 0.50, ry: 0.45, color: "#ff00ff", alpha: 0.50 },
+    ],
+  },
+};
+
+/** Generate a gradient background PNG for animated fills. Returns the file path. */
+async function generateAnimBgImage(fill: string, w: number, h: number, outPath: string): Promise<void> {
+  const def = ANIM_GRADIENTS[fill];
+  if (!def) throw new Error(`Unknown animated fill: ${fill}`);
+
+  const canvas = createCanvas(w, h);
+  const ctx = canvas.getContext("2d");
+
+  // Base color
+  ctx.fillStyle = def.base;
+  ctx.fillRect(0, 0, w, h);
+
+  // Radial gradient blobs
+  for (const blob of def.blobs) {
+    const cx = blob.x * w;
+    const cy = blob.y * h;
+    const rx = blob.rx * Math.max(w, h);
+    const ry = blob.ry * Math.max(w, h);
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry));
+    // Parse hex → rgba
+    const r = parseInt(blob.color.slice(1, 3), 16);
+    const g = parseInt(blob.color.slice(3, 5), 16);
+    const b = parseInt(blob.color.slice(5, 7), 16);
+    grad.addColorStop(0,   `rgba(${r},${g},${b},${blob.alpha})`);
+    grad.addColorStop(0.5, `rgba(${r},${g},${b},${(blob.alpha * 0.4).toFixed(2)})`);
+    grad.addColorStop(1,   `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grad;
+    // Stretch horizontally by scaling x-axis
+    ctx.save();
+    ctx.scale(rx / Math.max(rx, ry), ry / Math.max(rx, ry));
+    ctx.beginPath();
+    ctx.arc(cx * Math.max(rx, ry) / rx, cy * Math.max(rx, ry) / ry, Math.max(rx, ry), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Soft blur approximation: draw the blobs at reduced scale, scaled back up
+  // (canvas doesn't have blur, but the radial gradients already create soft edges)
+  const buf = canvas.toBuffer("image/png");
+  await fsp.writeFile(outPath, buf);
+}
+
 /** Build an FFmpeg filter_complex string that reframes to target_w × target_h. */
 function buildReframeFilter(w: number, h: number, fill: string): string {
+  // Animated fills are handled via buildAnimBgFilter (separate image input)
   if (fill === "none") {
     return (
       `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,` +
       `crop=${w}:${h}[out]`
     );
   }
-  if (fill === "black" || fill === "white") {
+  // Solid color: named colors ("black", "white") or hex ("#1a3a2a" → "0x1a3a2a")
+  if (fill === "black" || fill === "white" || fill.startsWith("#")) {
+    const ffColor = fill.startsWith("#") ? fill.replace("#", "0x") : fill;
     return (
       `[0:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,` +
       `scale=trunc(iw/2)*2:trunc(ih/2)*2,` +
-      `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:${fill}[out]`
+      `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:${ffColor}[out]`
     );
   }
   // blur (default)
@@ -123,6 +226,21 @@ function buildReframeFilter(w: number, h: number, fill: string): string {
     `[bg]scale=${bw}:${bh}:force_original_aspect_ratio=increase,crop=${bw}:${bh},gblur=sigma=8,scale=${w}:${h}[blurred];` +
     `[fg]scale=${w}:${h}:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2[fg_scaled];` +
     `[blurred][fg_scaled]overlay=(W-w)/2:(H-h)/2[out]`
+  );
+}
+
+/**
+ * Build an FFmpeg filter_complex for animated fills that uses a pre-generated
+ * gradient image (input index 1) as the background and overlays the scaled
+ * video on top.
+ *  [0:v] = the source clip   [1:v] = the gradient bg PNG (loop 1)
+ */
+function buildAnimBgFilter(w: number, h: number): string {
+  return (
+    `[1:v]scale=${w}:${h}[bgscaled];` +
+    `[0:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,` +
+    `scale=trunc(iw/2)*2:trunc(ih/2)*2[fg_scaled];` +
+    `[bgscaled][fg_scaled]overlay=(W-w)/2:(H-h)/2[out]`
   );
 }
 
@@ -180,14 +298,33 @@ function runFFmpeg(args: string[], tag = "ffmpeg"): Promise<void> {
 }
 
 /** Stream-download a URL to a local file path using Node.js pipeline (reliable back-pressure). */
-async function downloadFile(url: string, dest: string): Promise<void> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Download failed: ${res.status} ${url}`);
-  if (!res.body) throw new Error(`No body for URL: ${url}`);
-  const fileStream = createWriteStream(dest);
-  await pipeline(Readable.fromWeb(res.body as any), fileStream);
-  const stat = await fsp.stat(dest);
-  if (stat.size === 0) throw new Error(`Downloaded file is empty: ${url}`);
+async function downloadFile(url: string, dest: string, timeoutMs = 30_000): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`Download failed: ${res.status} ${url}`);
+    if (!res.body) throw new Error(`No body for URL: ${url}`);
+    const fileStream = createWriteStream(dest);
+    await pipeline(Readable.fromWeb(res.body as any), fileStream);
+    const stat = await fsp.stat(dest);
+    if (stat.size === 0) throw new Error(`Downloaded file is empty: ${url}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Detect the real file extension from a URL (ignores query params). */
+function extFromUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const dot = pathname.lastIndexOf(".");
+    if (dot !== -1) {
+      const ext = pathname.slice(dot + 1).toLowerCase().split("?")[0]!;
+      if (["gif", "webp", "png", "jpg", "jpeg", "apng"].includes(ext)) return ext;
+    }
+  } catch { /* ignore */ }
+  return "png"; // safe default
 }
 
 /** Update the Export document in MongoDB. */
@@ -245,6 +382,15 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
 
     // ── 3. Cut each segment (reframe + speed) ────────────────────────────────
     const segFiles: string[] = [];
+
+    // Pre-generate animated gradient bg image once (reused for all segments)
+    const isAnimFill = backgroundFill.startsWith("anim-") && backgroundFill in ANIM_GRADIENTS;
+    const bgImagePath = isAnimFill ? join(tmpDir, "bg_gradient.png") : null;
+    if (isAnimFill && bgImagePath) {
+      logger.info(`[export:${exportId}] Generating animated background image...`);
+      await generateAnimBgImage(backgroundFill, targetW, targetH, bgImagePath);
+    }
+
     for (let idx = 0; idx < videoItems.length; idx++) {
       const item   = videoItems[idx]!;
       const local  = urlToLocal.get(item.src ?? "");
@@ -257,46 +403,81 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
       const muted    = item.audioDetached ?? false;
       const segOut   = join(tmpDir, `seg_${idx.toString().padStart(3, "0")}.mp4`);
 
-      const reframeRaw = buildReframeFilter(targetW, targetH, backgroundFill);
-      const reframe    = reframeRaw.replace("[out]", "[reframed]");
-
-      // Post-reframe chain: color enhancement (brightness/contrast/saturation)
-      // then speed (setpts). Ordered to match the browser preview.
+      // Post-reframe chain: color enhancement + speed
       const postParts: string[] = [];
       if (enhanceFilter) postParts.push(enhanceFilter);
       if (Math.abs(spd - 1.0) > 0.01) postParts.push(`setpts=${(1.0 / spd).toFixed(6)}*PTS`);
       if (postParts.length === 0) postParts.push("null");
-      const videoFilter = `${reframe};[reframed]${postParts.join(",")}[vout]`;
 
       let ffArgs: string[];
-      if (muted || vol === 0) {
-        // Silent segment: generate silent audio from a lavfi source.
-        ffArgs = [
-          "-y",
-          "-ss", String(trimIn), "-t", String(duration), "-i", local,
-          "-f", "lavfi", "-t", String(duration), "-i", "anullsrc=r=44100:cl=stereo",
-          "-filter_complex", videoFilter,
-          "-map", "[vout]", "-map", "1:a",
-          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-          "-c:a", "aac", "-b:a", "128k",
-          "-r", "30", "-ar", "44100",
-          "-movflags", "+faststart",
-          segOut,
-        ];
+      if (isAnimFill && bgImagePath) {
+        // Animated fill: use gradient bg PNG as second input
+        const animFilterRaw = buildAnimBgFilter(targetW, targetH);
+        const animFilter = animFilterRaw.replace("[out]", "[reframed]");
+        const videoFilter = `${animFilter};[reframed]${postParts.join(",")}[vout]`;
+        if (muted || vol === 0) {
+          ffArgs = [
+            "-y",
+            "-ss", String(trimIn), "-t", String(duration), "-i", local,
+            "-loop", "1", "-i", bgImagePath!,
+            "-f", "lavfi", "-t", String(duration), "-i", "anullsrc=r=44100:cl=stereo",
+            "-filter_complex", videoFilter,
+            "-map", "[vout]", "-map", "2:a",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k",
+            "-r", "30", "-ar", "44100",
+            "-movflags", "+faststart",
+            segOut,
+          ];
+        } else {
+          const atempo      = buildAtempo(spd);
+          const audioFilter = `[0:a]volume=${vol.toFixed(3)},${atempo}[aout]`;
+          ffArgs = [
+            "-y",
+            "-ss", String(trimIn), "-t", String(duration), "-i", local,
+            "-loop", "1", "-i", bgImagePath!,
+            "-filter_complex", `${videoFilter};${audioFilter}`,
+            "-map", "[vout]", "-map", "[aout]",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k",
+            "-r", "30", "-ar", "44100",
+            "-movflags", "+faststart",
+            segOut,
+          ];
+        }
       } else {
-        const atempo      = buildAtempo(spd);
-        const audioFilter = `[0:a]volume=${vol.toFixed(3)},${atempo}[aout]`;
-        ffArgs = [
-          "-y",
-          "-ss", String(trimIn), "-t", String(duration), "-i", local,
-          "-filter_complex", `${videoFilter};${audioFilter}`,
-          "-map", "[vout]", "-map", "[aout]",
-          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-          "-c:a", "aac", "-b:a", "128k",
-          "-r", "30", "-ar", "44100",
-          "-movflags", "+faststart",
-          segOut,
-        ];
+        const reframeRaw = buildReframeFilter(targetW, targetH, backgroundFill);
+        const reframe    = reframeRaw.replace("[out]", "[reframed]");
+        const videoFilter = `${reframe};[reframed]${postParts.join(",")}[vout]`;
+        if (muted || vol === 0) {
+          // Silent segment: generate silent audio from a lavfi source.
+          ffArgs = [
+            "-y",
+            "-ss", String(trimIn), "-t", String(duration), "-i", local,
+            "-f", "lavfi", "-t", String(duration), "-i", "anullsrc=r=44100:cl=stereo",
+            "-filter_complex", videoFilter,
+            "-map", "[vout]", "-map", "1:a",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k",
+            "-r", "30", "-ar", "44100",
+            "-movflags", "+faststart",
+            segOut,
+          ];
+        } else {
+          const atempo      = buildAtempo(spd);
+          const audioFilter = `[0:a]volume=${vol.toFixed(3)},${atempo}[aout]`;
+          ffArgs = [
+            "-y",
+            "-ss", String(trimIn), "-t", String(duration), "-i", local,
+            "-filter_complex", `${videoFilter};${audioFilter}`,
+            "-map", "[vout]", "-map", "[aout]",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k",
+            "-r", "30", "-ar", "44100",
+            "-movflags", "+faststart",
+            segOut,
+          ];
+        }
       }
 
       await runFFmpeg(ffArgs, `seg_${idx}`);
@@ -323,16 +504,18 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     if (stickers.length > 0) {
       logger.info(`[export:${exportId}] Compositing ${stickers.length} sticker(s)...`);
 
-      // Download each sticker and overlay with FFmpeg (preserves animation)
+      // Download each sticker and overlay with FFmpeg (preserves animation for GIFs)
       for (let si = 0; si < stickers.length; si++) {
         const ps = stickers[si]!;
-        if (!ps.stickerUrl && !ps.giphyUrl) continue;
+        const stickerSrc = ps.stickerUrl ?? ps.giphyUrl;
+        if (!stickerSrc) continue;
 
-        const stickerFile = join(tmpDir, `sticker_${si}.gif`);
+        const ext = extFromUrl(stickerSrc);
+        const stickerFile = join(tmpDir, `sticker_${si}.${ext}`);
         try {
-          await downloadFile((ps.stickerUrl ?? ps.giphyUrl)!, stickerFile);
-        } catch {
-          logger.warn(`[export:${exportId}] Failed to download sticker ${si}, skipping`);
+          await downloadFile(stickerSrc, stickerFile, 20_000);
+        } catch (dlErr: any) {
+          logger.warn(`[export:${exportId}] Failed to download sticker ${si} (${dlErr?.message}), skipping`);
           continue;
         }
 
@@ -341,10 +524,18 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
         const posY  = Math.round(ps.y * targetH - pSize / 2);
 
         const stickerOut = join(tmpDir, `with_sticker_${si}.mp4`);
+
+        // GIF stickers: use -stream_loop + -ignore_loop so animation loops for the full duration.
+        // Static images (webp/png/jpg): use -loop 1 (single still frame held for the full clip).
+        const isGif = ext === "gif";
+        const stickerInputArgs = isGif
+          ? ["-ignore_loop", "0", "-stream_loop", "-1", "-i", stickerFile]
+          : ["-loop", "1", "-i", stickerFile];
+
         await runFFmpeg([
           "-y",
           "-i", finalOut,
-          "-ignore_loop", "0", "-stream_loop", "-1", "-i", stickerFile,
+          ...stickerInputArgs,
           "-filter_complex",
           `[1:v]scale=${pSize}:${pSize}:flags=lanczos,format=rgba[stk];[0:v][stk]overlay=${posX}:${posY}:shortest=1[vout]`,
           "-map", "[vout]", "-map", "0:a?",
@@ -354,6 +545,9 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
         ], `sticker-${si}`);
 
         finalOut = stickerOut;
+        // Update progress as each sticker is composited
+        const stickerPct = 70 + Math.round(((si + 1) / stickers.length) * 10);
+        await updateExport(exportId, { progress: stickerPct });
       }
 
       logger.info(`[export:${exportId}] Stickers composited`);

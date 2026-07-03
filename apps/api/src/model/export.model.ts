@@ -47,7 +47,7 @@ const ExportSchema = new Schema<IExport>(
     captionFontSize: { type: Number, default: 50 },
     captionPosY:     { type: Number, default: 0 },
     aspectRatio:     { type: String, default: "9:16" },
-    backgroundFill:  { type: String, enum: ["blur", "black", "white", "none"], default: "blur" },
+    backgroundFill:  { type: String, default: "blur" },
     brightness:      { type: Number, default: 100 },
     contrast:        { type: Number, default: 100 },
     saturation:      { type: Number, default: 100 },

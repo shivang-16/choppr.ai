@@ -28,6 +28,8 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
   const current  = slides[idx];
   const isEdited = !!current?.originalClipId;
   const hasMany  = slides.length > 1;
+  const aspectCss = ASPECT_CSS[aspectRatio] ?? "9/16";
+  const modalMaxW = aspectRatio === "16:9" ? "min(780px, 92vw)" : aspectRatio === "1:1" ? "min(480px, 92vw)" : "min(360px, 92vw)";
 
   // Close on Escape / arrow keys
   useEffect(() => {
@@ -63,11 +65,14 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
       {/* Content — stop propagation so clicking inside doesn't close */}
       <div
         className="relative z-10 flex flex-col items-center gap-4 px-4 w-full"
-        style={{ maxWidth: aspectRatio === "16:9" ? "min(780px, 92vw)" : aspectRatio === "1:1" ? "min(480px, 90vw)" : "min(380px, 90vw)" }}
+        style={{ maxWidth: modalMaxW }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Video card — no overflow-hidden on wrapper so arrows aren't clipped */}
-        <div className="relative w-full rounded-2xl shadow-2xl shadow-black/80 bg-[#111]" style={{ aspectRatio: ASPECT_CSS[aspectRatio] ?? "9/16" }}>
+        {/* Video card */}
+        <div
+          className="relative w-full rounded-2xl shadow-2xl shadow-black/80 bg-[#111] overflow-hidden"
+          style={{ aspectRatio: aspectCss, maxHeight: "80vh" }}
+        >
 
           {/* Video layer with overflow-hidden only here */}
           <div className="absolute inset-0 rounded-2xl overflow-hidden cursor-pointer" onClick={togglePlay}>
@@ -77,7 +82,7 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
               muted={muted}
               loop
               playsInline
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-contain"
             />
           </div>
 
@@ -181,7 +186,7 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
   );
 }
 
-// ── Clip card — full-width, arrows inside at mid-height, dots below ───────────
+// ── Clip card — portrait 9:16 frame, arrows inside at mid-height, dots below ──
 function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: {
   clip: any; editedClips: any[]; onExpand: (c: any) => void; onUse: () => void; aspectRatio?: string;
 }) {
@@ -195,6 +200,7 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
   const [idx, setIdx] = useState(0);
   const current  = slides[idx];
   const isEdited = idx > 0;
+  const aspectCss = ASPECT_CSS[aspectRatio] ?? "9/16";
 
   useEffect(() => {
     const v = videoRef.current;
@@ -216,16 +222,14 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setMuted(true); }}
     >
-      {/* Card: no overflow-hidden so arrows at mid-height aren't clipped */}
+      {/* Card — 9:16 portrait frame */}
       <div
-        className="relative w-full rounded-2xl border border-white/10 hover:border-white/25 transition-all duration-200 bg-[#111]"
-        style={{ aspectRatio: ASPECT_CSS[aspectRatio] ?? "9/16" }}
+        className="relative w-full rounded-2xl border border-white/10 hover:border-white/25 transition-all duration-200 bg-[#111] overflow-hidden cursor-pointer"
+        style={{ aspectRatio: aspectCss }}
+        onClick={() => onExpand(current)}
       >
-        {/* Video layer — overflow-hidden only here for rounded corners */}
-        <div
-          className="absolute inset-0 rounded-2xl overflow-hidden cursor-pointer"
-          onClick={() => onExpand(current)}
-        >
+        {/* Video layer */}
+        <div className="absolute inset-0 rounded-2xl overflow-hidden">
           <video
             ref={videoRef}
             src={current.s3Url}
@@ -234,7 +238,7 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
             playsInline
             preload="metadata"
             onLoadedData={() => setLoaded(true)}
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-contain"
           />
           {!loaded && <div className="absolute inset-0 bg-white/4 animate-pulse" />}
           <div className={`absolute inset-0 bg-black/40 transition-opacity duration-200 ${hovered ? "opacity-0" : "opacity-100"}`} />
@@ -335,12 +339,25 @@ const STAGES = [
   { key: "clipping",     label: "Making your clips",      sub: "Almost there, cutting and saving your clips. This step usually takes some time." },
 ];
 
+const STAGES_EDIT_FULL = [
+  { key: "pending",      label: "Getting things ready",   sub: "Your video is up next, hang tight!" },
+  { key: "downloading",  label: "Grabbing your video",    sub: "Pulling in the source so we can work on it" },
+  { key: "transcribing", label: "Extracting captions",    sub: "Transcribing speech so you can add styled captions. This may take a few minutes." },
+  { key: "clipping",     label: "Preparing your editor",  sub: "Almost done, setting up your full video for editing." },
+];
+
 const STATUS_TO_IDX: Record<string, number> = {
   pending: 0, downloading: 1, transcribing: 2, analyzing: 3, clipping: 4,
 };
 
-function ProcessingView({ jobStatus }: { jobStatus?: string | null }) {
-  const stageIdx = STATUS_TO_IDX[jobStatus ?? "pending"] ?? 0;
+const STATUS_TO_IDX_EDIT_FULL: Record<string, number> = {
+  pending: 0, downloading: 1, transcribing: 2, clipping: 3,
+};
+
+function ProcessingView({ jobStatus, editFull }: { jobStatus?: string | null; editFull?: boolean }) {
+  const stages   = editFull ? STAGES_EDIT_FULL : STAGES;
+  const idxMap   = editFull ? STATUS_TO_IDX_EDIT_FULL : STATUS_TO_IDX;
+  const stageIdx = idxMap[jobStatus ?? "pending"] ?? 0;
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-10 min-h-[60vh]">
@@ -348,7 +365,7 @@ function ProcessingView({ jobStatus }: { jobStatus?: string | null }) {
 
       {/* Stage list */}
       <div className="flex flex-col gap-3 w-full max-w-sm">
-        {STAGES.map((stage, i) => {
+        {stages.map((stage, i) => {
           const done   = i < stageIdx;
           const active = i === stageIdx;
           return (
@@ -413,11 +430,8 @@ export default function ProjectDetailPage() {
 
   const handleRetry = () => {
     if (!project?.sourceUrl) return;
-    // Skip re-queuing directly — redirect to dashboard so user can adjust settings and re-submit
     const params = new URLSearchParams();
     params.set("url", project.sourceUrl);
-    if (project.aspectRatio)    params.set("aspectRatio", project.aspectRatio);
-    if (project.backgroundFill) params.set("backgroundFill", project.backgroundFill);
     router.push(`/dashboard?${params.toString()}`);
   };
 
@@ -543,7 +557,7 @@ export default function ProjectDetailPage() {
 
           {/* Still processing — animated stages */}
           {!loading && originalClips.length === 0 && project?.status && !["done", "failed"].includes(project.status) && (
-            <ProcessingView jobStatus={project?.jobStatus} />
+            <ProcessingView jobStatus={project?.jobStatus} editFull={project?.editFull} />
           )}
 
           {/* Clips count */}
@@ -555,12 +569,12 @@ export default function ProjectDetailPage() {
 
           {/* Clips grid */}
           {originalClips.length > 0 && (() => {
-            const ar = project?.aspectRatio ?? "9:16";
-            const gridCols = ar === "16:9"
-              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-              : ar === "1:1"
-              ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4"
-              : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5";
+            const displayAspect = project?.aspectRatio ?? "9:16";
+            const gridCols = displayAspect === "9:16"
+              ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+              : displayAspect === "1:1"
+                ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+                : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
             return (
               <div className={`grid ${gridCols} gap-2 sm:gap-3`}>
                 {originalClips.map((clip: any) => {
@@ -571,7 +585,7 @@ export default function ProjectDetailPage() {
                       key={clip._id}
                       clip={clip}
                       editedClips={edited}
-                      aspectRatio={ar}
+                      aspectRatio={displayAspect}
                       onExpand={(c) => {
                         const startIdx = slides.findIndex(s => s._id === c._id);
                         setModal({ slides, startIdx: startIdx >= 0 ? startIdx : 0 });

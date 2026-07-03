@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useApiFetch } from "@/lib/apiFetch";
-import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle, Info } from "lucide-react";
+import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -183,41 +183,14 @@ function DashboardInner() {
       .catch(() => {});
   }, []);
 
+  // "thumbnail" = show thumbnail + two buttons; "clips" = expand clip settings
+  const [videoMode, setVideoMode] = useState<"thumbnail" | "clips">("thumbnail");
+
   const [clipModel, setClipModel] = useState("Auto");
   const [genre, setGenre] = useState("Auto");
   const [clipLength, setClipLength] = useState("Short (0-60s)");
-  const [aspectRatio, setAspectRatio] = useState("9:16");
-  const [backgroundFill, setBackgroundFill] = useState("blur");
   const [language, setLanguage] = useState("auto");
-  const [bgInfoOpen, setBgInfoOpen] = useState(false);
-  const bgInfoRef = useRef<HTMLDivElement>(null);
-  const [arInfoOpen, setArInfoOpen] = useState(false);
-  const arInfoRef = useRef<HTMLDivElement>(null);
   const [userBalance, setUserBalance] = useState<number | null>(null);
-
-  // Close background info popover on outside click
-  useEffect(() => {
-    if (!bgInfoOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (bgInfoRef.current && !bgInfoRef.current.contains(e.target as Node)) {
-        setBgInfoOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [bgInfoOpen]);
-
-  // Close aspect ratio info popover on outside click
-  useEffect(() => {
-    if (!arInfoOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (arInfoRef.current && !arInfoRef.current.contains(e.target as Node)) {
-        setArInfoOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [arInfoOpen]);
   const [maxClips, setMaxClips] = useState(10);
   const [prompt, setPrompt] = useState("");
 
@@ -254,6 +227,7 @@ function DashboardInner() {
       new URL(trimmed);
       const meta = await fetchVideoMeta(trimmed, apiFetch);
       setVideo(meta);
+      setVideoMode("thumbnail");
       // Set default clip count based on video length
       if (meta?.durationSecs) {
         const mins = meta.durationSecs / 60;
@@ -276,11 +250,6 @@ function DashboardInner() {
       setInputUrl(prefilledUrl);
       handleFetch(prefilledUrl);
     }
-    // Pre-fill settings if redirected from retry
-    const paramAspectRatio    = searchParams.get("aspectRatio");
-    const paramBackgroundFill = searchParams.get("backgroundFill");
-    if (paramAspectRatio)    setAspectRatio(paramAspectRatio);
-    if (paramBackgroundFill) setBackgroundFill(paramBackgroundFill);
     // Auto-open file picker if redirected from landing page upload button
     if (searchParams.get("upload") === "1" && !uploadTriggeredRef.current) {
       uploadTriggeredRef.current = true;
@@ -344,6 +313,7 @@ function DashboardInner() {
       });
       const dur = durationSecs > 0 ? `${Math.floor(durationSecs / 60)}:${String(Math.floor(durationSecs % 60)).padStart(2, "0")}` : "0:00";
       setVideo({ url: `[Uploaded] ${file.name}`, thumbnail: "", title: file.name, duration: dur, durationSecs });
+      setVideoMode("thumbnail");
     } catch (err: unknown) {
       setUploadProgress(null);
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -368,8 +338,6 @@ function DashboardInner() {
         clipModel,
         genre,
         clipLength,
-        aspectRatio,
-        backgroundFill,
         maxClips,
         ...(video.durationSecs && video.durationSecs > 0 ? { durationSecs: video.durationSecs } : {}),
       };
@@ -408,7 +376,45 @@ function DashboardInner() {
     setUploadedS3Key(null);
     setUploadProgress(null);
     setLanguage("auto");
+    setVideoMode("thumbnail");
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // "Edit Full" — creates a job in transcribe-only mode (no clipping)
+  const handleEditFull = async () => {
+    if (!video) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const body: Record<string, unknown> = {
+        editFull: true,
+        ...(video.durationSecs && video.durationSecs > 0 ? { durationSecs: video.durationSecs } : {}),
+      };
+      if (uploadedS3Key) {
+        body.s3Key = uploadedS3Key;
+        if (language !== "auto") body.language = language;
+      } else {
+        body.url = video.url;
+      }
+
+      const res = await apiFetch(`${API_URL}/api/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message ?? data.error ?? "Failed to create job");
+      }
+
+      const { projectId } = await res.json();
+      router.push(`/dashboard/projects/${projectId}`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -647,26 +653,8 @@ function DashboardInner() {
             </div>
           )}
 
-          {/* Meta row */}
-          <div className="flex items-center gap-4 text-[12.5px] text-white/40">
-            {video.durationSecs && video.durationSecs > 0 ? (
-              <span>
-                Credit usage:{" "}
-                <span className="text-white/70 font-medium">
-                  ⚡ {Math.ceil(video.durationSecs / 60) * 2} credits
-                </span>
-                <span className="text-white/25 text-[11px]"> ({Math.ceil(video.durationSecs / 60)} min × 2)</span>
-              </span>
-            ) : (
-              <span>
-                Credit usage:{" "}
-                <span className="text-white/70 font-medium">⚡ 2 credits / min</span>
-              </span>
-            )}
-          </div>
-
           {/* Thumbnail / platform placeholder */}
-          <div className="relative w-64 rounded-xl overflow-hidden border border-white/10">
+          <div className="relative w-72 rounded-2xl overflow-hidden border border-white/10 shadow-xl">
             {video.thumbnail ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -690,14 +678,58 @@ function DashboardInner() {
             )}
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
               <p className="text-[11px] text-white/70 truncate">{video.title}</p>
+              {video.durationSecs && video.durationSecs > 0 && (
+                <p className="text-[10px] text-white/40 mt-0.5">
+                  {Math.floor(video.durationSecs / 3600) > 0 ? `${Math.floor(video.durationSecs / 3600)}h ` : ""}
+                  {Math.floor((video.durationSecs % 3600) / 60)}m {video.durationSecs % 60}s
+                  {" · "}⚡ {Math.ceil(video.durationSecs / 60) * 2} credits
+                </p>
+              )}
             </div>
           </div>
 
-          <p className="text-[12px] text-white/30 text-center max-w-sm">
-            Using video you don't own may violate copyright laws. By continuing, you confirm this is your own original content.
-          </p>
+          {/* Action buttons — shown in thumbnail mode */}
+          {videoMode === "thumbnail" && (
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              {maxVideoLengthMins != null && video.durationSecs && video.durationSecs > maxVideoLengthMins * 60 ? (
+                <a
+                  href="/dashboard/billing"
+                  className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] flex items-center justify-center gap-2"
+                >
+                  Upgrade your plan to continue →
+                </a>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setVideoMode("clips")}
+                    className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] flex items-center justify-center gap-2"
+                  >
+                    <Scissors className="h-4 w-4" />
+                    Get Clips
+                  </button>
+                  <button
+                    onClick={handleEditFull}
+                    disabled={submitting}
+                    className="w-full rounded-2xl border border-white/15 bg-white/6 py-3.5 text-[14px] font-semibold text-white transition-all hover:bg-white/10 hover:border-white/25 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {submitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Film className="h-4 w-4" />
+                    )}
+                    {submitting ? "Creating project…" : "Edit Full Video"}
+                  </button>
+                </>
+              )}
+              <p className="text-[11px] text-white/25 text-center leading-relaxed">
+                Using video you don't own may violate copyright laws.
+              </p>
+            </div>
+          )}
 
-          {/* Clipping settings */}
+          {/* Clipping settings — only shown after "Get Clips" is chosen */}
+          {videoMode === "clips" && (
+          <>
           <div className="w-full rounded-2xl border border-white/8 bg-[#111] p-5 flex flex-col gap-5">
             {/* Settings row */}
             <div className="flex flex-wrap gap-4 text-[13px]">
@@ -784,6 +816,11 @@ function DashboardInner() {
 
             {/* Prompt */}
             <div className="flex flex-col gap-1.5">
+              <p className="text-[11px] text-white/35 leading-relaxed">
+                <span className="text-white/50">Aspect ratio:</span> default video one
+                <span className="text-white/25"> · </span>
+                You can change aspect ratio after clipping.
+              </p>
               <div className="flex items-center justify-between">
                 <span className="text-[12px] text-white/50">Include specific moments</span>
                 <span className={`text-[11px] tabular-nums transition-colors ${
@@ -817,123 +854,6 @@ function DashboardInner() {
               </div>
             </div>
 
-            {/* Aspect ratio */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="relative flex items-center gap-1.5" ref={arInfoRef}>
-                <span className="text-[12px] text-white/50">Choose aspect ratio</span>
-                <button
-                  onClick={() => setArInfoOpen((o) => !o)}
-                  className="text-white/30 hover:text-white/60 transition-colors"
-                  aria-label="Aspect ratio info"
-                >
-                  <Info size={13} />
-                </button>
-                {arInfoOpen && (
-                  <div className="absolute left-0 bottom-full mb-2 z-50 w-64 rounded-xl border border-white/10 bg-[#1a1a1a] p-3 shadow-lg">
-                    <p className="text-[11px] font-medium text-white/80 mb-2">Aspect ratio</p>
-                    <ul className="flex flex-col gap-2">
-                      {[
-                        { label: "9:16 – Vertical", desc: "Perfect for TikTok, Instagram Reels, and YouTube Shorts. Fills the full phone screen." },
-                        { label: "1:1 – Square",    desc: "Works great on Instagram feed and LinkedIn. Balanced for all platforms." },
-                        { label: "16:9 – Landscape", desc: "Classic widescreen format. Ideal for YouTube, Twitter/X, and presentations." },
-                      ].map(({ label, desc }) => (
-                        <li key={label}>
-                          <span className="text-[11px] font-semibold text-white/70">{label}: </span>
-                          <span className="text-[11px] text-white/40">{desc}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-              {([
-                { r: "9:16",  icon: (
-                    <svg viewBox="0 0 10 18" className="h-3.5 w-2 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="1" y="1" width="8" height="16" rx="1.5" />
-                    </svg>
-                  )},
-                { r: "1:1",  icon: (
-                    <svg viewBox="0 0 14 14" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="1" y="1" width="12" height="12" rx="1.5" />
-                    </svg>
-                  )},
-                { r: "16:9", icon: (
-                    <svg viewBox="0 0 18 11" className="h-2 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="1" y="1" width="16" height="9" rx="1.5" />
-                    </svg>
-                  )},
-              ] as const).map(({ r, icon }) => (
-                <button
-                  key={r}
-                  onClick={() => setAspectRatio(r)}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[12px] transition-colors",
-                    aspectRatio === r
-                      ? "border-white/30 bg-white/10 text-white"
-                      : "border-white/8 text-white/35 hover:text-white/60"
-                  )}
-                >
-                  {icon} {r}
-                </button>
-              ))}
-            </div>
-
-            {/* Background fill */}
-            <div className="flex items-center gap-3 flex-wrap">
-              {/* Label + info button */}
-              <div className="relative flex items-center gap-1.5" ref={bgInfoRef}>
-                <span className="text-[12px] text-white/50">Background</span>
-                <button
-                  onClick={() => setBgInfoOpen((o) => !o)}
-                  className="text-white/30 hover:text-white/60 transition-colors"
-                  aria-label="Background fill info"
-                >
-                  <Info size={13} />
-                </button>
-
-                {/* Popover */}
-                {bgInfoOpen && (
-                  <div className="absolute left-0 bottom-full mb-2 z-50 w-64 rounded-xl border border-white/10 bg-[#1a1a1a] p-3 shadow-lg">
-                    <p className="text-[11px] font-medium text-white/80 mb-2">Background fill modes</p>
-                    <ul className="flex flex-col gap-2">
-                      {[
-                        { label: "Blurry BG", desc: "A blurred copy of your video fills the empty space - polished, no dead space." },
-                        { label: "Black",     desc: "Solid black bars on the sides or top/bottom - classic letterbox look." },
-                        { label: "White",     desc: "Same as black but white - great for screen recordings or tutorial content." },
-                        { label: "Crop",      desc: "Center-crops the video to fill the frame - no bars, but edges may be cut off." },
-                      ].map(({ label, desc }) => (
-                        <li key={label}>
-                          <span className="text-[11px] font-semibold text-white/70">{label}: </span>
-                          <span className="text-[11px] text-white/40">{desc}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-
-              {(
-                [
-                  { id: "blur",  label: "Blurry BG" },
-                  { id: "black", label: "Black" },
-                  { id: "white", label: "White" },
-                  { id: "none",  label: "Crop" },
-                ] as const
-              ).map(({ id, label }) => (
-                <button
-                  key={id}
-                  onClick={() => setBackgroundFill(id)}
-                  className={cn(
-                    "px-3 py-1 rounded-lg border text-[12px] transition-colors",
-                    backgroundFill === id
-                      ? "border-white/30 bg-white/10 text-white"
-                      : "border-white/8 text-white/35 hover:text-white/60"
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
 
           {maxVideoLengthMins != null && video.durationSecs && video.durationSecs > maxVideoLengthMins * 60 ? (
@@ -966,6 +886,8 @@ function DashboardInner() {
               </button>
             );
           })()}
+          </>
+          )}
         </div>
       )}
     </div>

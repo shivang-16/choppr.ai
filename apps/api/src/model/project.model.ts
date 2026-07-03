@@ -1,6 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 
-export type BackgroundFill = "blur" | "black" | "white" | "none";
+export type BackgroundFill = string;
 
 export interface IProject {
   _id: string;
@@ -21,6 +21,7 @@ export interface IProject {
   maxClips?: number;
   language?: string;
   query?: string;
+  editFull?: boolean;
   jobId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -38,13 +39,14 @@ const ProjectSchema = new Schema<IProject>(
     status:        { type: String, enum: ["pending", "processing", "done", "failed"], default: "pending" },
     error:         { type: String },
     aspectRatio:    { type: String, default: "9:16" },
-    backgroundFill: { type: String, enum: ["blur", "black", "white", "none"], default: "blur" },
+    backgroundFill: { type: String, default: "blur" },
     clipModel:     { type: String, default: "Auto" },
     genre:         { type: String, default: "Auto" },
     clipLength:    { type: String, default: "Auto (0m-3m)" },
     maxClips:      { type: Number, default: 10 },
     language:      { type: String },
     query:         { type: String, default: "" },
+    editFull:      { type: Boolean, default: false },
     jobId:         { type: String, required: true, index: true },
   },
   { timestamps: true, _id: false }
