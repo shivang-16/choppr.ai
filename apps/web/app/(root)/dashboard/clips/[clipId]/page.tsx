@@ -696,14 +696,14 @@ function ThumbnailTabContent({
 
   const applyStyle = useCallback((styleId: string, imageUrl: string) => {
     const cfg = THUMBNAIL_STYLES_CONFIG.find(s => s.id === styleId) ?? THUMBNAIL_STYLES_CONFIG[0]!;
-    setThumbnailOverlay(prev => ({
+    setThumbnailOverlay({
       imageUrl,
       x: cfg.x, y: cfg.y,
       width: cfg.initW, height: cfg.initH,
       styleId,
-      opacity: prev?.opacity ?? 100,
-    }));
-  }, [setThumbnailOverlay]);
+      opacity: thumbnailOverlay?.opacity ?? 100,
+    });
+  }, [setThumbnailOverlay, thumbnailOverlay?.opacity]);
 
   const handleFileSelect = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) { alert("Please select an image file"); return; }
