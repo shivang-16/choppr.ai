@@ -92,7 +92,7 @@ const CFG: Record<CaptionStyle, StyleCfg> = {
   rainbow:          { weight:fw(FONT_BANGERS),font:FONT_BANGERS,       activeColor:"gradient",   inactiveColor:"rgba(255,255,255,0.35)",  bg:null,                 showAll:true,  yRatio:0.80, glow:null,       outline:{color:"#000",width:2} },
   "highlight-box":  { weight:fw(FONT_BANGERS),font:FONT_BANGERS,       activeColor:"#000",       inactiveColor:"rgba(255,255,255,0.5)",   bg:"#FFE600",            showAll:true,  yRatio:0.80, glow:null,       outline:null },
 
-  // ── Font: Bebas Neue (tall condensed — single-weight 400) ─────────────────
+  // ── Font: Bebas Neue (tall condensed — single-weight 400) ───────────────── ₹
   neon:             { weight:fw(FONT_BEBAS),  font:FONT_BEBAS,         activeColor:"#00ff88",    inactiveColor:"rgba(255,255,255,0.3)",   bg:null,                 showAll:true,  yRatio:0.80, glow:"#00ff88",  outline:null },
   "electric-blue":  { weight:fw(FONT_BEBAS),  font:FONT_BEBAS,         activeColor:"#00D4FF",    inactiveColor:"rgba(255,255,255,0.4)",   bg:null,                 showAll:true,  yRatio:0.50, glow:"#00D4FF",  outline:{color:"#000",width:3} },
   "solo-glow":      { weight:fw(FONT_BEBAS),  font:FONT_BEBAS,         activeColor:"#00FF88",    inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.50, glow:"#00FF88",  outline:{color:"#000",width:4} },

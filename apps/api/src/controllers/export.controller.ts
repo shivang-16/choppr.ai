@@ -69,6 +69,15 @@ const CreateExportSchema = z.object({
   originalClipId: z.string().optional(),
   stickers:       z.array(StickerSchema).default([]),
   textOverlays:   z.array(TextOverlaySchema).default([]),
+  thumbnailOverlay: z.object({
+    imageUrl: z.string().url(),
+    x:        z.number().min(0).max(100),
+    y:        z.number().min(0).max(100),
+    width:    z.number().min(1).max(100),
+    height:   z.number().min(1).max(100),
+    styleId:  z.string(),
+    opacity:  z.number().min(0).max(100).default(100),
+  }).nullable().optional(),
   previewWidth:   z.number().min(50).max(3000).default(380),
 });
 
@@ -103,7 +112,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId, stickers, textOverlays, previewWidth } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId, stickers, textOverlays, thumbnailOverlay, previewWidth } = parsed.data;
     const exportId = randomUUID();
 
     await Export.create({
@@ -126,6 +135,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       captionMap,
       stickers,
       textOverlays,
+      thumbnailOverlay: thumbnailOverlay ?? null,
       previewWidth,
       ...(originalClipId ? { originalClipId } : {}),
     } as any);
@@ -143,6 +153,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       originalClipId: originalClipId ?? null,
       stickers,
       textOverlays,
+      thumbnailOverlay: thumbnailOverlay ?? null,
       previewWidth,
     }).then(async () => {
       // Deduct credits only on successful export

@@ -78,6 +78,15 @@ export interface ExportPipelineParams {
   originalClipId?: string | null;
   stickers?:      PlacedSticker[];
   textOverlays?:  TextOverlay[];
+  thumbnailOverlay?: {
+    imageUrl: string;
+    x:        number; // 0-100 %
+    y:        number;
+    width:    number;
+    height:   number;
+    styleId:  string;
+    opacity:  number; // 0-100
+  } | null;
   previewWidth?:  number;
 }
 
@@ -340,6 +349,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     captionStyle, captionFontSize, captionPosY, captionPosX, aspectRatio, backgroundFill,
     brightness = 100, contrast = 100, saturation = 100, originalClipId,
     stickers = [], textOverlays = [],
+    thumbnailOverlay = null,
   } = params;
 
   const previewWidth = params.previewWidth ?? 380;
@@ -652,7 +662,45 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
 
     await updateExport(exportId, { progress: 92 });
 
-    // ── 7. Upload to S3 ──────────────────────────────────────────────────────
+    // ── 8. Thumbnail overlay ──────────────────────────────────────────────────
+    if (thumbnailOverlay) {
+      logger.info(`[export:${exportId}] Compositing thumbnail overlay (${thumbnailOverlay.styleId})...`);
+
+      const thumbFile = join(tmpDir, "thumbnail.png");
+      try {
+        await downloadFile(thumbnailOverlay.imageUrl, thumbFile, 20_000);
+
+        // Convert percent positions to pixel coordinates
+        const thumbW = Math.max(1, Math.round(thumbnailOverlay.width  / 100 * targetW));
+        const thumbH = Math.max(1, Math.round(thumbnailOverlay.height / 100 * targetH));
+        const thumbX = Math.round(thumbnailOverlay.x / 100 * targetW);
+        const thumbY = Math.round(thumbnailOverlay.y / 100 * targetH);
+
+        // Border radius for circle/rounded shapes (applied via vignette crop)
+        const opacity   = Math.min(1, Math.max(0, (thumbnailOverlay.opacity ?? 100) / 100));
+
+        // Scale thumbnail, apply opacity, overlay onto video
+        const thumbOut = join(tmpDir, "with_thumbnail.mp4");
+        await runFFmpeg([
+          "-y",
+          "-i", finalOut,
+          "-loop", "1", "-i", thumbFile,
+          "-filter_complex",
+          `[1:v]scale=${thumbW}:${thumbH}:flags=lanczos,format=rgba,colorchannelmixer=aa=${opacity.toFixed(3)}[thumb];[0:v][thumb]overlay=${thumbX}:${thumbY}:shortest=1[vout]`,
+          "-map", "[vout]", "-map", "0:a?",
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+          "-c:a", "copy", "-movflags", "+faststart",
+          thumbOut,
+        ], "thumbnail-overlay");
+
+        finalOut = thumbOut;
+        logger.info(`[export:${exportId}] Thumbnail composited`);
+      } catch (thumbErr: any) {
+        logger.warn(`[export:${exportId}] Thumbnail overlay failed (skipping): ${thumbErr?.message}`);
+      }
+    }
+
+    // ── 9. Upload to S3 ──────────────────────────────────────────────────────
     logger.info(`[export:${exportId}] Uploading to S3...`);
     const s3Key  = `exports/${exportId}/final.mp4`;
     const fileBuf = await fsp.readFile(finalOut);

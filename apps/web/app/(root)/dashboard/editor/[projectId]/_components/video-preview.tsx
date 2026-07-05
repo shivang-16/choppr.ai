@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, forwardRef, useImperativeHandle } from "react";
+import { useEffect, useRef, forwardRef, useImperativeHandle, useCallback, useState } from "react";
 import { Play, Pause, Volume2, VolumeX, Maximize2, Music } from "lucide-react";
+import type { ThumbnailOverlay } from "./thumbnail-panel";
 
 export interface VideoPreviewHandle {
   seek: (t: number) => void;
@@ -20,6 +21,8 @@ interface Props {
   trimOut: number;
   volume: number;         // 0-100
   audioDetached: boolean; // if true, video plays with no audio
+  thumbnailOverlay?: ThumbnailOverlay | null;
+  onThumbnailMove?: (overlay: ThumbnailOverlay) => void;
   onTimeUpdate: (t: number) => void;
   onDurationChange: (d: number) => void;
   onPlayPause: () => void;
@@ -36,6 +39,7 @@ function formatTime(s: number) {
 
 const VideoPreview = forwardRef<VideoPreviewHandle, Props>(function VideoPreview(
   { src, itemType, isPlaying, isMuted, trimIn, trimOut, volume, audioDetached,
+    thumbnailOverlay, onThumbnailMove,
     onTimeUpdate, onDurationChange, onPlayPause, onMuteToggle, onEnded },
   ref
 ) {
@@ -44,6 +48,46 @@ const VideoPreview = forwardRef<VideoPreviewHandle, Props>(function VideoPreview
   const trimOutRef  = useRef(trimOut);
   trimInRef.current  = trimIn;
   trimOutRef.current = trimOut;
+
+  // ── Thumbnail drag state ────────────────────────────────────────────────
+  const canvasRef      = useRef<HTMLDivElement>(null);
+  const dragStartRef   = useRef<{ mouseX: number; mouseY: number; overlayX: number; overlayY: number } | null>(null);
+  const [isDraggingThumb, setIsDraggingThumb] = useState(false);
+
+  const handleThumbMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (!thumbnailOverlay || !canvasRef.current) return;
+      e.preventDefault();
+      const rect = canvasRef.current.getBoundingClientRect();
+      dragStartRef.current = {
+        mouseX:   e.clientX,
+        mouseY:   e.clientY,
+        overlayX: thumbnailOverlay.x,
+        overlayY: thumbnailOverlay.y,
+      };
+      setIsDraggingThumb(true);
+
+      const onMove = (ev: MouseEvent) => {
+        if (!dragStartRef.current || !canvasRef.current || !thumbnailOverlay) return;
+        const dx = ((ev.clientX - dragStartRef.current.mouseX) / rect.width)  * 100;
+        const dy = ((ev.clientY - dragStartRef.current.mouseY) / rect.height) * 100;
+        const newX = Math.min(100 - thumbnailOverlay.width, Math.max(0, dragStartRef.current.overlayX + dx));
+        const newY = Math.min(95, Math.max(0, dragStartRef.current.overlayY + dy));
+        onThumbnailMove?.({ ...thumbnailOverlay, x: newX, y: newY });
+      };
+
+      const onUp = () => {
+        dragStartRef.current = null;
+        setIsDraggingThumb(false);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [thumbnailOverlay, onThumbnailMove]
+  );
 
   useImperativeHandle(ref, () => ({
     seek: (t) => { if (videoRef.current) videoRef.current.currentTime = t; },
@@ -107,7 +151,7 @@ const VideoPreview = forwardRef<VideoPreviewHandle, Props>(function VideoPreview
   return (
     <div className="flex flex-col flex-1 bg-[#0d0d0d] overflow-hidden">
       {/* Canvas */}
-      <div className="flex-1 flex items-center justify-center relative bg-black overflow-hidden">
+      <div ref={canvasRef} className="flex-1 flex items-center justify-center relative bg-black overflow-hidden">
         {src ? (
           <>
             <video
@@ -150,6 +194,15 @@ const VideoPreview = forwardRef<VideoPreviewHandle, Props>(function VideoPreview
           </div>
         )}
 
+        {/* Thumbnail overlay — draggable */}
+        {thumbnailOverlay && (
+          <ThumbnailOverlayLayer
+            overlay={thumbnailOverlay}
+            isDragging={isDraggingThumb}
+            onMouseDown={handleThumbMouseDown}
+          />
+        )}
+
         {src && !isAudioOnly && (
           <button
             onClick={() => videoRef.current?.requestFullscreen()}
@@ -185,3 +238,61 @@ const VideoPreview = forwardRef<VideoPreviewHandle, Props>(function VideoPreview
 });
 
 export default VideoPreview;
+
+// ── Draggable thumbnail overlay rendered inside the preview canvas ──────────
+function ThumbnailOverlayLayer({
+  overlay,
+  isDragging,
+  onMouseDown,
+}: {
+  overlay: ThumbnailOverlay;
+  isDragging: boolean;
+  onMouseDown: (e: React.MouseEvent) => void;
+}) {
+  const heightMap: Record<string, string | undefined> = {
+    full:            "100%",
+    "top-banner":    "33%",
+    "bottom-banner": "33%",
+    "corner-br":     undefined,
+    "corner-tl":     undefined,
+    center:          undefined,
+  };
+
+  const height = heightMap[overlay.styleId];
+
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      style={{
+        position:    "absolute",
+        left:        `${overlay.x}%`,
+        top:         `${overlay.y}%`,
+        width:       `${overlay.width}%`,
+        height:      height ?? "auto",
+        aspectRatio: height ? undefined : "16/9",
+        cursor:      isDragging ? "grabbing" : "grab",
+        userSelect:  "none",
+        zIndex:      10,
+      }}
+      title="Drag to reposition thumbnail"
+    >
+      <img
+        src={overlay.imageUrl}
+        alt="Thumbnail overlay"
+        draggable={false}
+        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+      />
+      {/* Drag handle indicator */}
+      <div
+        style={{
+          position:        "absolute",
+          inset:           0,
+          border:          isDragging ? "2px solid rgba(255,255,255,0.8)" : "1px dashed rgba(255,255,255,0.4)",
+          borderRadius:    2,
+          pointerEvents:   "none",
+          transition:      "border 0.15s",
+        }}
+      />
+    </div>
+  );
+}

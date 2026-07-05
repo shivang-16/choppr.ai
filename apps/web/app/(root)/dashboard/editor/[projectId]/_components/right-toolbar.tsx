@@ -1,6 +1,6 @@
 "use client";
 
-import { Captions, Volume2, Gauge } from "lucide-react";
+import { Captions, Volume2, Gauge, ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -10,9 +10,10 @@ interface Props {
 }
 
 const TOOLS = [
-  { id: "captions", icon: Captions, label: "Captions" },
-  { id: "audio",    icon: Volume2,  label: "Audio" },
-  { id: "speed",    icon: Gauge,    label: "Speed" },
+  { id: "captions",  icon: Captions,   label: "Captions" },
+  { id: "audio",     icon: Volume2,     label: "Audio" },
+  { id: "speed",     icon: Gauge,       label: "Speed" },
+  { id: "thumbnail", icon: ImageIcon,   label: "Thumbnail" },
 ];
 
 export default function RightToolbar({ active, onChange, visible }: Props) {

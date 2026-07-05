@@ -9,6 +9,8 @@ import MediaPanel from "./_components/media-panel";
 import VideoPreview, { VideoPreviewHandle } from "./_components/video-preview";
 import RightToolbar from "./_components/right-toolbar";
 import AudioPanel from "./_components/audio-panel";
+import ThumbnailPanel from "./_components/thumbnail-panel";
+import type { ThumbnailOverlay } from "./_components/thumbnail-panel";
 import Timeline, { Track, TrackItem, TrackItemType } from "./_components/timeline";
 import ExportModal from "./_components/export-modal";
 
@@ -57,6 +59,7 @@ export default function EditorPage() {
   const [volumes, setVolumes]                 = useState<Record<string, number>>({});
   const [history, setHistory]                 = useState<HistoryEntry[]>([]);
   const [historyIdx, setHistoryIdx]           = useState(-1);
+  const [thumbnailOverlay, setThumbnailOverlay] = useState<ThumbnailOverlay | null>(null);
 
   const videoRef = useRef<VideoPreviewHandle>(null);
 
@@ -481,6 +484,8 @@ export default function EditorPage() {
           trimOut={selectedItem?.trimOut ?? 0}
           volume={volumes[selectedItemId ?? ""] ?? 100}
           audioDetached={selectedItem?.audioDetached ?? false}
+          thumbnailOverlay={thumbnailOverlay}
+          onThumbnailMove={setThumbnailOverlay}
           onTimeUpdate={(sourceTime) => {
             if (selectedItem) {
               // Convert source time → timeline position
@@ -511,10 +516,18 @@ export default function EditorPage() {
               onClose={() => setRightPanel("")}
             />
           )}
+          {/* Thumbnail panel */}
+          {rightPanel === "thumbnail" && (
+            <ThumbnailPanel
+              onClose={() => setRightPanel("")}
+              onApply={setThumbnailOverlay}
+              currentOverlay={thumbnailOverlay}
+            />
+          )}
           <RightToolbar
             active={rightPanel}
             onChange={setRightPanel}
-            visible={!!selectedItemId}
+            visible={!!selectedItemId || rightPanel === "thumbnail"}
           />
         </div>
       </div>

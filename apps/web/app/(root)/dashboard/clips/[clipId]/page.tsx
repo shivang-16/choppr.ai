@@ -9,7 +9,7 @@ const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 import { useApiFetch } from "@/lib/apiFetch";
 import {
   ArrowLeft, Play, Pause, Volume2, VolumeX,
-  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Type, Plus, Trash2, Smile,
+  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Type, Plus, Trash2, Smile, ImageIcon, Move,
 } from "lucide-react";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -29,6 +29,17 @@ interface TextOverlay {
   color: string;
   bold: boolean;
   italic: boolean;
+}
+
+// ── Thumbnail overlay type ────────────────────────────────────────────────────
+interface ThumbnailOverlayState {
+  imageUrl: string;
+  x: number;        // 0-100 %
+  y: number;        // 0-100 %
+  width: number;    // 0-100 %
+  height: number;   // 0-100 %
+  styleId: string;  // shape: square | circle | rounded | wide | banner
+  opacity: number;  // 0-100
 }
 
 /**
@@ -80,12 +91,13 @@ function useIsMobile() {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: "captions",    icon: Captions,  label: "Captions" },
-  { id: "text",        icon: Type,      label: "Text" },
-  { id: "stickers",    icon: Layers,    label: "Stickers" },
-  { id: "speed",       icon: Gauge,     label: "Speed" },
-  { id: "trim",        icon: Scissors,  label: "Trim" },
-  { id: "enhance",     icon: Sparkles,  label: "Enhance" },
+  { id: "captions",    icon: Captions,   label: "Captions" },
+  { id: "text",        icon: Type,       label: "Text" },
+  { id: "thumbnail",   icon: ImageIcon,  label: "Watermark" },
+  { id: "stickers",    icon: Layers,     label: "Stickers" },
+  { id: "speed",       icon: Gauge,      label: "Speed" },
+  { id: "trim",        icon: Scissors,   label: "Trim" },
+  { id: "enhance",     icon: Sparkles,   label: "Enhance" },
 ];
 
 // ── Caption styles ────────────────────────────────────────────────────────────
@@ -333,6 +345,9 @@ interface EditPanelProps {
   setTextOverlays: React.Dispatch<React.SetStateAction<TextOverlay[]>>;
   selectedTextId: string | null;
   setSelectedTextId: (id: string | null) => void;
+  // Thumbnail overlay
+  thumbnailOverlay: ThumbnailOverlayState | null;
+  setThumbnailOverlay: (o: ThumbnailOverlayState | null) => void;
 }
 
 // ── Stipop Sticker Picker ─────────────────────────────────────────────────────
@@ -640,6 +655,326 @@ function StipopStickerPicker({
   );
 }
 
+// ── Thumbnail tab content ─────────────────────────────────────────────────────
+// borderRadius is CSS value applied to the image shape
+const THUMBNAIL_STYLES_CONFIG = [
+  { id: "square",  label: "Square",  borderRadius: "6px",  initW: 22, initH: 22, x: 5, y: 5 },
+  { id: "circle",  label: "Circle",  borderRadius: "50%",  initW: 22, initH: 22, x: 5, y: 5 },
+  { id: "rounded", label: "Rounded", borderRadius: "16px", initW: 28, initH: 20, x: 5, y: 5 },
+  { id: "wide",    label: "Wide",    borderRadius: "6px",  initW: 40, initH: 22, x: 5, y: 5 },
+  { id: "banner",  label: "Banner",  borderRadius: "6px",  initW: 70, initH: 12, x: 5, y: 3 },
+];
+
+function getShapeBorderRadius(styleId: string): string {
+  return THUMBNAIL_STYLES_CONFIG.find(s => s.id === styleId)?.borderRadius ?? "6px";
+}
+
+function ThumbnailTabContent({
+  thumbnailOverlay,
+  setThumbnailOverlay,
+}: {
+  thumbnailOverlay: ThumbnailOverlayState | null;
+  setThumbnailOverlay: (o: ThumbnailOverlayState | null) => void;
+}) {
+  const apiFetch   = useApiFetch();
+  const fileRef    = useRef<HTMLInputElement>(null);
+  const [assets, setAssets]         = useState<{ _id: string; name: string; s3Url: string }[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [uploading, setUploading]   = useState(false);
+  const [progress, setProgress]     = useState(0);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedAssetUrl, setSelectedAssetUrl] = useState<string | null>(thumbnailOverlay?.imageUrl ?? null);
+  const [selectedStyle, setSelectedStyle]       = useState<string>(thumbnailOverlay?.styleId ?? "full");
+
+  useEffect(() => {
+    apiFetch(`${API_URL}/api/user-assets?type=image`)
+      .then(r => r.json())
+      .then(setAssets)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const applyStyle = useCallback((styleId: string, imageUrl: string) => {
+    const cfg = THUMBNAIL_STYLES_CONFIG.find(s => s.id === styleId) ?? THUMBNAIL_STYLES_CONFIG[0]!;
+    setThumbnailOverlay(prev => ({
+      imageUrl,
+      x: cfg.x, y: cfg.y,
+      width: cfg.initW, height: cfg.initH,
+      styleId,
+      opacity: prev?.opacity ?? 100,
+    }));
+  }, [setThumbnailOverlay]);
+
+  const handleFileSelect = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) { alert("Please select an image file"); return; }
+    if (file.size > 20 * 1024 * 1024)    { alert("Image must be under 20 MB"); return; }
+    setUploading(true); setProgress(0);
+    try {
+      const presignRes = await apiFetch(`${API_URL}/api/user-assets/presign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mimeType: file.type, fileName: file.name, sizeBytes: file.size }),
+      });
+      const { uploadUrl, asset } = await presignRes.json();
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.upload.onprogress = e => { if (e.lengthComputable) setProgress(Math.round(e.loaded / e.total * 100)); };
+        xhr.onload  = () => xhr.status < 300 ? resolve() : reject();
+        xhr.onerror = () => reject();
+        xhr.send(file);
+      });
+      setAssets(prev => [asset, ...prev]);
+      setSelectedAssetUrl(asset.s3Url);
+      applyStyle(selectedStyle, asset.s3Url);
+    } catch { alert("Upload failed. Please try again."); }
+    finally { setUploading(false); setProgress(0); }
+  }, [apiFetch, selectedStyle, applyStyle]);
+
+  const handleDelete = useCallback(async (id: string, url: string) => {
+    setDeletingId(id);
+    try {
+      await apiFetch(`${API_URL}/api/user-assets/${id}`, { method: "DELETE" });
+      setAssets(prev => prev.filter(a => a._id !== id));
+      if (selectedAssetUrl === url) { setSelectedAssetUrl(null); setThumbnailOverlay(null); }
+    } catch { alert("Failed to delete"); }
+    finally { setDeletingId(null); }
+  }, [selectedAssetUrl, setThumbnailOverlay, apiFetch]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Upload zone */}
+      <div>
+        <p className="text-[12px] font-medium text-white/70 mb-2">Your images</p>
+        <div
+          onClick={() => !uploading && fileRef.current?.click()}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFileSelect(f); }}
+          className={cn(
+            "flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed py-5 cursor-pointer transition-all",
+            uploading ? "border-white/20 bg-white/5 cursor-not-allowed" : "border-white/12 bg-white/[0.03] hover:border-white/25 hover:bg-white/6"
+          )}
+        >
+          {uploading ? (
+            <>
+              <div className="h-7 w-7 rounded-full border-2 border-white/20 border-t-white/70 animate-spin" />
+              <p className="text-[11px] text-white/40">Uploading… {progress}%</p>
+            </>
+          ) : (
+            <>
+              <ImageIcon className="h-5 w-5 text-white/30" />
+              <p className="text-[11px] text-white/50 text-center">Click or drag image here</p>
+              <p className="text-[10px] text-white/25">JPG, PNG, WEBP · max 20 MB</p>
+            </>
+          )}
+        </div>
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ""; }} />
+      </div>
+
+      {/* Asset grid */}
+      {loading ? (
+        <div className="grid grid-cols-3 gap-1.5">
+          {[1,2,3].map(i => <div key={i} className="aspect-video rounded-lg bg-white/5 animate-pulse" />)}
+        </div>
+      ) : assets.length === 0 ? (
+        <p className="text-[11px] text-white/25 text-center py-2">No images yet — upload one above</p>
+      ) : (
+        <div className="grid grid-cols-3 gap-1.5">
+          {assets.map(asset => (
+            <div
+              key={asset._id}
+              onClick={() => { setSelectedAssetUrl(asset.s3Url); applyStyle(selectedStyle, asset.s3Url); }}
+              className={cn(
+                "group relative aspect-video rounded-lg overflow-hidden border cursor-pointer transition-all",
+                selectedAssetUrl === asset.s3Url ? "border-white/60 ring-1 ring-white/30" : "border-white/8 hover:border-white/25"
+              )}
+            >
+              <img src={asset.s3Url} alt={asset.name} className="w-full h-full object-cover" />
+              {selectedAssetUrl === asset.s3Url && (
+                <div className="absolute inset-0 bg-white/10 flex items-center justify-center">
+                  <Check className="h-3.5 w-3.5 text-white drop-shadow" />
+                </div>
+              )}
+              <button
+                onClick={e => { e.stopPropagation(); handleDelete(asset._id, asset.s3Url); }}
+                disabled={deletingId === asset._id}
+                className="absolute top-0.5 right-0.5 h-5 w-5 rounded bg-black/70 text-white/60 hover:text-white items-center justify-center hidden group-hover:flex"
+              >
+                {deletingId === asset._id
+                  ? <div className="h-2.5 w-2.5 border border-white/40 border-t-white rounded-full animate-spin" />
+                  : <Trash2 className="h-2.5 w-2.5" />}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Style picker — only when an image is selected */}
+      {selectedAssetUrl && (
+        <>
+          <div className="h-px bg-white/8" />
+          <div>
+            <p className="text-[12px] font-medium text-white/70 mb-2">Shape</p>
+            <div className="grid grid-cols-5 gap-2">
+              {THUMBNAIL_STYLES_CONFIG.map(cfg => (
+                <button
+                  key={cfg.id}
+                  onClick={() => { setSelectedStyle(cfg.id); applyStyle(cfg.id, selectedAssetUrl); }}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 py-2 rounded-xl border transition-all",
+                    selectedStyle === cfg.id ? "border-white/50 bg-white/10" : "border-white/8 hover:border-white/25 hover:bg-white/5"
+                  )}
+                >
+                  {/* Shape icon showing full image inside the shape */}
+                  <div className="relative flex items-center justify-center" style={{
+                    width:  cfg.id === "banner" ? 36 : cfg.id === "wide" ? 32 : 24,
+                    height: cfg.id === "banner" ? 10 : cfg.id === "wide" ? 18 : 24,
+                    borderRadius: cfg.borderRadius,
+                    overflow: "hidden",
+                    border: "1.5px solid rgba(255,255,255,0.3)",
+                    flexShrink: 0,
+                  }}>
+                    <img
+                      src={selectedAssetUrl}
+                      alt=""
+                      draggable={false}
+                      style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+                    />
+                  </div>
+                  <span className="text-[8px] text-white/50 leading-none">{cfg.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Opacity slider */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-medium text-white/70">Opacity</span>
+              <span className="text-[11px] text-white/40">{thumbnailOverlay?.opacity ?? 100}%</span>
+            </div>
+            <input
+              type="range" min={10} max={100} step={1}
+              value={thumbnailOverlay?.opacity ?? 100}
+              onChange={e => {
+                if (thumbnailOverlay) setThumbnailOverlay({ ...thumbnailOverlay, opacity: Number(e.target.value) });
+              }}
+              className="w-full accent-white cursor-pointer"
+            />
+          </div>
+
+          {/* Remove background */}
+          <RemoveBgButton
+            imageUrl={selectedAssetUrl}
+            onDone={(newUrl) => {
+              setAssets(prev => {
+                const already = prev.find(a => a.s3Url === newUrl);
+                return already ? prev : [{ _id: newUrl, name: "bg-removed.png", s3Url: newUrl }, ...prev];
+              });
+              setSelectedAssetUrl(newUrl);
+              applyStyle(selectedStyle, newUrl);
+            }}
+          />
+
+          <div className="flex items-start gap-2 rounded-xl bg-white/5 border border-white/8 px-3 py-2.5">
+            <Move className="h-3.5 w-3.5 text-white/40 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-white/40 leading-relaxed">Drag thumbnail to reposition · drag corners to resize</p>
+          </div>
+
+          <button
+            onClick={() => { setThumbnailOverlay(null); setSelectedAssetUrl(null); }}
+            className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-[12px] text-white/40 hover:bg-white/6 hover:text-white/70 transition-all"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Remove thumbnail
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Remove Background button ──────────────────────────────────────────────────
+const REMOVE_BG_KEY = process.env.NEXT_PUBLIC_REMOVE_BG_API_KEY ?? "";
+
+function RemoveBgButton({
+  imageUrl,
+  onDone,
+}: {
+  imageUrl: string | null;
+  onDone: (newUrl: string) => void;
+}) {
+  const apiFetch = useApiFetch();
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+
+  const handleRemoveBg = useCallback(async () => {
+    if (!imageUrl || !REMOVE_BG_KEY) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // 1. Call remove.bg API with the image URL
+      const form = new FormData();
+      form.append("image_url", imageUrl);
+      form.append("size", "auto");
+
+      const bgRes = await fetch("https://api.remove.bg/v1.0/removebg", {
+        method:  "POST",
+        headers: { "X-Api-Key": REMOVE_BG_KEY },
+        body:    form,
+      });
+      if (!bgRes.ok) {
+        const t = await bgRes.text().catch(() => "");
+        throw new Error(`remove.bg ${bgRes.status}: ${t.slice(0, 100)}`);
+      }
+
+      const blob = await bgRes.blob(); // transparent PNG
+      const file = new File([blob], "thumbnail-nobg.png", { type: "image/png" });
+
+      // 2. Get presigned S3 URL
+      const presignRes = await apiFetch(`${API_URL}/api/user-assets/presign`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ mimeType: "image/png", fileName: file.name, sizeBytes: file.size }),
+      });
+      const { uploadUrl, asset } = await presignRes.json();
+
+      // 3. Upload directly to S3
+      await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": "image/png" }, body: file });
+
+      onDone(asset.s3Url);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to remove background");
+    } finally {
+      setLoading(false);
+    }
+  }, [imageUrl, apiFetch, onDone]);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        onClick={handleRemoveBg}
+        disabled={loading || !imageUrl}
+        className={cn(
+          "w-full flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[12px] font-medium transition-all",
+          loading || !imageUrl
+            ? "bg-white/5 border border-white/8 text-white/25 cursor-not-allowed"
+            : "bg-white/10 border border-white/20 text-white/80 hover:bg-white/15 hover:text-white active:scale-[0.98]"
+        )}
+      >
+        {loading ? (
+          <><div className="h-3.5 w-3.5 rounded-full border-2 border-white/20 border-t-white/70 animate-spin" /> Removing background…</>
+        ) : (
+          <><Sparkles className="h-3.5 w-3.5" /> Remove background</>
+        )}
+      </button>
+      {error && <p className="text-[10px] text-red-400 px-1 leading-tight">{error}</p>}
+    </div>
+  );
+}
+
 function EditPanelContent({
   activeTab, hideTranscript = false, captionStyle, setCaptionStyle, captionWords, onCaptionWordsChange, captionFontSize, setCaptionFontSize,
   captionPosY, setCaptionPosY, captionPosX, setCaptionPosX,
@@ -650,6 +985,7 @@ function EditPanelContent({
   styleGridMaxHeight = 360,
   placedStickers, setPlacedStickers, segmentationReady,
   textOverlays, setTextOverlays, selectedTextId, setSelectedTextId,
+  thumbnailOverlay, setThumbnailOverlay,
 }: EditPanelProps) {
   const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
   return (
@@ -1034,6 +1370,13 @@ function EditPanelContent({
           </button>
         </div>
       )}
+
+      {activeTab === "thumbnail" && (
+        <ThumbnailTabContent
+          thumbnailOverlay={thumbnailOverlay}
+          setThumbnailOverlay={setThumbnailOverlay}
+        />
+      )}
     </>
   );
 }
@@ -1128,6 +1471,158 @@ function ExportSection({
   );
 }
 
+// ── Draggable thumbnail overlay on the video preview ─────────────────────────
+function DraggableThumbnailOverlay({
+  overlay,
+  containerRef,
+  onMove,
+}: {
+  overlay: ThumbnailOverlayState;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  onMove: (o: ThumbnailOverlayState) => void;
+}) {
+  const [selected, setSelected] = useState(false);
+  const [moveDragging, setMoveDragging] = useState(false);
+  const moveStart = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
+
+  // Click outside to deselect
+  useEffect(() => {
+    if (!selected) return;
+    const handler = (e: MouseEvent) => {
+      const el = document.getElementById("thumb-overlay-box");
+      if (el && !el.contains(e.target as Node)) setSelected(false);
+    };
+    window.addEventListener("mousedown", handler);
+    return () => window.removeEventListener("mousedown", handler);
+  }, [selected]);
+
+  // Move the whole overlay
+  const handleMoveMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSelected(true);
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    moveStart.current = { mx: e.clientX, my: e.clientY, ox: overlay.x, oy: overlay.y };
+    setMoveDragging(true);
+    const onMv = (ev: MouseEvent) => {
+      if (!moveStart.current) return;
+      const dx = ((ev.clientX - moveStart.current.mx) / rect.width)  * 100;
+      const dy = ((ev.clientY - moveStart.current.my) / rect.height) * 100;
+      onMove({
+        ...overlay,
+        x: Math.min(100 - overlay.width,  Math.max(0, moveStart.current.ox + dx)),
+        y: Math.min(100 - overlay.height, Math.max(0, moveStart.current.oy + dy)),
+      });
+    };
+    const onUp = () => { moveStart.current = null; setMoveDragging(false); window.removeEventListener("mousemove", onMv); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMv);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Resize from a handle
+  const handleResizeMouseDown = (e: React.MouseEvent, dir: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const snap = { ...overlay };
+    const startMx = e.clientX;
+    const startMy = e.clientY;
+    const MIN = 5;
+    const onMv = (ev: MouseEvent) => {
+      const dx = ((ev.clientX - startMx) / rect.width)  * 100;
+      const dy = ((ev.clientY - startMy) / rect.height) * 100;
+      let { x, y, width, height } = snap;
+      if (dir.includes("l")) { const nw = Math.max(MIN, width - dx);  x = x + width - nw;  width = nw; }
+      if (dir.includes("r")) {                                          width  = Math.max(MIN, width  + dx); }
+      if (dir.includes("t")) { const nh = Math.max(MIN, height - dy); y = y + height - nh; height = nh; }
+      if (dir.includes("b")) {                                          height = Math.max(MIN, height + dy); }
+      // clamp position
+      x = Math.max(0, Math.min(100 - width,  x));
+      y = Math.max(0, Math.min(100 - height, y));
+      onMove({ ...overlay, x, y, width, height });
+    };
+    const onUp = () => { window.removeEventListener("mousemove", onMv); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMv);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const br = getShapeBorderRadius(overlay.styleId);
+
+  // 4 corner handles only
+  const HANDLES = [
+    { dir: "tl", style: { top: -5,    left: -5  }, cursor: "nwse-resize" },
+    { dir: "tr", style: { top: -5,    right: -5 }, cursor: "nesw-resize" },
+    { dir: "bl", style: { bottom: -5, left: -5  }, cursor: "nesw-resize" },
+    { dir: "br", style: { bottom: -5, right: -5 }, cursor: "nwse-resize" },
+  ];
+
+  return (
+    <div
+      id="thumb-overlay-box"
+      onMouseDown={handleMoveMouseDown}
+      style={{
+        position:   "absolute",
+        left:       `${overlay.x}%`,
+        top:        `${overlay.y}%`,
+        width:      `${overlay.width}%`,
+        height:     `${overlay.height}%`,
+        zIndex:     5,
+        opacity:    (overlay.opacity ?? 100) / 100,
+        cursor:     moveDragging ? "grabbing" : "grab",
+        userSelect: "none",
+      }}
+      title="Click to select · drag to move"
+    >
+      {/* Full image — never cropped */}
+      <img
+        src={overlay.imageUrl}
+        alt=""
+        draggable={false}
+        style={{
+          width: "100%", height: "100%",
+          objectFit:    "contain",
+          borderRadius: br,
+          display:      "block",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Selection box + resize handles */}
+      {selected && (
+        <>
+          <div style={{
+            position:      "absolute",
+            inset:         0,
+            border:        "1.5px solid rgba(255,255,255,0.85)",
+            borderRadius:  br,
+            pointerEvents: "none",
+            boxShadow:     "0 0 0 1px rgba(0,0,0,0.4)",
+          }} />
+          {HANDLES.map(h => (
+            <div
+              key={h.dir}
+              onMouseDown={e => handleResizeMouseDown(e, h.dir)}
+              style={{
+                position:        "absolute",
+                width:           10,
+                height:          10,
+                background:      "white",
+                border:          "1.5px solid rgba(0,0,0,0.5)",
+                borderRadius:    2,
+                cursor:          h.cursor,
+                zIndex:          6,
+                ...h.style,
+              }}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ClipRefinePage() {
   const isMobile = useIsMobile();
   const { clipId }   = useParams<{ clipId: string }>();
@@ -1205,6 +1700,7 @@ export default function ClipRefinePage() {
   const [brightness, setBrightness]   = useState(100);
   const [contrast, setContrast]       = useState(100);
   const [saturation, setSaturation]   = useState(100);
+  const [thumbnailOverlay, setThumbnailOverlay] = useState<ThumbnailOverlayState | null>(null);
 
   // Background overlay
   const [placedStickers, setPlacedStickers]     = useState<PlacedSticker[]>([]);
@@ -1392,6 +1888,7 @@ export default function ClipRefinePage() {
           originalClipId: clipId,
           stickers: placedStickers,
           textOverlays,
+          thumbnailOverlay: thumbnailOverlay ?? null,
           previewWidth: videoContainerRef.current?.clientWidth || 380,
         }),
       });
@@ -1501,6 +1998,7 @@ export default function ClipRefinePage() {
     exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
     placedStickers, setPlacedStickers, segmentationReady,
     textOverlays, setTextOverlays, selectedTextId, setSelectedTextId,
+    thumbnailOverlay, setThumbnailOverlay,
   };
   const handleMobileTab = (id: string) => {
     if (activeTab === id && mobileDrawerOpen) {
@@ -1942,6 +2440,14 @@ export default function ClipRefinePage() {
                     onPause={() => setPlaying(false)}
                   />
                   <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} posOffset={captionPosY} hOffset={captionPosX} language={activeLang} />
+                  {/* Thumbnail overlay — draggable, sits above captions overlay */}
+                  {thumbnailOverlay && (
+                    <DraggableThumbnailOverlay
+                      overlay={thumbnailOverlay}
+                      containerRef={videoContainerRef}
+                      onMove={setThumbnailOverlay}
+                    />
+                  )}
                   {/* Caption drag + play/pause overlay — covers full preview */}
                   <div
                     className="absolute inset-0 flex items-center justify-center select-none"
