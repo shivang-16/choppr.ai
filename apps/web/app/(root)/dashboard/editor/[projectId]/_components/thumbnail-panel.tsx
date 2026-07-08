@@ -371,7 +371,7 @@ export default function ThumbnailPanel({ onClose, onApply, currentOverlay }: Pro
               className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-transparent px-4 py-2.5 text-[12px] text-white/40 hover:bg-white/6 hover:text-white/70 hover:border-white/20 transition-all"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Remove thumbnail
+              Remove watermark
             </button>
           </div>
         )}

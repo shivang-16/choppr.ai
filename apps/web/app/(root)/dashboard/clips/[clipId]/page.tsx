@@ -888,7 +888,7 @@ function ThumbnailTabContent({
             className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-[12px] text-white/40 hover:bg-white/6 hover:text-white/70 transition-all"
           >
             <Trash2 className="h-3.5 w-3.5" />
-            Remove thumbnail
+            Remove watermark
           </button>
         </>
       )}
@@ -1483,85 +1483,106 @@ function DraggableThumbnailOverlay({
 }) {
   const [selected, setSelected] = useState(false);
   const [moveDragging, setMoveDragging] = useState(false);
-  const moveStart = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
+  const moveStart = useRef<{ mx: number; my: number; ox: number; oy: number; rectW: number; rectH: number } | null>(null);
+  const resizeStart = useRef<{ mx: number; my: number; snap: ThumbnailOverlayState; rectW: number; rectH: number; dir: string } | null>(null);
 
-  // Click outside to deselect
+  // Tap/click outside to deselect (pointer events so touch works on mobile)
   useEffect(() => {
     if (!selected) return;
-    const handler = (e: MouseEvent) => {
+    const handler = (e: PointerEvent) => {
       const el = document.getElementById("thumb-overlay-box");
       if (el && !el.contains(e.target as Node)) setSelected(false);
     };
-    window.addEventListener("mousedown", handler);
-    return () => window.removeEventListener("mousedown", handler);
+    window.addEventListener("pointerdown", handler);
+    return () => window.removeEventListener("pointerdown", handler);
   }, [selected]);
 
-  // Move the whole overlay
-  const handleMoveMouseDown = (e: React.MouseEvent) => {
+  // Move the whole overlay — pointer events for mouse + finger drag
+  const handleMovePointerDown = (e: React.PointerEvent) => {
+    // Ignore secondary buttons; let resize handles own their events
+    if (e.button !== 0 && e.pointerType === "mouse") return;
     e.stopPropagation();
     e.preventDefault();
     setSelected(true);
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    moveStart.current = { mx: e.clientX, my: e.clientY, ox: overlay.x, oy: overlay.y };
-    setMoveDragging(true);
-    const onMv = (ev: MouseEvent) => {
-      if (!moveStart.current) return;
-      const dx = ((ev.clientX - moveStart.current.mx) / rect.width)  * 100;
-      const dy = ((ev.clientY - moveStart.current.my) / rect.height) * 100;
-      onMove({
-        ...overlay,
-        x: Math.min(100 - overlay.width,  Math.max(0, moveStart.current.ox + dx)),
-        y: Math.min(100 - overlay.height, Math.max(0, moveStart.current.oy + dy)),
-      });
+    moveStart.current = {
+      mx: e.clientX, my: e.clientY,
+      ox: overlay.x, oy: overlay.y,
+      rectW: rect.width, rectH: rect.height,
     };
-    const onUp = () => { moveStart.current = null; setMoveDragging(false); window.removeEventListener("mousemove", onMv); window.removeEventListener("mouseup", onUp); };
-    window.addEventListener("mousemove", onMv);
-    window.addEventListener("mouseup", onUp);
+    setMoveDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handleMovePointerMove = (e: React.PointerEvent) => {
+    if (!moveStart.current) return;
+    const { mx, my, ox, oy, rectW, rectH } = moveStart.current;
+    const dx = ((e.clientX - mx) / rectW) * 100;
+    const dy = ((e.clientY - my) / rectH) * 100;
+    onMove({
+      ...overlay,
+      x: Math.min(100 - overlay.width,  Math.max(0, ox + dx)),
+      y: Math.min(100 - overlay.height, Math.max(0, oy + dy)),
+    });
+  };
+
+  const handleMovePointerUp = () => {
+    moveStart.current = null;
+    setMoveDragging(false);
   };
 
   // Resize from a handle
-  const handleResizeMouseDown = (e: React.MouseEvent, dir: string) => {
+  const handleResizePointerDown = (e: React.PointerEvent, dir: string) => {
     e.stopPropagation();
     e.preventDefault();
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const snap = { ...overlay };
-    const startMx = e.clientX;
-    const startMy = e.clientY;
-    const MIN = 5;
-    const onMv = (ev: MouseEvent) => {
-      const dx = ((ev.clientX - startMx) / rect.width)  * 100;
-      const dy = ((ev.clientY - startMy) / rect.height) * 100;
-      let { x, y, width, height } = snap;
-      if (dir.includes("l")) { const nw = Math.max(MIN, width - dx);  x = x + width - nw;  width = nw; }
-      if (dir.includes("r")) {                                          width  = Math.max(MIN, width  + dx); }
-      if (dir.includes("t")) { const nh = Math.max(MIN, height - dy); y = y + height - nh; height = nh; }
-      if (dir.includes("b")) {                                          height = Math.max(MIN, height + dy); }
-      // clamp position
-      x = Math.max(0, Math.min(100 - width,  x));
-      y = Math.max(0, Math.min(100 - height, y));
-      onMove({ ...overlay, x, y, width, height });
+    resizeStart.current = {
+      mx: e.clientX, my: e.clientY,
+      snap: { ...overlay },
+      rectW: rect.width, rectH: rect.height,
+      dir,
     };
-    const onUp = () => { window.removeEventListener("mousemove", onMv); window.removeEventListener("mouseup", onUp); };
-    window.addEventListener("mousemove", onMv);
-    window.addEventListener("mouseup", onUp);
+    e.currentTarget.setPointerCapture(e.pointerId);
   };
+
+  const handleResizePointerMove = (e: React.PointerEvent) => {
+    if (!resizeStart.current) return;
+    const { mx, my, snap, rectW, rectH, dir } = resizeStart.current;
+    const dx = ((e.clientX - mx) / rectW) * 100;
+    const dy = ((e.clientY - my) / rectH) * 100;
+    let { x, y, width, height } = snap;
+    const MIN = 5;
+    if (dir.includes("l")) { const nw = Math.max(MIN, width - dx);  x = x + width - nw;  width = nw; }
+    if (dir.includes("r")) {                                          width  = Math.max(MIN, width  + dx); }
+    if (dir.includes("t")) { const nh = Math.max(MIN, height - dy); y = y + height - nh; height = nh; }
+    if (dir.includes("b")) {                                          height = Math.max(MIN, height + dy); }
+    x = Math.max(0, Math.min(100 - width,  x));
+    y = Math.max(0, Math.min(100 - height, y));
+    onMove({ ...overlay, x, y, width, height });
+  };
+
+  const handleResizePointerUp = () => { resizeStart.current = null; };
 
   const br = getShapeBorderRadius(overlay.styleId);
 
-  // 4 corner handles only
+  // 4 corner handles only — slightly larger hit targets for touch
   const HANDLES = [
-    { dir: "tl", style: { top: -5,    left: -5  }, cursor: "nwse-resize" },
-    { dir: "tr", style: { top: -5,    right: -5 }, cursor: "nesw-resize" },
-    { dir: "bl", style: { bottom: -5, left: -5  }, cursor: "nesw-resize" },
-    { dir: "br", style: { bottom: -5, right: -5 }, cursor: "nwse-resize" },
+    { dir: "tl", style: { top: -8,    left: -8  }, cursor: "nwse-resize" },
+    { dir: "tr", style: { top: -8,    right: -8 }, cursor: "nesw-resize" },
+    { dir: "bl", style: { bottom: -8, left: -8  }, cursor: "nesw-resize" },
+    { dir: "br", style: { bottom: -8, right: -8 }, cursor: "nwse-resize" },
   ];
 
   return (
     <div
       id="thumb-overlay-box"
-      onMouseDown={handleMoveMouseDown}
+      className="touch-none select-none"
+      onPointerDown={handleMovePointerDown}
+      onPointerMove={handleMovePointerMove}
+      onPointerUp={handleMovePointerUp}
+      onPointerCancel={handleMovePointerUp}
       style={{
         position:   "absolute",
         left:       `${overlay.x}%`,
@@ -1572,8 +1593,9 @@ function DraggableThumbnailOverlay({
         opacity:    (overlay.opacity ?? 100) / 100,
         cursor:     moveDragging ? "grabbing" : "grab",
         userSelect: "none",
+        touchAction: "none",
       }}
-      title="Click to select · drag to move"
+      title="Tap to select · drag to move"
     >
       {/* Full image — never cropped */}
       <img
@@ -1603,16 +1625,21 @@ function DraggableThumbnailOverlay({
           {HANDLES.map(h => (
             <div
               key={h.dir}
-              onMouseDown={e => handleResizeMouseDown(e, h.dir)}
+              className="touch-none"
+              onPointerDown={e => handleResizePointerDown(e, h.dir)}
+              onPointerMove={handleResizePointerMove}
+              onPointerUp={handleResizePointerUp}
+              onPointerCancel={handleResizePointerUp}
               style={{
                 position:        "absolute",
-                width:           10,
-                height:          10,
+                width:           16,
+                height:          16,
                 background:      "white",
                 border:          "1.5px solid rgba(0,0,0,0.5)",
                 borderRadius:    2,
                 cursor:          h.cursor,
                 zIndex:          6,
+                touchAction:     "none",
                 ...h.style,
               }}
             />
