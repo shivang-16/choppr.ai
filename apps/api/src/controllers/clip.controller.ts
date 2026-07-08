@@ -32,6 +32,17 @@ export async function getClip(req: Request, res: Response, next: NextFunction) {
   } catch (err) { next(err); }
 }
 
+// ── GET /api/clips/:clipId/edits ─────────────────────────────────────────────
+// Returns the exported/edited clips derived from this clip (originalClipId match)
+export async function getClipEdits(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as any).user?._id;
+    const clipId = String(req.params.clipId);
+    const edits  = await Clip.find({ originalClipId: clipId, userId }).sort({ createdAt: -1 }).lean();
+    res.json(edits);
+  } catch (err) { next(err); }
+}
+
 // ── GET /api/clips/:clipId/captions ─────────────────────────────────────────
 export async function getClipCaptions(req: Request, res: Response, next: NextFunction) {
   try {

@@ -1384,12 +1384,42 @@ function EditPanelContent({
 function ExportSection({
   exportPhase, exportProgress, exportUrl, handleExport, handlePrimaryExportAction, setExportPhase, setExportUrl,
   exportReadyToDownload,
+  downloadMode = false,
+  onDownloadEdit,
+  onResetAll,
   compact = false,
 }: Pick<EditPanelProps, "exportPhase" | "exportProgress" | "exportUrl" | "handleExport" | "setExportPhase" | "setExportUrl"> & {
   handlePrimaryExportAction: () => void;
   exportReadyToDownload: boolean;
+  downloadMode?: boolean;
+  onDownloadEdit?: () => void;
+  onResetAll?: () => void;
   compact?: boolean;
 }) {
+  const ResetLink = onResetAll ? (
+    <button
+      onClick={onResetAll}
+      className="text-[11px] text-white hover:text-white/70 transition-colors text-center py-0.5"
+    >
+      Reset all changes to original
+    </button>
+  ) : null;
+
+  // Previewing an already-exported version → the action is a straight download
+  if (downloadMode) {
+    return (
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={onDownloadEdit}
+          className="w-full flex items-center justify-center gap-2 rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+        >
+          <Download className="h-4 w-4" /> Download
+        </button>
+        {ResetLink}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2">
       {(exportPhase === "idle" || (exportPhase === "done" && !exportReadyToDownload)) && (
@@ -1464,9 +1494,7 @@ function ExportSection({
         </>
       )}
 
-      {!compact && (exportPhase === "idle" || (exportPhase === "done" && !exportReadyToDownload)) && (
-        <p className="text-[11px] text-white/20 text-center">Settings applied on export</p>
-      )}
+      {ResetLink}
     </div>
   );
 }
@@ -1664,6 +1692,10 @@ export default function ClipRefinePage() {
 
   const [aspectRatio, setAspectRatio] = useState("9:16");
 
+  // Edited/exported clips derived from this clip + which one is previewed
+  const [editedClips, setEditedClips] = useState<any[]>([]);
+  const [activeEditId, setActiveEditId] = useState<string | null>(null);
+
   const videoRef              = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted]     = useState(false);
@@ -1795,6 +1827,41 @@ export default function ClipRefinePage() {
       .catch(() => {});
   }, [clipId]);
 
+  // Load edited/exported versions of this clip (blocks shown below the preview)
+  // NOTE: apiFetch is recreated every render, so it's intentionally excluded from
+  // the deps to keep loadEdits stable and avoid an infinite fetch loop.
+  const loadEdits = useCallback(() => {
+    if (!clipId) return;
+    apiFetch(`${API_URL}/api/clips/${clipId}/edits`)
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => { if (Array.isArray(data)) setEditedClips(data); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clipId]);
+
+  useEffect(() => { loadEdits(); }, [loadEdits]);
+
+  // Which video the preview shows: the original clip or a selected edited clip
+  const activeEdit    = activeEditId ? editedClips.find(c => c._id === activeEditId) ?? null : null;
+  const activeSrc     = activeEdit?.s3Url ?? src;
+  const isViewingEdit = !!activeEdit;
+
+  // Whether any edit setting has been applied on top of the active (base) video.
+  // Used to decide Download (untouched selected version) vs Export (has new changes).
+  const hasChanges =
+    captionStyle !== "none" ||
+    speed !== 1 ||
+    trimStart > 0.05 ||
+    (duration > 0 && trimEnd < duration - 0.05) ||
+    brightness !== 100 || contrast !== 100 || saturation !== 100 ||
+    placedStickers.length > 0 ||
+    textOverlays.length > 0 ||
+    thumbnailOverlay !== null ||
+    backgroundFill !== "blur";
+
+  // Selecting an edited version → show a straight Download until the user tweaks something
+  const downloadMode = isViewingEdit && !hasChanges;
+
   // Debounced auto-save edit settings
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveSettings = useCallback((settings: object) => {
@@ -1888,7 +1955,7 @@ export default function ClipRefinePage() {
             sourceDuration: duration,
             trimIn: trimStart,
             trimOut: duration - effectiveEnd,
-            src,
+            src: activeSrc,
           }],
         },
         { id: "track-audio", items: [] },
@@ -1941,6 +2008,8 @@ export default function ClipRefinePage() {
             setExportUrl(data.s3Url);
             setExportPhase("done");
             markExportCurrent();
+            // Refresh the edited-clip blocks so the new export shows up below the preview
+            loadEdits();
             // Open the exported video in a new tab + force a local download.
             openAndDownload(data.s3Url, `clip-${index}.mp4`);
           } else if (data.status === "failed") {
@@ -1955,6 +2024,11 @@ export default function ClipRefinePage() {
   };
 
   const handlePrimaryExportAction = () => {
+    // Previewing an untouched exported version → the primary action is a download
+    if (downloadMode && activeEdit?.s3Url) {
+      openAndDownload(activeEdit.s3Url, `clip-${index}.mp4`);
+      return;
+    }
     if (exportPhase === "exporting") return;
     if (exportPhase === "done" && exportUrl && !isExportStale()) {
       openAndDownload(exportUrl, `clip-${index}.mp4`);
@@ -1962,6 +2036,56 @@ export default function ClipRefinePage() {
     }
     handleExport();
   };
+
+  // Download the currently-selected edited version
+  const handleDownloadEdit = () => {
+    if (activeEdit?.s3Url) openAndDownload(activeEdit.s3Url, `clip-${index}.mp4`);
+  };
+
+  // Reset the edit panel to a clean slate (does NOT change which version is active)
+  const applyDefaults = useCallback(() => {
+    setCaptionStyle("none");
+    setCaptionFontSize(50);
+    setCaptionPosY(0);
+    setCaptionPosX(0);
+    setSpeed(1.0);
+    setTrimStart(0);
+    setTrimEnd(videoRef.current?.duration ?? 0);
+    setBrightness(100);
+    setContrast(100);
+    setSaturation(100);
+    setThumbnailOverlay(null);
+    setPlacedStickers([]);
+    setTextOverlays([]);
+    setBackgroundFill("blur");
+    // Restore the original (untranslated) captions
+    apiFetch(`${API_URL}/api/clips/${clipId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (data?.captions?.length) {
+          setCaptionWords(data.captions);
+          setCaptionLang(data.captionLang ?? "");
+          setActiveLang((data.captionLang ?? "").split("-")[0]);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clipId]);
+
+  // Switch which version (original or an edit) the preview + edits are based on
+  const selectVersion = useCallback((id: string | null) => {
+    if (id === activeEditId) return;
+    setActiveEditId(id);
+    setPlaying(false);
+    setCurrentTime(0);
+    applyDefaults();
+  }, [activeEditId, applyDefaults]);
+
+  // Reset every edit setting AND go back to the original video
+  const resetAll = useCallback(() => {
+    setActiveEditId(null);
+    applyDefaults();
+  }, [applyDefaults]);
 
   // Sync speed
   useEffect(() => {
@@ -2329,7 +2453,7 @@ export default function ClipRefinePage() {
           </div>
 
           <div className={cn(
-            "relative flex items-center justify-center w-full h-full overflow-hidden",
+            "relative flex items-center justify-center w-full flex-1 min-h-0 overflow-hidden",
             !isMobile && "px-6 py-8",
             isMobile && "px-2 py-3"
           )}>
@@ -2383,7 +2507,8 @@ export default function ClipRefinePage() {
                   {/* Background fill layer — visible when video has letterbox space */}
                   {backgroundFill === "blur" && (
                     <video
-                      src={src}
+                      key={`blur-${activeSrc}`}
+                      src={activeSrc}
                       muted
                       playsInline
                       loop
@@ -2446,8 +2571,9 @@ export default function ClipRefinePage() {
                     backgroundFill={backgroundFill}
                   />
                   <video
+                    key={activeSrc}
                     ref={videoRef}
-                    src={src}
+                    src={activeSrc}
                     muted={muted}
                     playsInline
                     loop
@@ -2634,6 +2760,50 @@ export default function ClipRefinePage() {
             )}
           </div>
 
+          {/* ── Edited-clip blocks — switch the preview between original + exports ── */}
+          {src && editedClips.length > 0 && (
+            <div className="shrink-0 w-full border-t border-white/6 bg-black/40 px-3 py-2">
+              <div className="overflow-x-auto no-scrollbar">
+              <div className="flex items-start gap-3 w-max mx-auto px-1 py-1">
+                {[{ id: null as string | null, url: src, label: "Original" },
+                  ...[...editedClips].reverse().map((c, i) => ({ id: c._id as string | null, url: c.s3Url as string, label: `Edit ${i + 1}` }))
+                ].map(({ id, url, label }) => {
+                  const selected = activeEditId === id;
+                  return (
+                    <button
+                      key={id ?? "original"}
+                      onClick={() => selectVersion(id)}
+                      className="shrink-0 flex flex-col items-center gap-1 cursor-pointer"
+                    >
+                      <div
+                        className={cn(
+                          "relative overflow-hidden rounded-lg bg-black transition-all",
+                          selected ? "ring-1 ring-white" : "ring-1 ring-white/10 hover:ring-white/40"
+                        )}
+                        style={{ height: 56, width: 56 }}
+                      >
+                        <video
+                          src={`${url}#t=0.5`}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="w-full h-full object-cover pointer-events-none"
+                        />
+                      </div>
+                      <span className={cn(
+                        "text-[9px] font-medium leading-none transition-colors",
+                        selected ? "text-white" : "text-white/40"
+                      )}>
+                        {label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Panel toggle arrow — sits on the right edge, vertically centered ── */}
           {!isMobile && (
             <button
@@ -2707,6 +2877,9 @@ export default function ClipRefinePage() {
                     handleExport={handleExport}
                     handlePrimaryExportAction={handlePrimaryExportAction}
                     exportReadyToDownload={exportReadyToDownload}
+                    downloadMode={downloadMode}
+                    onDownloadEdit={handleDownloadEdit}
+                    onResetAll={resetAll}
                     setExportPhase={setExportPhase}
                     setExportUrl={setExportUrl}
                   />
@@ -2866,6 +3039,9 @@ export default function ClipRefinePage() {
             handleExport={handleExport}
             handlePrimaryExportAction={handlePrimaryExportAction}
             exportReadyToDownload={exportReadyToDownload}
+            downloadMode={downloadMode}
+            onDownloadEdit={handleDownloadEdit}
+            onResetAll={resetAll}
             setExportPhase={setExportPhase}
             setExportUrl={setExportUrl}
             compact
