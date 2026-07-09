@@ -17,7 +17,7 @@ export default function Navbar() {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex justify-center px-4 py-4">
-      <nav className="flex items-center justify-between w-full max-w-6xl rounded-2xl border border-white/8 bg-white/4 px-5 py-3 backdrop-blur-xl">
+      <nav className="flex items-center justify-between w-full max-w-6xl rounded-3xl md:rounded-2xl border border-white/8 bg-white/4 px-5 py-3 backdrop-blur-xl">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
           <ChopprLogo size={32} />
@@ -36,7 +36,7 @@ export default function Navbar() {
           >
             <button
               className={cn(
-                "cursor-pointer flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
+                "cursor-pointer flex items-center gap-1 rounded-lg px-3.5 py-2 text-[14.5px] font-medium transition-colors",
                 "text-white/60 hover:text-white hover:bg-white/6"
               )}
             >
@@ -69,7 +69,7 @@ export default function Navbar() {
           <a
             href="#how-it-works"
             className={cn(
-              "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
+              "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[14.5px] font-medium transition-colors",
               "text-white/60 hover:text-white hover:bg-white/6"
             )}
           >
@@ -80,7 +80,7 @@ export default function Navbar() {
           <Link
             href="/pricing"
             className={cn(
-              "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
+              "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[14.5px] font-medium transition-colors",
               "text-white/60 hover:text-white hover:bg-white/6"
             )}
           >
@@ -92,15 +92,18 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           <Link
             href="/sign-in"
-            className="rounded-lg px-4 py-2 text-[13.5px] font-medium text-white/60 hover:text-white transition-colors"
+            className={cn(
+              "rounded-lg px-3.5 py-2 text-[14.5px] font-medium transition-colors",
+              "text-white/60 hover:text-white hover:bg-white/6"
+            )}
           >
             Sign in
           </Link>
           <Link
             href="/sign-up"
-            className="cursor-pointer rounded-xl bg-white px-4 py-2 text-[13.5px] font-semibold text-black transition-all hover:bg-white/90 active:scale-95"
+            className="cursor-pointer rounded-xl bg-white px-4 py-2 text-[14.5px] font-medium sm:font-semibold text-black transition-all hover:bg-white/90 active:scale-95"
           >
-            Get started free
+            Try for free
           </Link>
         </div>
       </nav>

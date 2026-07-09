@@ -82,7 +82,7 @@ export default function HeroSection() {
 
       <div className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-8 mt-10">
         {/* Badge row */}
-        <div className="flex flex-wrap items-center justify-center gap-2">
+        <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:justify-center">
           {BADGES.map(({ icon: Icon, label }) => (
             <span
               key={label}
@@ -95,14 +95,16 @@ export default function HeroSection() {
         </div>
 
         {/* Headline */}
-        <div className="flex flex-col items-center gap-4 text-center">
-          <h2 className="max-w-4xl text-[clamp(1.8rem,4vw,4rem)] font-semibold leading-[1.1] tracking-[-0.04em] text-white text-center">
-            Your best moments deserve<br />
-            <span className="text-white">to go viral.</span>
+        <div className="flex w-full flex-col items-start gap-4 text-left sm:items-center sm:text-center">
+          <h2 className="font-sf-pro-display max-w-4xl text-[2.6125rem] font-medium leading-[1.08] tracking-[-0.03em] text-[#f2f4f7] sm:text-[clamp(2.375rem,5vw,5.5rem)] sm:leading-[1.08]">
+            <span>Stop editing,</span>
+            <br className="sm:hidden" />
+            {" "}
+            <span className="max-sm:text-[3.20625rem]">Start posting.</span>
           </h2>
 
           <p className="max-w-xl text-balance text-[clamp(0.95rem,2vw,1.1rem)] font-normal leading-relaxed text-white/60">
-            Drop a video. Choppr's AI finds the hooks, cuts the clips, adds captions
+            Choppr's AI finds the hooks, cuts the clips, adds captions
             and hands you content that actually stops the scroll.
           </p>
         </div>
@@ -110,12 +112,12 @@ export default function HeroSection() {
         {/* Input + CTA */}
         <form
           onSubmit={handleSubmit}
-          className="flex w-full max-w-2xl flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3"
+          className="flex w-full max-w-2xl flex-col gap-4 sm:flex-row sm:items-center sm:gap-3"
         >
           {/* URL input — full width on mobile */}
           <div
             className={cn(
-              "flex w-full items-center gap-2 rounded-2xl border px-4 py-3.5 transition-all duration-200 cursor-text",
+              "flex w-full items-center gap-2 rounded-2xl border px-4 py-2.5 sm:py-3.5 transition-all duration-200 cursor-text",
               focused
                 ? "border-white/30 bg-white/8"
                 : "border-white/10 bg-white/5"
@@ -136,10 +138,10 @@ export default function HeroSection() {
           </div>
 
           {/* Buttons row — side by side on both mobile and desktop */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex w-full items-center justify-center gap-2 sm:w-auto sm:justify-start sm:gap-3">
             <button
               type="submit"
-              className="cursor-pointer flex-1 sm:flex-none rounded-2xl bg-white px-4 py-2.5 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
+              className="cursor-pointer rounded-xl bg-white px-4 py-2 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-medium sm:font-semibold text-black transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
             >
               Get free clips
             </button>
@@ -147,7 +149,7 @@ export default function HeroSection() {
             <button
               type="button"
               onClick={handleUploadClick}
-              className="cursor-pointer flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 rounded-2xl border border-white/12 bg-white/6 px-4 py-2.5 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-medium text-white/55 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white/80 active:scale-95 whitespace-nowrap"
+              className="cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl border border-white/12 bg-white/6 px-4 py-2 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-medium text-white/55 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white/80 active:scale-95 whitespace-nowrap"
             >
               <Upload className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Upload files

@@ -102,8 +102,8 @@ export default function HeroVideoDemo() {
   const clipsVisible = phase === "clips" || phase === "clips-exit";
 
   return (
-    <div id="how-it-works" className="relative w-full max-w-4xl select-none">
-      <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-[#0d0d0d] flex flex-col">
+    <div id="how-it-works" className="relative w-[calc(100%+2rem)] -mx-4 max-w-none sm:mx-0 sm:w-full sm:max-w-4xl select-none">
+      <div className="relative overflow-hidden rounded-none sm:rounded-3xl border-t border-b border-white/8 flex flex-col">
 
         {/* ── Main animation stage ── */}
         <div className="relative h-[580px] overflow-hidden">
@@ -113,7 +113,7 @@ export default function HeroVideoDemo() {
             {videoVisible && (
               <motion.div
                 key={`video-${srcIdx}`}
-                className="absolute inset-x-0 flex justify-center px-8 z-10"
+                className="absolute inset-x-0 flex justify-center px-0 sm:px-8 z-10"
                 initial={{ y: -260, opacity: 0, scale: 0.94 }}
                 animate={
                   phase === "drop"
@@ -124,7 +124,7 @@ export default function HeroVideoDemo() {
                 }
                 exit={{ y: 500, opacity: 0, transition: { duration: 0.4 } }}
               >
-                <div className="relative w-full max-w-[420px] rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-black/70">
+                <div className="relative w-full max-w-none sm:max-w-[420px] rounded-none sm:rounded-2xl overflow-hidden border-x-0 border-y sm:border border-white/10 shadow-2xl shadow-black/70">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={src.img}
@@ -147,7 +147,7 @@ export default function HeroVideoDemo() {
           </AnimatePresence>
 
           {/* ── URL bar — static, sits in the middle, video passes through it ── */}
-          <div className="absolute inset-x-0 top-[52%] -translate-y-1/2 z-20 flex justify-center px-8 pointer-events-none">
+          <div className="absolute inset-x-0 top-[52%] -translate-y-1/2 z-20 flex justify-center px-4 sm:px-8 pointer-events-none">
             <div className="flex w-full max-w-[480px] items-center gap-2 rounded-full border border-white/12 bg-[#1a1a1a] px-5 py-3 shadow-lg shadow-black/40">
               <svg className="h-4 w-4 text-white/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101M10.172 13.828a4 4 0 015.656 0l4 4a4 4 0 01-5.656 5.656l-1.102-1.101" />
@@ -193,7 +193,7 @@ export default function HeroVideoDemo() {
             {clipsVisible && (
               <motion.div
                 key={`clips-${srcIdx}`}
-                className="absolute bottom-8 inset-x-0 flex items-end justify-center gap-2.5 px-4 z-10"
+                className="absolute bottom-8 inset-x-0 flex items-end justify-center gap-2.5 px-0 sm:px-4 z-10"
                 initial={{ opacity: 1 }}
                 exit={{ opacity: 0, transition: { duration: 0.2 } }}
               >

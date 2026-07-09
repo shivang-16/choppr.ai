@@ -274,6 +274,19 @@ body {
   font-family: "Scandia", serif !important;
 }
 
+.font-sf-pro-display {
+  font-family:
+    "SF Pro Display",
+    "SF Pro",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+}
+
 .markdown-content {
   @apply text-neutral-800 dark:text-neutral-200;
 }
