@@ -1,8 +1,8 @@
 export const URL_PLACEHOLDERS = [
-  "Drop a YouTube link…",
-  "Drop a Google Drive link…",
-  "Drop a Loom recording link…",
-  "Drop an Instagram reel link…",
-  "Drop a TikTok link…",
-  "Drop a Twitch clip link…",
+  "Paste a YouTube link…",
+  "Paste a Google Drive link…",
+  "Paste a Loom link…",
+  "Paste an Instagram reel…",
+  "Paste a TikTok link…",
+  "Paste a Twitch clip…",
 ];

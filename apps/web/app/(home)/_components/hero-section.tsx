@@ -95,27 +95,29 @@ export default function HeroSection() {
         </div>
 
         {/* Input + CTA */}
-        <div className="flex w-full max-w-2xl flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
-          {/* URL input — animated placeholders */}
+        <div className="flex w-full max-w-2xl flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
+          {/* URL input — full width on mobile */}
           <div
             className={cn(
-              "flex h-11 sm:h-12 w-full flex-1 items-center gap-2.5 rounded-2xl border px-4 transition-all duration-200",
-              "border-white/10 bg-white/5 focus-within:border-white/30 focus-within:bg-white/8",
+              "flex min-h-[48px] h-12 w-full min-w-0 flex-1 items-center gap-2.5 rounded-2xl border px-3.5 sm:px-4 transition-all duration-200",
+              "border-white/12 bg-white/[0.07] focus-within:border-white/30 focus-within:bg-white/10",
             )}
           >
-            <Link2 className="h-4 w-4 shrink-0 text-white/40" />
-            <PlaceholdersAndVanishInput
-              inline
-              placeholders={URL_PLACEHOLDERS}
-              value={url}
-              onValueChange={setUrl}
-              onSubmit={handleInputSubmit}
-              hideSubmitButton
-            />
+            <Link2 className="h-4 w-4 shrink-0 text-white/45" />
+            <div className="min-w-0 flex-1 h-full">
+              <PlaceholdersAndVanishInput
+                inline
+                placeholders={URL_PLACEHOLDERS}
+                value={url}
+                onValueChange={setUrl}
+                onSubmit={handleInputSubmit}
+                hideSubmitButton
+              />
+            </div>
           </div>
 
-          {/* Buttons row — side by side on both mobile and desktop */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Buttons — below input on mobile, beside on desktop */}
+          <div className="flex w-full sm:w-auto items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => goToDashboard()}

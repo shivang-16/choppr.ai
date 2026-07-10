@@ -67,6 +67,7 @@ export function PlaceholdersAndVanishInput({
   const newDataRef = useRef<{ x: number; y: number; r: number; color: string }[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [animating, setAnimating] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   const draw = useCallback(() => {
     if (!inputRef.current) return;
@@ -200,7 +201,7 @@ export function PlaceholdersAndVanishInput({
     <form
       className={cn(
         inline
-          ? "relative flex h-full w-full flex-1 items-center bg-transparent shadow-none rounded-none overflow-visible"
+          ? "relative flex h-full w-full min-w-0 flex-1 items-center bg-transparent shadow-none rounded-none overflow-visible"
           : "w-full relative max-w-xl mx-auto bg-white dark:bg-zinc-800 h-12 rounded-full overflow-hidden shadow-[0px_2px_3px_-1px_rgba(0,0,0,0.1),_0px_1px_0px_0px_rgba(25,28,33,0.02),_0px_0px_0px_1px_rgba(25,28,33,0.08)] transition duration-200",
         !inline && value && "bg-gray-50",
         className,
@@ -222,13 +223,15 @@ export function PlaceholdersAndVanishInput({
           }
         }}
         onKeyDown={handleKeyDown}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         ref={inputRef}
         value={value}
         type="text"
         className={cn(
           "w-full relative z-[1] border-none bg-transparent focus:outline-none focus:ring-0",
           inline
-            ? "h-full min-h-0 text-[14px] leading-normal text-white dark:text-white pl-0 pr-2"
+            ? "h-full min-h-[20px] w-full min-w-0 text-[14px] leading-[20px] text-white dark:text-white pl-0 pr-1"
             : "text-sm sm:text-base dark:text-white text-black min-h-[1.75rem] rounded-full pl-4 sm:pl-10",
           !inline && hideSubmitButton ? "pr-4" : !inline ? "pr-20" : "",
           animating && "text-transparent dark:text-transparent",
@@ -282,7 +285,7 @@ export function PlaceholdersAndVanishInput({
         )}
       >
         <AnimatePresence mode="wait">
-          {!value && (
+          {!value && !focused && (
             <motion.p
               initial={{ y: 5, opacity: 0 }}
               key={`current-placeholder-${currentPlaceholder}`}
@@ -292,7 +295,7 @@ export function PlaceholdersAndVanishInput({
               className={cn(
                 "truncate text-left font-normal",
                 inline
-                  ? "w-full text-[14px] leading-5 text-white/50 pl-0"
+                  ? "w-full min-w-0 text-[13px] sm:text-[14px] leading-[20px] text-white/50 pl-0"
                   : "text-sm sm:text-base text-neutral-500 dark:text-zinc-400 pl-4 sm:pl-12 w-[calc(100%-2rem)]",
                 placeholderClassName,
               )}

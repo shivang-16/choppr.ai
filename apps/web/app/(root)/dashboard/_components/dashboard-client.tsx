@@ -468,24 +468,26 @@ function DashboardInner() {
           ) : (
             <div className="absolute inset-0 bg-white/18" />
           )}
-        <div className="relative flex h-11 sm:h-12 items-center rounded-[14px] bg-[#1e1e1e] px-4 gap-3 z-10">
+        <div className="relative flex min-h-[48px] h-12 items-center rounded-[14px] bg-[#1e1e1e] px-4 gap-3 z-10">
           <Link2 className="h-4 w-4 text-white/45 shrink-0" />
           {video ? (
-            <span className="flex-1 text-[13px] text-white/70 truncate">{video.url}</span>
+            <span className="flex-1 min-w-0 text-[13px] text-white/70 truncate">{video.url}</span>
           ) : (
-            <PlaceholdersAndVanishInput
-              inline
-              placeholders={URL_PLACEHOLDERS}
-              value={inputUrl}
-              onValueChange={handleUrlChange}
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (debounceRef.current) clearTimeout(debounceRef.current);
-                const trimmed = inputUrl.trim();
-                if (trimmed) handleFetch(trimmed);
-              }}
-              hideSubmitButton
-            />
+            <div className="min-w-0 flex-1 h-full">
+              <PlaceholdersAndVanishInput
+                inline
+                placeholders={URL_PLACEHOLDERS}
+                value={inputUrl}
+                onValueChange={handleUrlChange}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (debounceRef.current) clearTimeout(debounceRef.current);
+                  const trimmed = inputUrl.trim();
+                  if (trimmed) handleFetch(trimmed);
+                }}
+                hideSubmitButton
+              />
+            </div>
           )}
           {video ? (
             <button
