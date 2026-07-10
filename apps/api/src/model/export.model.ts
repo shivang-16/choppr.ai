@@ -1,6 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 
-export type ExportStatus = "pending" | "rendering" | "done" | "failed";
+export type ExportStatus = "pending" | "rendering" | "done" | "failed" | "cancelled";
 
 export interface IExport {
   _id:             string;
@@ -39,7 +39,7 @@ const ExportSchema = new Schema<IExport>(
     _id:          { type: String, required: true },
     userId:       { type: String, required: true, index: true },
     projectId:    { type: String, required: true, index: true },
-    status:       { type: String, enum: ["pending","rendering","done","failed"], default: "pending" },
+    status:       { type: String, enum: ["pending","rendering","done","failed","cancelled"], default: "pending" },
     progress:     { type: Number, default: 0, min: 0, max: 100 },
     s3Key:        { type: String },
     s3Url:        { type: String },

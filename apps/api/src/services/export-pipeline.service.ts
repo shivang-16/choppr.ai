@@ -11,7 +11,7 @@
  *  7. Update Export + (optionally) Clip documents in MongoDB
  */
 
-import { spawn }             from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import { createWriteStream, promises as fsp } from "fs";
 import { pipeline }          from "stream/promises";
 import { Readable }          from "stream";
@@ -39,6 +39,59 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.S3_CLIPS_BUCKET ?? "choppr-media";
 const REGION = process.env.AWS_REGION      ?? "ap-south-1";
+
+/** Abort exports that run longer than this (25 min — above the 20 min UX minimum). */
+export const EXPORT_PIPELINE_TIMEOUT_MS = 25 * 60 * 1000;
+
+class ExportCancelledError extends Error {
+  constructor(message = "Export cancelled by user") {
+    super(message);
+    this.name = "ExportCancelledError";
+  }
+}
+
+class ExportTimeoutError extends Error {
+  constructor() {
+    super(`Export timed out after ${EXPORT_PIPELINE_TIMEOUT_MS / 60_000} minutes`);
+    this.name = "ExportTimeoutError";
+  }
+}
+
+type ExportRun = {
+  aborted: boolean;
+  processes: ChildProcess[];
+};
+
+const activeExports = new Map<string, ExportRun>();
+
+function registerExport(exportId: string): ExportRun {
+  const run: ExportRun = { aborted: false, processes: [] };
+  activeExports.set(exportId, run);
+  return run;
+}
+
+function unregisterExport(exportId: string) {
+  activeExports.delete(exportId);
+}
+
+/** Kill FFmpeg children and mark the in-memory run as aborted. */
+export function cancelExportPipeline(exportId: string): boolean {
+  const run = activeExports.get(exportId);
+  if (!run) return false;
+  run.aborted = true;
+  for (const proc of run.processes) {
+    try {
+      proc.kill("SIGTERM");
+    } catch {
+      /* ignore */
+    }
+  }
+  return true;
+}
+
+export function isExportPipelineActive(exportId: string): boolean {
+  return activeExports.has(exportId);
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -287,13 +340,18 @@ function buildAtempo(speed: number): string {
 }
 
 /** Run an FFmpeg command and reject on non-zero exit. */
-function runFFmpeg(args: string[], tag = "ffmpeg"): Promise<void> {
+function runFFmpeg(args: string[], tag = "ffmpeg", run?: ExportRun): Promise<void> {
   return new Promise((resolve, reject) => {
     logger.debug(`[${tag}] Running: ffmpeg ${args.join(" ")}`);
     const p = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
+    if (run) run.processes.push(p);
     const errLines: string[] = [];
     p.stderr.on("data", (c: Buffer) => errLines.push(c.toString()));
     p.on("close", code => {
+      if (run?.aborted) {
+        reject(new ExportCancelledError());
+        return;
+      }
       if (code === 0) {
         resolve();
       } else {
@@ -338,6 +396,10 @@ function extFromUrl(url: string): string {
 
 /** Update the Export document in MongoDB. */
 async function updateExport(exportId: string, fields: Record<string, unknown>) {
+  if (fields.status && fields.status !== "cancelled") {
+    const doc = await Export.findById(exportId).lean();
+    if (doc?.status === "cancelled") return;
+  }
   await Export.findByIdAndUpdate(exportId, { $set: fields });
 }
 
@@ -352,6 +414,27 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     thumbnailOverlay = null,
   } = params;
 
+  const run = registerExport(exportId);
+  const deadline = Date.now() + EXPORT_PIPELINE_TIMEOUT_MS;
+  const tick = () => {
+    if (run.aborted) throw new ExportCancelledError();
+    if (Date.now() > deadline) {
+      cancelExportPipeline(exportId);
+      throw new ExportTimeoutError();
+    }
+  };
+  const ffmpeg = (args: string[], tag: string) => runFFmpeg(args, tag, run);
+
+  const checkStillActive = async () => {
+    tick();
+    const doc = await Export.findById(exportId).lean();
+    if (doc?.status === "cancelled") {
+      run.aborted = true;
+      cancelExportPipeline(exportId);
+      throw new ExportCancelledError("Export cancelled by user");
+    }
+  };
+
   const previewWidth = params.previewWidth ?? 380;
 
   const enhanceFilter = buildEnhanceFilter(brightness, contrast, saturation);
@@ -359,7 +442,16 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
   const [targetW, targetH] = ASPECT_DIMS[aspectRatio] ?? [1080, 1920];
   const tmpDir = join(tmpdir(), `export_${exportId}`);
 
+  const existingDoc = await Export.findById(exportId).lean();
+  if (!existingDoc || existingDoc.status === "cancelled") {
+    unregisterExport(exportId);
+    logger.info(`[export:${exportId}] Skipping pipeline — already cancelled or missing`);
+    return;
+  }
+
   try {
+    tick();
+    await checkStillActive();
     await fsp.mkdir(tmpDir, { recursive: true });
     await updateExport(exportId, { status: "rendering", progress: 5 });
 
@@ -378,6 +470,8 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     if (videoItems.length === 0) throw new Error("No video items on timeline");
 
     // ── 2. Download source clips (deduplicate by URL) ────────────────────────
+    tick();
+    await checkStillActive();
     const urlToLocal = new Map<string, string>();
     let dlIdx = 0;
     for (const item of [...videoItems, ...audioItems]) {
@@ -391,6 +485,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     await updateExport(exportId, { progress: 30 });
 
     // ── 3. Cut each segment (reframe + speed) ────────────────────────────────
+    tick();
     const segFiles: string[] = [];
 
     // Pre-generate animated gradient bg image once (reused for all segments)
@@ -402,6 +497,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     }
 
     for (let idx = 0; idx < videoItems.length; idx++) {
+      tick();
       const item   = videoItems[idx]!;
       const local  = urlToLocal.get(item.src ?? "");
       if (!local) continue;
@@ -490,7 +586,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
         }
       }
 
-      await runFFmpeg(ffArgs, `seg_${idx}`);
+      await ffmpeg(ffArgs, `seg_${idx}`);
       segFiles.push(segOut);
 
       const pct = 30 + Math.round(((idx + 1) / videoItems.length) * 30);
@@ -498,17 +594,19 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     }
 
     // ── 4. Concat ────────────────────────────────────────────────────────────
+    tick();
     const concatList = join(tmpDir, "concat.txt");
     await fsp.writeFile(concatList, segFiles.map(f => `file '${f}'`).join("\n"));
     const concatOut  = join(tmpDir, "concat.mp4");
 
-    await runFFmpeg([
+    await ffmpeg([
       "-y", "-f", "concat", "-safe", "0", "-i", concatList,
       "-c", "copy", concatOut,
     ], "concat");
     await updateExport(exportId, { progress: 70 });
 
     // ── 5. Sticker overlay (applied first so captions sit on top) ────────────
+    tick();
     let finalOut = concatOut;
 
     if (stickers.length > 0) {
@@ -516,6 +614,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
 
       // Download each sticker and overlay with FFmpeg (preserves animation for GIFs)
       for (let si = 0; si < stickers.length; si++) {
+        tick();
         const ps = stickers[si]!;
         const stickerSrc = ps.stickerUrl ?? ps.giphyUrl;
         if (!stickerSrc) continue;
@@ -542,7 +641,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
           ? ["-ignore_loop", "0", "-stream_loop", "-1", "-i", stickerFile]
           : ["-loop", "1", "-i", stickerFile];
 
-        await runFFmpeg([
+        await ffmpeg([
           "-y",
           "-i", finalOut,
           ...stickerInputArgs,
@@ -564,6 +663,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     }
 
     // ── 6. Caption overlay (on top of stickers) ──────────────────────────────
+    tick();
     if (captionStyle && captionStyle !== "none") {
       // Load captions from DB (prefer translated captionWords over original captions)
       const captionMap: Record<string, { word: string; start: number; end: number }[]> = {};
@@ -618,7 +718,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
         });
 
         const captionOut = join(tmpDir, "captioned.mp4");
-        await runFFmpeg([
+        await ffmpeg([
           "-y",
           "-i", finalOut,
           "-i", overlayPath,
@@ -637,6 +737,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     await updateExport(exportId, { progress: 88 });
 
     // ── 7. Text overlays (rendered via canvas → PNG → FFmpeg overlay) ────────
+    tick();
     if (textOverlays.length > 0) {
       logger.info(`[export:${exportId}] Applying ${textOverlays.length} text overlay(s)...`);
 
@@ -645,7 +746,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
       await fsp.writeFile(textPath, textPng);
 
       const textOut = join(tmpDir, "with_text.mp4");
-      await runFFmpeg([
+      await ffmpeg([
         "-y",
         "-i", finalOut,
         "-loop", "1", "-i", textPath,
@@ -663,6 +764,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     await updateExport(exportId, { progress: 92 });
 
     // ── 8. Thumbnail overlay ──────────────────────────────────────────────────
+    tick();
     if (thumbnailOverlay) {
       logger.info(`[export:${exportId}] Compositing thumbnail overlay (${thumbnailOverlay.styleId})...`);
 
@@ -681,7 +783,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
 
         // Scale thumbnail, apply opacity, overlay onto video
         const thumbOut = join(tmpDir, "with_thumbnail.mp4");
-        await runFFmpeg([
+        await ffmpeg([
           "-y",
           "-i", finalOut,
           "-loop", "1", "-i", thumbFile,
@@ -701,6 +803,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     }
 
     // ── 9. Upload to S3 ──────────────────────────────────────────────────────
+    tick();
     logger.info(`[export:${exportId}] Uploading to S3...`);
     const s3Key  = `exports/${exportId}/final.mp4`;
     const fileBuf = await fsp.readFile(finalOut);
@@ -746,10 +849,24 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     logger.info(`[export:${exportId}] Done → ${s3Url}`);
 
   } catch (err: any) {
+    if (err instanceof ExportCancelledError) {
+      logger.info(`[export:${exportId}] Cancelled`, { error: err.message });
+      await updateExport(exportId, { status: "cancelled", error: err.message });
+      return;
+    }
+    if (err instanceof ExportTimeoutError) {
+      logger.error(`[export:${exportId}] Timed out`, {
+        timeoutMs: EXPORT_PIPELINE_TIMEOUT_MS,
+        error: err.message,
+      });
+      await updateExport(exportId, { status: "failed", error: err.message });
+      throw err;
+    }
     logger.error(`[export:${exportId}] Pipeline failed`, { error: err?.message ?? err });
     await updateExport(exportId, { status: "failed", error: err?.message ?? String(err) });
     throw err;
   } finally {
+    unregisterExport(exportId);
     // Clean up temp directory
     await fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }

@@ -1,19 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { Link2, Upload, Scissors, Zap, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
+import { URL_PLACEHOLDERS } from "@/lib/url-placeholders";
 import HeroVideoDemo from "./hero-video-demo";
-
-const PLACEHOLDERS = [
-  "Drop a YouTube link...",
-  "Drop an Instagram reel...",
-  "Drop a Twitter/X video...",
-  "Drop a TikTok link...",
-  "Drop a video link...",
-];
 
 const BADGES = [
   { icon: Zap, label: "10x faster editing" },
@@ -23,16 +17,6 @@ const BADGES = [
 
 export default function HeroSection() {
   const [url, setUrl] = useState("");
-  const [focused, setFocused] = useState(false);
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPlaceholderIndex((i) => (i + 1) % PLACEHOLDERS.length);
-    }, 2500);
-    return () => clearInterval(interval);
-  }, []);
   const { isSignedIn } = useAuth();
   const router = useRouter();
 
@@ -44,8 +28,8 @@ export default function HeroSection() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const goToDashboard = (e?: React.FormEvent) => {
+    e?.preventDefault();
     const trimmed = url.trim();
     const destination = trimmed
       ? `/dashboard?url=${encodeURIComponent(trimmed)}`
@@ -54,12 +38,15 @@ export default function HeroSection() {
     if (isSignedIn) {
       router.push(destination);
     } else {
-      // After sign-up, Clerk will redirect back to this URL
       const signUpUrl = trimmed
         ? `/sign-up?redirect_url=${encodeURIComponent(destination)}`
         : "/sign-up";
       router.push(signUpUrl);
     }
+  };
+
+  const handleInputSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    goToDashboard(e);
   };
 
   return (
@@ -108,37 +95,30 @@ export default function HeroSection() {
         </div>
 
         {/* Input + CTA */}
-        <form
-          onSubmit={handleSubmit}
-          className="flex w-full max-w-2xl flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3"
-        >
-          {/* URL input — full width on mobile */}
+        <div className="flex w-full max-w-2xl flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
+          {/* URL input — animated placeholders */}
           <div
             className={cn(
-              "flex w-full items-center gap-2 rounded-2xl border px-4 py-3.5 transition-all duration-200 cursor-text",
-              focused
-                ? "border-white/30 bg-white/8"
-                : "border-white/10 bg-white/5"
+              "flex h-11 sm:h-12 w-full flex-1 items-center gap-2.5 rounded-2xl border px-4 transition-all duration-200",
+              "border-white/10 bg-white/5 focus-within:border-white/30 focus-within:bg-white/8",
             )}
-            onClick={() => inputRef.current?.focus()}
           >
-            <Link2 className="h-4 w-4 shrink-0 text-white/30" />
-            <input
-              ref={inputRef}
-              type="url"
+            <Link2 className="h-4 w-4 shrink-0 text-white/40" />
+            <PlaceholdersAndVanishInput
+              inline
+              placeholders={URL_PLACEHOLDERS}
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              placeholder={PLACEHOLDERS[placeholderIndex]}
-              className="w-full bg-transparent text-[14px] text-white placeholder:text-white/25 outline-none"
+              onValueChange={setUrl}
+              onSubmit={handleInputSubmit}
+              hideSubmitButton
             />
           </div>
 
           {/* Buttons row — side by side on both mobile and desktop */}
           <div className="flex items-center gap-2 sm:gap-3">
             <button
-              type="submit"
+              type="button"
+              onClick={() => goToDashboard()}
               className="cursor-pointer flex-1 sm:flex-none rounded-2xl bg-white px-4 py-2.5 sm:px-5 sm:py-3.5 text-[13px] sm:text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-95 whitespace-nowrap"
             >
               Get free clips
@@ -153,7 +133,7 @@ export default function HeroSection() {
               Upload files
             </button>
           </div>
-        </form>
+        </div>
 
         {/* Social proof */}
         <p className="text-[12.5px] text-white/45">

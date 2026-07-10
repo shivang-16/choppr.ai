@@ -14,6 +14,11 @@ import {
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
 import { cn } from "@/lib/utils";
+import {
+  EXPORT_POLL_INTERVAL_MS,
+  EXPORT_TIMEOUT_MS,
+  EXPORT_TIMEOUT_MINUTES,
+} from "@/lib/export-polling";
 import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_components/caption-renderer";
 import BackgroundRenderer, { STIPOP_KEY, fetchStipopStickers, fetchStipopTrendingPacks, fetchStipopPackStickers, type StipopSticker, type StipopPack, type PlacedSticker, type ImageSegmenterRef } from "./_components/background-renderer";
 
@@ -332,7 +337,9 @@ interface EditPanelProps {
   exportPhase: "idle" | "exporting" | "done" | "error" | "no_credits";
   exportProgress: number;
   exportUrl: string | null;
+  exportError: string | null;
   handleExport: () => void;
+  handleCancelExport: () => void;
   setExportPhase: (p: "idle" | "exporting" | "done" | "error" | "no_credits") => void;
   setExportUrl: (u: string | null) => void;
   styleGridMaxHeight?: number | string;
@@ -1382,13 +1389,14 @@ function EditPanelContent({
 }
 
 function ExportSection({
-  exportPhase, exportProgress, exportUrl, handleExport, handlePrimaryExportAction, setExportPhase, setExportUrl,
+  exportPhase, exportProgress, exportUrl, exportError, handleExport, handleCancelExport,
+  handlePrimaryExportAction, setExportPhase, setExportUrl,
   exportReadyToDownload,
   downloadMode = false,
   onDownloadEdit,
   onResetAll,
   compact = false,
-}: Pick<EditPanelProps, "exportPhase" | "exportProgress" | "exportUrl" | "handleExport" | "setExportPhase" | "setExportUrl"> & {
+}: Pick<EditPanelProps, "exportPhase" | "exportProgress" | "exportUrl" | "exportError" | "handleExport" | "handleCancelExport" | "setExportPhase" | "setExportUrl"> & {
   handlePrimaryExportAction: () => void;
   exportReadyToDownload: boolean;
   downloadMode?: boolean;
@@ -1440,6 +1448,16 @@ function ExportSection({
           <div className="h-1.5 w-full rounded-full bg-white/10">
             <div className="h-full rounded-full bg-white transition-all duration-500" style={{ width: `${exportProgress}%` }} />
           </div>
+          <button
+            type="button"
+            onClick={handleCancelExport}
+            className="mt-1 w-full rounded-xl border border-white/15 py-2 text-[12px] font-medium text-white/55 hover:text-white/80 hover:border-white/25 transition-colors"
+          >
+            Cancel export
+          </button>
+          <p className="text-[10px] text-white/25 text-center">
+            Times out after {EXPORT_TIMEOUT_MINUTES} minutes if stuck.
+          </p>
         </>
       )}
 
@@ -1465,8 +1483,13 @@ function ExportSection({
 
       {exportPhase === "error" && (
         <>
-          <div className="flex items-center gap-2 text-[12px] text-red-400 mb-1">
-            <AlertCircle className="h-4 w-4" /> Export failed
+          <div className="flex flex-col gap-1 text-[12px] text-red-400 mb-1">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" /> Export failed
+            </div>
+            {exportError && (
+              <p className="text-[11px] text-red-400/80 leading-snug pl-6">{exportError}</p>
+            )}
           </div>
           <button
             onClick={() => setExportPhase("idle")}
@@ -1773,7 +1796,10 @@ export default function ClipRefinePage() {
   const [exportPhase, setExportPhase]       = useState<"idle" | "exporting" | "done" | "error" | "no_credits">("idle");
   const [exportProgress, setExportProgress] = useState(0);
   const [exportUrl, setExportUrl]           = useState<string | null>(null);
+  const [exportError, setExportError]       = useState<string | null>(null);
   const exportPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const exportIdRef = useRef<string | null>(null);
+  const exportPollStartedRef = useRef<number | null>(null);
   const exportSnapshotRef = useRef<string | null>(null);
 
   // Sticker drag state — using refs so no stale closures
@@ -1892,10 +1918,13 @@ export default function ClipRefinePage() {
       clearInterval(exportPollRef.current);
       exportPollRef.current = null;
     }
+    exportIdRef.current = null;
+    exportPollStartedRef.current = null;
     exportSnapshotRef.current = null;
     setExportPhase("idle");
     setExportProgress(0);
     setExportUrl(null);
+    setExportError(null);
   }, []);
 
   const markExportCurrent = useCallback(() => {
@@ -1932,12 +1961,45 @@ export default function ClipRefinePage() {
   // Cleanup export poll on unmount
   useEffect(() => () => { if (exportPollRef.current) clearInterval(exportPollRef.current); }, []);
 
+  const stopExportPolling = useCallback(() => {
+    if (exportPollRef.current) {
+      clearInterval(exportPollRef.current);
+      exportPollRef.current = null;
+    }
+  }, []);
+
+  const failExport = useCallback((message: string) => {
+    stopExportPolling();
+    exportIdRef.current = null;
+    exportPollStartedRef.current = null;
+    setExportError(message);
+    setExportPhase("error");
+  }, [stopExportPolling]);
+
+  const handleCancelExport = useCallback(async () => {
+    const exportId = exportIdRef.current;
+    stopExportPolling();
+    exportIdRef.current = null;
+    exportPollStartedRef.current = null;
+    if (exportId) {
+      try {
+        await apiFetch(`${API_URL}/api/exports/${exportId}/cancel`, { method: "POST" });
+      } catch {
+        /* still reset UI */
+      }
+    }
+    setExportError("Export cancelled");
+    setExportPhase("error");
+  }, [apiFetch, stopExportPolling]);
+
   const handleExport = async () => {
     if (!src || exportPhase === "exporting") return;
 
     setExportPhase("exporting");
     setExportProgress(0);
     setExportUrl(null);
+    setExportError(null);
+    stopExportPolling();
 
     try {
       // Build a single-clip timeline from this clip's current settings
@@ -1997,29 +2059,50 @@ export default function ClipRefinePage() {
       }
 
       const { exportId } = await res.json();
+      exportIdRef.current = exportId;
+      exportPollStartedRef.current = Date.now();
 
       exportPollRef.current = setInterval(async () => {
+        if (
+          exportPollStartedRef.current != null &&
+          Date.now() - exportPollStartedRef.current > EXPORT_TIMEOUT_MS
+        ) {
+          const timedOutId = exportIdRef.current;
+          stopExportPolling();
+          exportIdRef.current = null;
+          exportPollStartedRef.current = null;
+          if (timedOutId) {
+            void apiFetch(`${API_URL}/api/exports/${timedOutId}/cancel`, { method: "POST" }).catch(() => {});
+          }
+          failExport(`Export timed out after ${EXPORT_TIMEOUT_MINUTES} minutes`);
+          return;
+        }
+
         try {
           const r = await apiFetch(`${API_URL}/api/exports/${exportId}`);
+          if (!r.ok) return;
           const data = await r.json();
           setExportProgress(data.progress ?? 0);
           if (data.status === "done") {
-            clearInterval(exportPollRef.current!);
+            stopExportPolling();
+            exportIdRef.current = null;
+            exportPollStartedRef.current = null;
             setExportUrl(data.s3Url);
             setExportPhase("done");
             markExportCurrent();
-            // Refresh the edited-clip blocks so the new export shows up below the preview
             loadEdits();
-            // Open the exported video in a new tab + force a local download.
             openAndDownload(data.s3Url, `clip-${index}.mp4`);
           } else if (data.status === "failed") {
-            clearInterval(exportPollRef.current!);
-            setExportPhase("error");
+            failExport(data.error ?? "Export failed on server");
+          } else if (data.status === "cancelled") {
+            failExport(data.error ?? "Export cancelled");
           }
-        } catch { /* keep polling */ }
-      }, 2500);
-    } catch {
-      setExportPhase("error");
+        } catch (err) {
+          console.warn("[export] poll failed, retrying…", err);
+        }
+      }, EXPORT_POLL_INTERVAL_MS);
+    } catch (err) {
+      failExport(err instanceof Error ? err.message : "Export failed");
     }
   };
 
@@ -2146,7 +2229,8 @@ export default function ClipRefinePage() {
     captionLang, activeLang, translating, handleTranslate,
     speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
     brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
-    exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
+    exportPhase, exportProgress, exportUrl, exportError, handleExport, handleCancelExport,
+    setExportPhase, setExportUrl,
     placedStickers, setPlacedStickers, segmentationReady,
     textOverlays, setTextOverlays, selectedTextId, setSelectedTextId,
     thumbnailOverlay, setThumbnailOverlay,
@@ -2874,7 +2958,9 @@ export default function ClipRefinePage() {
                     exportPhase={exportPhase}
                     exportProgress={exportProgress}
                     exportUrl={exportUrl}
+                    exportError={exportError}
                     handleExport={handleExport}
+                    handleCancelExport={handleCancelExport}
                     handlePrimaryExportAction={handlePrimaryExportAction}
                     exportReadyToDownload={exportReadyToDownload}
                     downloadMode={downloadMode}
@@ -3036,7 +3122,9 @@ export default function ClipRefinePage() {
             exportPhase={exportPhase}
             exportProgress={exportProgress}
             exportUrl={exportUrl}
+            exportError={exportError}
             handleExport={handleExport}
+            handleCancelExport={handleCancelExport}
             handlePrimaryExportAction={handlePrimaryExportAction}
             exportReadyToDownload={exportReadyToDownload}
             downloadMode={downloadMode}

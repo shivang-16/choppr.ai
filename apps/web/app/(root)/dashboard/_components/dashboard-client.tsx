@@ -6,12 +6,16 @@ import Link from "next/link";
 import { useApiFetch } from "@/lib/apiFetch";
 import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
+import { URL_PLACEHOLDERS } from "@/lib/url-placeholders";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 const TOOLS = [
   { icon: Sparkles,  label: "Long to shorts" },
   { icon: Scissors,  label: "Video editor" },
+  { icon: Crop,      label: "AI reframe" },
+  { icon: Captions,  label: "AI captioning" },
 ];
 
 
@@ -462,25 +466,25 @@ function DashboardInner() {
               }}
             />
           ) : (
-            <div className="absolute inset-0 bg-white/10" />
+            <div className="absolute inset-0 bg-white/18" />
           )}
-        <div className="relative flex items-center rounded-[14px] bg-[#141414] px-4 py-3.5 gap-3 z-10">
-          <Link2 className="h-4 w-4 text-white/30 shrink-0" />
+        <div className="relative flex h-11 sm:h-12 items-center rounded-[14px] bg-[#1e1e1e] px-4 gap-3 z-10">
+          <Link2 className="h-4 w-4 text-white/45 shrink-0" />
           {video ? (
             <span className="flex-1 text-[13px] text-white/70 truncate">{video.url}</span>
           ) : (
-            <input
-              type="url"
+            <PlaceholdersAndVanishInput
+              inline
+              placeholders={URL_PLACEHOLDERS}
               value={inputUrl}
-              onChange={(e) => handleUrlChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  if (debounceRef.current) clearTimeout(debounceRef.current);
-                  handleFetch(inputUrl);
-                }
+              onValueChange={handleUrlChange}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (debounceRef.current) clearTimeout(debounceRef.current);
+                const trimmed = inputUrl.trim();
+                if (trimmed) handleFetch(trimmed);
               }}
-              placeholder="Drop a video link (YouTube, Loom…)"
-              className="flex-1 bg-transparent text-[14px] text-white placeholder:text-white/25 outline-none"
+              hideSubmitButton
             />
           )}
           {video ? (
@@ -543,17 +547,18 @@ function DashboardInner() {
       {/* ── Empty state ── */}
       {!video && !loading && (
         <div className="flex flex-col items-center gap-10 mt-16 w-full max-w-3xl">
-          {/* Tool icons */}
-          <div className="flex flex-wrap items-center justify-center gap-6">
+          {/* Tool icons — always one row */}
+          <div className="flex w-full items-start justify-center gap-2 sm:gap-6 flex-nowrap px-1">
             {TOOLS.map(({ icon: Icon, label }) => (
               <button
                 key={label}
-                className="group flex flex-col items-center gap-2"
+                type="button"
+                className="group flex min-w-0 flex-1 flex-col items-center gap-1.5 sm:flex-none sm:gap-2"
               >
-                <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-white/8 bg-[#141414] group-hover:bg-white/8 transition-colors">
-                  <Icon className="h-6 w-6 text-white/60 group-hover:text-white transition-colors" />
+                <div className="relative flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl border border-white/8 bg-[#141414] group-hover:bg-white/8 transition-colors">
+                  <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-white/60 group-hover:text-white transition-colors" />
                 </div>
-                <span className="text-[12px] text-white/45 group-hover:text-white/70 transition-colors">{label}</span>
+                <span className="w-full text-[9px] sm:text-[12px] text-white/45 group-hover:text-white/70 transition-colors text-center leading-tight">{label}</span>
               </button>
             ))}
           </div>

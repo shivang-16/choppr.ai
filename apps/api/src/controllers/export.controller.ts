@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { Export } from "../model/export.model.js";
-import { runExportPipeline } from "../services/export-pipeline.service.js";
+import { runExportPipeline, cancelExportPipeline, isExportPipelineActive } from "../services/export-pipeline.service.js";
 import { checkBalance, deductExportCredits, CREDITS_PER_EXPORT } from "../services/credits.service.js";
 import { logger } from "../utils/logger.js";
 
@@ -156,7 +156,14 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       thumbnailOverlay: thumbnailOverlay ?? null,
       previewWidth,
     }).then(async () => {
-      // Deduct credits only on successful export
+      // Deduct credits only when the export actually completed (cancel returns without throwing)
+      const doc = await Export.findById(exportId).lean();
+      if (!doc || doc.status !== "done") {
+        logger.info("Skipping credit deduction — export did not finish successfully", {
+          exportId, userId, status: doc?.status ?? "missing",
+        });
+        return;
+      }
       try {
         const { deducted, balanceAfter } = await deductExportCredits(userId, exportId);
         logger.info("Export credits deducted", { exportId, userId, deducted, balanceAfter });
@@ -196,6 +203,62 @@ export async function getExport(req: Request, res: Response, next: NextFunction)
 
     res.json(exportDoc);
   } catch (err) {
+    next(err);
+  }
+}
+
+// ── POST /api/exports/:exportId/cancel ──────────────────────────────────────
+
+export async function cancelExport(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as any).user?._id ?? (req as any).auth?.userId;
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const exportId = String(req.params.exportId ?? "");
+    if (!exportId) {
+      res.status(400).json({ error: "Export id required" });
+      return;
+    }
+    const exportDoc = await Export.findById(exportId);
+    if (!exportDoc) {
+      res.status(404).json({ error: "Export not found" });
+      return;
+    }
+    if (exportDoc.userId !== userId) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (exportDoc.status === "done") {
+      res.status(409).json({ error: "Export already completed" });
+      return;
+    }
+    if (exportDoc.status === "cancelled") {
+      res.json({ exportId, status: "cancelled" });
+      return;
+    }
+    if (exportDoc.status === "failed") {
+      res.json({ exportId, status: "failed", error: exportDoc.error });
+      return;
+    }
+
+    const killed = cancelExportPipeline(exportId);
+    exportDoc.status = "cancelled";
+    exportDoc.error = "Cancelled by user";
+    await exportDoc.save();
+
+    logger.info("Export cancelled by user", {
+      exportId,
+      userId,
+      pipelineActive: killed || isExportPipelineActive(exportId),
+    });
+
+    res.json({ exportId, status: "cancelled" });
+  } catch (err) {
+    logger.error("Cancel export failed", { error: err });
     next(err);
   }
 }

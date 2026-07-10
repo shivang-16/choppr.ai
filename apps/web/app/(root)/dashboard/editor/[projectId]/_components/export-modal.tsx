@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, X, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { useApiFetch } from "@/lib/apiFetch";
+import {
+  EXPORT_POLL_INTERVAL_MS,
+  EXPORT_TIMEOUT_MS,
+  EXPORT_TIMEOUT_MINUTES,
+} from "@/lib/export-polling";
 type CaptionStyle =
   | "none" | "word-pop" | "karaoke" | "bold-center" | "neon" | "bounce"
   | "subtitle" | "shadow" | "fire" | "typewriter" | "glitch" | "rainbow"
@@ -68,10 +73,37 @@ export default function ExportModal({ projectId, tracks, volumes, aspectRatio, o
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg]     = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const exportIdRef = useRef<string | null>(null);
+  const pollStartedRef = useRef<number | null>(null);
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  async function cancelExport() {
+    const exportId = exportIdRef.current;
+    stopPolling();
+    exportIdRef.current = null;
+    pollStartedRef.current = null;
+    if (exportId) {
+      try {
+        await apiFetch(`${API_URL}/api/exports/${exportId}/cancel`, { method: "POST" });
+      } catch {
+        /* still reset UI */
+      }
+    }
+    setPhase("error");
+    setErrorMsg("Export cancelled");
+  }
 
 async function startExport() {
     setPhase("exporting");
     setProgress(0);
+    setErrorMsg("");
+    stopPolling();
 
     try {
       const res = await apiFetch(`${API_URL}/api/exports`, {
@@ -93,6 +125,8 @@ async function startExport() {
       }
 
       const { exportId } = await res.json();
+      exportIdRef.current = exportId;
+      pollStartedRef.current = Date.now();
       pollForCompletion(exportId);
     } catch (e: any) {
       setPhase("error");
@@ -102,27 +136,54 @@ async function startExport() {
 
   function pollForCompletion(exportId: string) {
     pollRef.current = setInterval(async () => {
+      if (
+        pollStartedRef.current != null &&
+        Date.now() - pollStartedRef.current > EXPORT_TIMEOUT_MS
+      ) {
+        const timedOutId = exportIdRef.current;
+        stopPolling();
+        exportIdRef.current = null;
+        pollStartedRef.current = null;
+        if (timedOutId) {
+          void apiFetch(`${API_URL}/api/exports/${timedOutId}/cancel`, { method: "POST" }).catch(() => {});
+        }
+        setPhase("error");
+        setErrorMsg(`Export timed out after ${EXPORT_TIMEOUT_MINUTES} minutes`);
+        return;
+      }
+
       try {
         const r = await apiFetch(`${API_URL}/api/exports/${exportId}`);
+        if (!r.ok) return;
         const data = await r.json();
         setProgress(data.progress ?? 0);
 
         if (data.status === "done") {
-          clearInterval(pollRef.current!);
+          stopPolling();
+          exportIdRef.current = null;
+          pollStartedRef.current = null;
           setDownloadUrl(data.s3Url);
           setPhase("done");
         } else if (data.status === "failed") {
-          clearInterval(pollRef.current!);
+          stopPolling();
+          exportIdRef.current = null;
+          pollStartedRef.current = null;
           setPhase("error");
           setErrorMsg(data.error ?? "Export failed on server");
+        } else if (data.status === "cancelled") {
+          stopPolling();
+          exportIdRef.current = null;
+          pollStartedRef.current = null;
+          setPhase("error");
+          setErrorMsg(data.error ?? "Export cancelled");
         }
-      } catch {
-        // network hiccup — keep polling
+      } catch (err) {
+        console.warn("[export] poll failed, retrying…", err);
       }
-    }, 2500);
+    }, EXPORT_POLL_INTERVAL_MS);
   }
 
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+  useEffect(() => () => { stopPolling(); }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -192,8 +253,15 @@ async function startExport() {
                 />
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => void cancelExport()}
+              className="w-full rounded-xl border border-white/15 py-2 text-[12px] font-medium text-white/55 hover:text-white/80 hover:border-white/25 transition-colors"
+            >
+              Cancel export
+            </button>
             <p className="text-[11px] text-white/25 text-center">
-              This may take a few minutes depending on clip length.
+              Times out after {EXPORT_TIMEOUT_MINUTES} minutes if stuck.
             </p>
           </div>
         )}
