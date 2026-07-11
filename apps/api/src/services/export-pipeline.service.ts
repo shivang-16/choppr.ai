@@ -123,6 +123,14 @@ export interface ExportPipelineParams {
   captionPosY?:   number;
   captionPosX?:   number;
   captionMap:     Record<string, { word: string; start: number; end: number }[]>;
+  captionSegments?: Array<{
+    style: string;
+    start: number;
+    end: number;
+    posX: number;
+    posY: number;
+    words: { word: string; start: number; end: number }[];
+  }>;
   aspectRatio:    string;
   backgroundFill: string;
   brightness?:    number;
@@ -408,7 +416,8 @@ async function updateExport(exportId: string, fields: Record<string, unknown>) {
 export async function runExportPipeline(params: ExportPipelineParams): Promise<void> {
   const {
     exportId, projectId, userId, tracks, volumes, speeds,
-    captionStyle, captionFontSize, captionPosY, captionPosX, aspectRatio, backgroundFill,
+    captionStyle, captionFontSize, captionPosY, captionPosX, captionSegments = [],
+    aspectRatio, backgroundFill,
     brightness = 100, contrast = 100, saturation = 100, originalClipId,
     stickers = [], textOverlays = [],
     thumbnailOverlay = null,
@@ -664,7 +673,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
 
     // ── 6. Caption overlay (on top of stickers) ──────────────────────────────
     tick();
-    if (captionStyle && captionStyle !== "none") {
+    if ((captionStyle && captionStyle !== "none") || captionSegments.length > 0) {
       // Load captions from DB (prefer translated captionWords over original captions)
       const captionMap: Record<string, { word: string; start: number; end: number }[]> = {};
       for (const item of videoItems) {
@@ -676,6 +685,14 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
 
       // Build timeline-shifted word list for the full concatenated video
       const allWords: { word: string; start: number; end: number }[] = [];
+      const remappedSegments: Array<{
+        style: string;
+        start: number;
+        end: number;
+        posX: number;
+        posY: number;
+        words: { word: string; start: number; end: number }[];
+      }> = [];
       let offset = 0;
       for (const item of videoItems) {
         const trimIn    = item.trimIn ?? 0;
@@ -695,25 +712,59 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
             });
           }
         }
+
+        // Per-style caption segments from the editor (usually for the original clip)
+        const applySegs = captionSegments.length > 0
+          && (item.id === originalClipId || (!originalClipId && videoItems.length === 1));
+        if (applySegs) {
+          for (const seg of captionSegments) {
+            const adjStart = seg.start / spd + offset;
+            const adjEnd   = seg.end / spd + offset;
+            if (adjEnd <= offset || adjStart >= offset + outputDur) continue;
+            const segWords = (seg.words?.length ? seg.words : words)
+              .map(w => {
+                const ws = (w.start - trimIn) / spd + offset;
+                const we = (w.end - trimIn) / spd + offset;
+                return {
+                  word: w.word,
+                  start: Math.max(adjStart, ws),
+                  end: Math.min(adjEnd, we),
+                };
+              })
+              .filter(w => w.end > w.start);
+            remappedSegments.push({
+              style: seg.style,
+              start: Math.max(offset, adjStart),
+              end: Math.min(offset + outputDur, adjEnd),
+              posX: seg.posX ?? 0,
+              posY: seg.posY ?? 0,
+              words: segWords,
+            });
+          }
+        }
+
         offset += outputDur;   // accumulate actual output duration (not source duration)
       }
 
       const totalDuration = offset;
-      logger.info(`[export:${exportId}] Caption words: ${allWords.length}, duration: ${totalDuration.toFixed(1)}s`);
+      logger.info(`[export:${exportId}] Caption words: ${allWords.length}, segments: ${remappedSegments.length}, duration: ${totalDuration.toFixed(1)}s`);
 
-      if (allWords.length > 0) {
-        logger.info(`[export:${exportId}] Rendering caption overlay (${captionStyle})...`);
+      if (allWords.length > 0 || remappedSegments.length > 0) {
+        logger.info(`[export:${exportId}] Rendering caption overlay (${remappedSegments.length ? "multi-segment" : captionStyle})...`);
 
         const overlayPath = join(tmpDir, "captions_overlay.mov");
         await renderCaptionToFile({
-          words:        allWords,
-          style:        captionStyle,
+          words:        remappedSegments.length
+            ? remappedSegments.flatMap(s => s.words)
+            : allWords,
+          style:        remappedSegments[0]?.style ?? captionStyle,
           width:        targetW,
           height:       targetH,
           durationSecs: totalDuration,
           fontSize:     captionFontSize ?? 50,
           posOffset:    captionPosY ?? 0,
           hOffset:      captionPosX ?? 0,
+          segments:     remappedSegments.length ? remappedSegments : undefined,
           outputPath:   overlayPath,
         });
 

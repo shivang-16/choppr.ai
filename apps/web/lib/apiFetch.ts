@@ -1,9 +1,10 @@
+import { useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 
 export function useApiFetch() {
   const { getToken } = useAuth();
 
-  return async (input: string, init: RequestInit = {}): Promise<Response> => {
+  return useCallback(async (input: string, init: RequestInit = {}): Promise<Response> => {
     const token = await getToken();
     return fetch(input, {
       ...init,
@@ -17,5 +18,5 @@ export function useApiFetch() {
           : {}),
       },
     });
-  };
+  }, [getToken]);
 }

@@ -1,5 +1,8 @@
 import mongoose, { Schema } from "mongoose";
 
+/** Where this asset is intended to be used in the editor. */
+export type UserAssetUsage = "timeline" | "watermark";
+
 export interface IUserAsset {
   _id: string;
   userId: string;
@@ -9,6 +12,8 @@ export interface IUserAsset {
   mimeType: string;
   sizeBytes: number;
   assetType: "image" | "audio" | "video" | "other";
+  /** Distinguishes timeline media vs watermark/thumbnail uploads. */
+  usage: UserAssetUsage;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,6 +31,12 @@ const UserAssetSchema = new Schema<IUserAsset>(
       type: String,
       enum: ["image", "audio", "video", "other"],
       default: "other",
+    },
+    usage: {
+      type: String,
+      enum: ["timeline", "watermark"],
+      default: "timeline",
+      index: true,
     },
   },
   { timestamps: true, _id: false }

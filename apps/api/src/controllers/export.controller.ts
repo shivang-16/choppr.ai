@@ -61,6 +61,14 @@ const CreateExportSchema = z.object({
   captionPosY:    z.number().min(-100).max(100).default(0),
   captionPosX:    z.number().min(-100).max(100).default(0),
   captionMap:     z.record(z.string(), z.array(CaptionWordSchema)).default({}),
+  captionSegments: z.array(z.object({
+    style: z.string(),
+    start: z.number(),
+    end:   z.number(),
+    posX:  z.number().min(-100).max(100).default(0),
+    posY:  z.number().min(-100).max(100).default(0),
+    words: z.array(CaptionWordSchema).default([]),
+  })).default([]),
   aspectRatio:    z.string().default("9:16"),
   backgroundFill: z.string().default("blur"),
   brightness:     z.number().min(0).max(400).default(100),
@@ -112,7 +120,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId, stickers, textOverlays, thumbnailOverlay, previewWidth } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, captionSegments, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId, stickers, textOverlays, thumbnailOverlay, previewWidth } = parsed.data;
     const exportId = randomUUID();
 
     await Export.create({
@@ -148,7 +156,8 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
     // Fire-and-forget: run the pipeline in the background, return immediately
     runExportPipeline({
       exportId, projectId, userId, tracks, volumes, speeds,
-      captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, aspectRatio, backgroundFill,
+      captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, captionSegments,
+      aspectRatio, backgroundFill,
       brightness, contrast, saturation,
       originalClipId: originalClipId ?? null,
       stickers,
