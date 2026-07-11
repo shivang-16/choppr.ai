@@ -417,7 +417,7 @@ body.clip-timeline-dragging-clip {
 
 /* Soften other clips slightly only during cross-track lift (not same-track slide) */
 .clip-timeline-shell:has(.clip-timeline-dragging-cross-track) .twick-track-element:not(.twick-track-element-dragging) {
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 /* Same-track drag: clip stays on the rail, slides inline */
@@ -447,25 +447,15 @@ body.clip-timeline-dragging-clip {
   border-radius: 4px;
 }
 
-/* Drop slot: bottom border only (cross-track) */
-.clip-drop-slot-highlight {
-  position: absolute;
-  top: 0;
-  height: 100%;
-  pointer-events: none;
-  z-index: 25;
-  background: transparent;
-  border: none;
-  border-bottom: 3px solid rgba(255, 255, 255, 0.95);
-  border-radius: 0;
-  box-shadow: 0 2px 8px rgba(165, 180, 252, 0.5);
-  transition: left 40ms linear, width 60ms ease-out;
+/* Drop indicator: simple purple border-bottom on the target track row */
+.clip-drop-target-track {
+  border-bottom: 2.5px solid #a78bfa !important;
+  transition: border-color 80ms ease;
 }
 
-/* Clipchamp-style magnetic snap indicator */
-.clip-drop-slot-highlight.clip-drop-slot-highlight-snapped {
-  border-bottom-color: #f472b6;
-  box-shadow: 0 2px 12px rgba(244, 114, 182, 0.65);
+/* Legacy slot highlight — not used anymore but kept minimal to avoid breaking */
+.clip-drop-slot-highlight {
+  display: none !important;
 }
 
 .clip-drop-snap-line {

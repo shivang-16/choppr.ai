@@ -31,14 +31,22 @@ export type TimelineMediaApi = {
 
 const OVERLAY_TRACK_NAMES = new Set(["Text", "Stickers", "Captions"]);
 
-function pickMediaTrack(editor: TimelineEditor): Track | null {
+/** Returns true if the track contains any VideoElement. */
+function trackHasVideo(t: Track): boolean {
+  return t.getElements().some(el => el instanceof VideoElement);
+}
+
+function pickMediaTrack(editor: TimelineEditor, type: TimelineMediaType): Track | null {
   const tracks = editor.getTimelineData()?.tracks ?? [];
   for (let i = tracks.length - 1; i >= 0; i--) {
     const t = tracks[i]!;
     if (OVERLAY_TRACK_NAMES.has(t.getName())) continue;
-    if (t.getType() === TRACK_TYPES.ELEMENT || t.getType() === TRACK_TYPES.VIDEO) {
-      return t;
-    }
+    if (t.getType() !== TRACK_TYPES.ELEMENT && t.getType() !== TRACK_TYPES.VIDEO) continue;
+    // Non-video media must NOT land on a track that already has video clips
+    if (type !== "video" && trackHasVideo(t)) continue;
+    // Video should NOT land on a track that has no video (e.g. audio-only row)
+    if (type === "video" && t.getElements().length > 0 && !trackHasVideo(t)) continue;
+    return t;
   }
   return null;
 }
@@ -81,7 +89,7 @@ export function TimelineMediaBridge({
       element.setStart(Math.max(0, seekRef.current));
 
       const targetTrack =
-        pickMediaTrack(editor) ?? editor.addTrack(`Track_${Date.now()}`, TRACK_TYPES.ELEMENT);
+        pickMediaTrack(editor, opts.type) ?? editor.addTrack(`Track_${Date.now()}`, TRACK_TYPES.ELEMENT);
 
       const tryAdd = async (track: Track): Promise<boolean> => {
         try {

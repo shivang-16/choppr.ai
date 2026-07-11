@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import {
   useTimelineContext,
+  VideoElement,
   TRACK_TYPES,
   type TimelineEditor,
   type TrackElement,
@@ -10,8 +11,6 @@ import {
 import { resolveClipPlacement, type SnapResult } from "./timeline-playback";
 
 const LABEL_WIDTH = 40;
-const TRACK_HEIGHT = 52;
-const SEPARATOR_HEIGHT = 6;
 
 type PendingDrop = {
   elementId: string;
@@ -65,6 +64,9 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
       document
         .querySelectorAll(".clip-timeline-shell .clip-drop-target-separator")
         .forEach(el => el.classList.remove("clip-drop-target-separator"));
+      document
+        .querySelectorAll(".clip-timeline-shell .clip-drop-target-track")
+        .forEach(el => el.classList.remove("clip-drop-target-track"));
 
       document.querySelectorAll(".clip-timeline-drag-ghost").forEach(el => el.remove());
       dragGhostRef.current = null;
@@ -128,19 +130,6 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
       }, 200);
     };
 
-    const ensureSlotHighlight = (container: HTMLElement) => {
-      if (slotHighlightRef.current?.parentElement === container) {
-        return slotHighlightRef.current;
-      }
-      slotHighlightRef.current?.remove();
-      const el = document.createElement("div");
-      el.className = "clip-drop-slot-highlight";
-      el.setAttribute("aria-hidden", "true");
-      container.appendChild(el);
-      slotHighlightRef.current = el;
-      return el;
-    };
-
     const ensureDragGhost = (source: HTMLElement) => {
       if (dropLockRef.current) return;
       if (dragGhostRef.current) return;
@@ -168,85 +157,37 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
       document.body.classList.add("clip-timeline-dragging-clip");
     };
 
-    const ensureSnapLine = (container: HTMLElement) => {
-      if (snapLineRef.current?.parentElement === container) {
-        return snapLineRef.current;
-      }
-      snapLineRef.current?.remove();
-      const el = document.createElement("div");
-      el.className = "clip-drop-snap-line";
-      el.setAttribute("aria-hidden", "true");
-      container.appendChild(el);
-      snapLineRef.current = el;
-      return el;
-    };
-
     const updateDropChrome = (
       drop: DropTarget | null,
-      id: string,
-      timeSec: number,
-      span: number,
-      duration: number,
-      tracks: NonNullable<ReturnType<TimelineEditor["getTimelineData"]>>["tracks"],
+      _id: string,
+      _timeSec: number,
+      _span: number,
+      _duration: number,
+      _tracks: NonNullable<ReturnType<TimelineEditor["getTimelineData"]>>["tracks"],
       mode: "inline" | "cross",
-      placementOverride?: SnapResult,
+      _placementOverride?: SnapResult,
     ) => {
       const tracksRoot = getTracksRoot();
       const trackRows = tracksRoot ? getTrackRowElements(tracksRoot) : [];
 
+      // Clear previous indicators
+      document
+        .querySelectorAll(".clip-timeline-shell .clip-drop-target-track")
+        .forEach(n => n.classList.remove("clip-drop-target-track"));
       document
         .querySelectorAll(".clip-timeline-shell .clip-drop-target-separator")
         .forEach(n => n.classList.remove("clip-drop-target-separator"));
-
-      if (drop?.kind === "track" && trackRows[drop.index]) {
-        const row = trackRows[drop.index]!;
-        const container = row.querySelector(".twick-timeline-container") as HTMLElement | null;
-        const targetTrack = tracks[drop.index];
-        if (!targetTrack || !container) return;
-
-        const trackContent = container.querySelector(".twick-track") as HTMLElement | null;
-        const highlightContainer = trackContent ?? container;
-
-        const others = targetTrack
-          .getElements()
-          .filter((o: TrackElement) => o.getId() !== id)
-          .map((o: TrackElement) => ({ start: o.getStart(), end: o.getEnd() }));
-        const placement = placementOverride ?? resolveClipPlacement(others, timeSec, span);
-        const freeStart = placement.start;
-        const slotLeftPct = (freeStart / duration) * 100;
-        const slotWidthPct = (span / duration) * 100;
-
-        if (mode === "cross") {
-          const highlight = ensureSlotHighlight(highlightContainer);
-          highlight.style.display = "block";
-          highlight.style.left = `${slotLeftPct}%`;
-          highlight.style.width = `${Math.max(slotWidthPct, 1.5)}%`;
-          highlight.classList.toggle("clip-drop-slot-highlight-snapped", placement.snapped);
-        } else {
-          slotHighlightRef.current?.remove();
-          slotHighlightRef.current = null;
-        }
-
-        snapLineRef.current?.remove();
-        snapLineRef.current = null;
-        if (placement.snapped && placement.snapTime != null) {
-          const snapLine = ensureSnapLine(highlightContainer);
-          const snapLeftPct = (placement.snapTime / duration) * 100;
-          snapLine.style.display = "block";
-          snapLine.style.left = `${snapLeftPct}%`;
-        }
-        return;
-      }
-
-      if (drop?.kind === "separator" && tracksRoot) {
-        const seps = collectSeparators(tracksRoot, trackRows);
-        seps[drop.index]?.classList.add("clip-drop-target-separator");
-      }
-
       slotHighlightRef.current?.remove();
       slotHighlightRef.current = null;
       snapLineRef.current?.remove();
       snapLineRef.current = null;
+
+      if (mode === "cross" && drop?.kind === "track" && trackRows[drop.index]) {
+        trackRows[drop.index]!.classList.add("clip-drop-target-track");
+      } else if (drop?.kind === "separator" && tracksRoot) {
+        const seps = collectSeparators(tracksRoot, trackRows);
+        seps[drop.index]?.classList.add("clip-drop-target-separator");
+      }
     };
 
     const applySameTrackPosition = (
@@ -672,21 +613,31 @@ function resolveDropTrackIndex(clientY: number): DropTarget | null {
   const tracksRoot = getTracksRoot();
   if (!tracksRoot) return null;
 
-  const rect = tracksRoot.getBoundingClientRect();
-  const y = clientY - rect.top;
-  if (y < -8) return null;
+  // Use actual DOM row measurements instead of hardcoded heights for accuracy
+  const rows = getTrackRowElements(tracksRoot);
+  if (!rows.length) return null;
 
-  if (y < SEPARATOR_HEIGHT) return { kind: "separator", index: 0 };
-
-  const relativeY = y - SEPARATOR_HEIGHT;
-  const rowHeight = TRACK_HEIGHT + SEPARATOR_HEIGHT;
-  const row = Math.floor(relativeY / rowHeight);
-  const offsetInRow = relativeY % rowHeight;
-
-  if (offsetInRow > TRACK_HEIGHT) {
-    return { kind: "separator", index: row + 1 };
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    const rect = row.getBoundingClientRect();
+    if (clientY >= rect.top && clientY <= rect.bottom) {
+      return { kind: "track", index: i };
+    }
+    // Check gap between this row and the next
+    if (i < rows.length - 1) {
+      const nextRect = rows[i + 1]!.getBoundingClientRect();
+      if (clientY > rect.bottom && clientY < nextRect.top) {
+        return { kind: "separator", index: i + 1 };
+      }
+    }
   }
-  return { kind: "track", index: Math.max(0, row) };
+
+  // Above all tracks
+  const firstRect = rows[0]!.getBoundingClientRect();
+  if (clientY < firstRect.top) return { kind: "separator", index: 0 };
+
+  // Below all tracks
+  return { kind: "track", index: rows.length - 1 };
 }
 
 function isCrossTrackDrop(
@@ -730,6 +681,24 @@ async function applyPointerPlacement(
   }
 
   if (!targetTrack) return;
+
+  // A video track may only receive video elements.
+  // If something non-video is dragged onto a video row, redirect to a new track.
+  const isVideoEl = el instanceof VideoElement;
+  const targetHasVideo = targetTrack.getElements().some(e => e instanceof VideoElement);
+  if (!isVideoEl && targetHasVideo) {
+    // Create a new track below the current source track so the clip lands near where the user dropped
+    const newTrack = editor.addTrack(`Track_${Date.now()}`, TRACK_TYPES.ELEMENT);
+    const afterAdd = [...(editor.getTimelineData()?.tracks ?? [])];
+    const newIdx = afterAdd.findIndex(t => t.getId() === newTrack.getId());
+    const dropIdx = afterAdd.findIndex(t => t.getId() === targetTrack!.getId());
+    if (newIdx >= 0 && dropIdx >= 0) {
+      const [removed] = afterAdd.splice(newIdx, 1);
+      afterAdd.splice(dropIdx + 1, 0, removed!);
+      editor.reorderTracks(afterAdd);
+    }
+    targetTrack = newTrack;
+  }
 
   if (targetTrack.getType() === TRACK_TYPES.VIDEO) {
     migrateVideoTracksToElement(editor);

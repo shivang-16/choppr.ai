@@ -805,11 +805,10 @@ function ClipTimelineControls({
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
-      if (selectionContainsProtected(selectedIds, protectedClipId, editor)) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleDelete();
-      }
+      if (selectedIds.size === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleDelete();
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
