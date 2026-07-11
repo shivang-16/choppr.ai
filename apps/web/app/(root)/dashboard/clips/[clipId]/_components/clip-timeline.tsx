@@ -53,6 +53,7 @@ import {
   TimelineMediaBridge,
   type TimelineMediaApi,
 } from "./timeline-media-bridge";
+import { TimelineMediaLengthClamp } from "./timeline-media-length-clamp";
 import {
   TimelineCaptionBridge,
   type CaptionTrackApi,
@@ -154,6 +155,8 @@ export interface ClipTimelineProps {
   onPlayingChange: (playing: boolean) => void;
   onToggleMute: () => void;
   onExportTracksChange?: (tracks: ChopprTrack[]) => void;
+  onTimelineSerialize?: (serializedTracks: unknown[]) => void;
+  draftTracks?: unknown[] | null;
   onRegisterToggle?: (toggle: (() => void) | null) => void;
   overlayApiRef?: MutableRefObject<TimelineOverlayApi | null>;
   onOverlayTimingChange?: (items: OverlayTimingItem[]) => void;
@@ -177,6 +180,8 @@ function ClipTimelineBridge({
   onCurrentTimeChange,
   onPlayingChange,
   onExportTracksChange,
+  onTimelineSerialize,
+  draftTracks,
 }: Pick<
   ClipTimelineProps,
   | "clipId"
@@ -192,6 +197,8 @@ function ClipTimelineBridge({
   | "onCurrentTimeChange"
   | "onPlayingChange"
   | "onExportTracksChange"
+  | "onTimelineSerialize"
+  | "draftTracks"
 >) {
   const { changeLog, editor } = useTimelineContext();
   const {
@@ -256,6 +263,23 @@ function ClipTimelineBridge({
         if (cancelled) return;
 
         const existing = editor.getTimelineData()?.tracks ?? [];
+
+        // --- Restore from draft if available ---
+        if (draftTracks && Array.isArray(draftTracks) && draftTracks.length > 0 && !initializedRef.current) {
+          for (const track of existing) editor.removeTrack(track);
+          try {
+            editor.loadProject({ tracks: draftTracks as any[], version: 0 });
+          } catch (e) {
+            console.warn("[ClipTimeline] failed to restore draft, seeding fresh", e);
+          }
+          editor.refresh();
+          lastSrcRef.current = src;
+          initializedRef.current = true;
+          ensurePadding();
+          syncingRef.current = false;
+          return;
+        }
+
         // Preserve Text / Stickers tracks across main-clip reseed
         const overlayTracks = existing.filter(
           t => t.getName() === "Text" || t.getName() === "Stickers",
@@ -388,7 +412,11 @@ function ClipTimelineBridge({
     if (onExportTracksChange) {
       onExportTracksChange(buildExportTracksFromEditor(editor));
     }
-  }, [changeLog, editor, onExportTracksChange, ensurePadding]);
+    if (onTimelineSerialize) {
+      const tracks = editor.getTimelineData()?.tracks ?? [];
+      onTimelineSerialize(tracks.map(t => t.serialize()));
+    }
+  }, [changeLog, editor, onExportTracksChange, onTimelineSerialize, ensurePadding]);
 
   // Ensure dropped / split clips get filmstrip thumbnails in the timeline.
   useEffect(() => {
@@ -885,6 +913,8 @@ function ClipTimelineInner(props: ClipTimelineProps) {
         onCurrentTimeChange={props.onCurrentTimeChange}
         onPlayingChange={props.onPlayingChange}
         onExportTracksChange={props.onExportTracksChange}
+        onTimelineSerialize={props.onTimelineSerialize}
+        draftTracks={props.draftTracks}
       />
       {props.overlayApiRef && (
         <TimelineOverlayBridge
@@ -895,6 +925,7 @@ function ClipTimelineInner(props: ClipTimelineProps) {
       {props.mediaApiRef && (
         <TimelineMediaBridge apiRef={props.mediaApiRef} />
       )}
+      <TimelineMediaLengthClamp />
       {props.captionApiRef && props.captionWordsRef && (
         <TimelineCaptionBridge
           apiRef={props.captionApiRef}

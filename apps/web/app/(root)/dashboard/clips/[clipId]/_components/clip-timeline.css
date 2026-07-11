@@ -172,9 +172,10 @@
 }
 
 /* Touch-friendly trim handles on mobile */
+.clip-timeline-shell.is-mobile .twick-track-element-handle,
 .clip-timeline-shell.is-mobile [class*="trim-handle"],
 .clip-timeline-shell.is-mobile [class*="resize-handle"] {
-  min-width: 14px;
+  min-width: 16px;
 }
 
 /* Prevent Twick timeline from forcing full viewport height */
@@ -339,6 +340,11 @@
 
 .clip-timeline-shell .twick-track {
   flex-shrink: 0;
+  overflow: visible !important;
+}
+
+.clip-timeline-shell .twick-timeline-container {
+  overflow: visible !important;
 }
 
 .clip-timeline-shell .twick-timeline-header-container,
@@ -354,8 +360,19 @@
   transition: box-shadow 120ms ease, border-color 120ms ease !important;
 }
 
+/* Kill all transitions while dragging — smooth 60fps repositioning */
+.clip-timeline-shell.is-dragging .twick-track-element,
+.clip-timeline-shell .twick-track-element-dragging {
+  transition: none !important;
+}
+
+/* During our custom drag, suppress Twick's internal transform so it doesn't fight */
+.clip-timeline-shell.is-dragging .twick-track-element-dragging {
+  transform: none !important;
+}
+
 .clip-timeline-shell .twick-track-element-selected {
-  z-index: 2 !important;
+  z-index: 12 !important;
 }
 
 .clip-timeline-shell .twick-track-element-dragging {
@@ -388,8 +405,9 @@
     0 0 0 1px rgba(129, 140, 248, 0.5),
     0 14px 36px rgba(0, 0, 0, 0.55) !important;
   overflow: hidden !important;
-  will-change: left, top;
+  will-change: transform;
   transition: none !important;
+  backface-visibility: hidden;
 }
 
 body.clip-timeline-dragging-clip {
@@ -660,7 +678,13 @@ body.choppr-dragging-timeline-asset .clip-timeline-shell .clip-timeline-section 
 /* Track clip chrome */
 .clip-timeline-shell .twick-track-element {
   border-radius: 6px !important;
-  overflow: hidden;
+  /* visible so CapCut-style trim handles aren't clipped */
+  overflow: visible !important;
+}
+
+.clip-timeline-shell .twick-track-element-content {
+  overflow: hidden !important;
+  border-radius: 4px;
 }
 
 /* Text clips: CapCut purple block look */
@@ -669,7 +693,89 @@ body.choppr-dragging-timeline-asset .clip-timeline-shell .clip-timeline-section 
   border-radius: 6px !important;
 }
 
+/* Selected clip — CapCut purple outline */
 .clip-timeline-shell .twick-track-element-selected {
-  border: 2px solid #ffffff !important;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35) !important;
+  border: 2px solid #a855f7 !important;
+  box-shadow:
+    0 0 0 1px rgba(168, 85, 247, 0.45),
+    inset 0 0 0 1px rgba(168, 85, 247, 0.25) !important;
+  z-index: 12 !important;
+}
+
+/* CapCut-style trim handles — thick purple bars + white grip */
+.clip-timeline-shell .twick-track-element-handle {
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  height: 100% !important;
+  width: 12px !important;
+  transform: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #a855f7 !important;
+  border-radius: 0 !important;
+  cursor: ew-resize !important;
+  z-index: 40 !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  touch-action: none !important;
+}
+
+.clip-timeline-shell .twick-track-element-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 14px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+}
+
+.clip-timeline-shell .twick-track-element-handle-start {
+  left: 0 !important;
+  right: auto !important;
+  border-radius: 5px 0 0 5px !important;
+}
+
+.clip-timeline-shell .twick-track-element-handle-end {
+  right: 0 !important;
+  left: auto !important;
+  border-radius: 0 5px 5px 0 !important;
+}
+
+/* Wider invisible hit target for easier grabbing */
+.clip-timeline-shell .twick-track-element-handle-start::before,
+.clip-timeline-shell .twick-track-element-handle-end::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 20px;
+  cursor: ew-resize;
+}
+
+.clip-timeline-shell .twick-track-element-handle-start::before {
+  left: -4px;
+}
+
+.clip-timeline-shell .twick-track-element-handle-end::before {
+  right: -4px;
+}
+
+.clip-timeline-shell.is-mobile .twick-track-element-handle {
+  width: 16px !important;
+}
+
+.clip-timeline-shell.is-mobile .twick-track-element-handle-start::before,
+.clip-timeline-shell.is-mobile .twick-track-element-handle-end::before {
+  width: 28px;
+}
+
+/* While dragging the end trim handle, never grow past source media length */
+.clip-timeline-shell[data-trimming-end="1"] .twick-track-element-selected {
+  max-width: var(--choppr-trim-max-width) !important;
 }

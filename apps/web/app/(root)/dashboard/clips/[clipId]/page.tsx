@@ -27,6 +27,7 @@ import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_compone
 import BackgroundRenderer, { STIPOP_KEY, fetchStipopStickers, fetchStipopTrendingPacks, fetchStipopPackStickers, type StipopSticker, type StipopPack, type PlacedSticker, type ImageSegmenterRef } from "./_components/background-renderer";
 import { UploadPanel } from "./_components/upload-panel";
 import type { ChopprTrack, TimelineOverlayApi, OverlayTimingItem, TimelineMediaApi, CaptionTrackApi, CaptionSegment } from "./_components/clip-timeline";
+import { useClipDraftAutosave, loadClipDraft, clearClipDraft, type ClipDraftState } from "./_components/use-clip-draft";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -109,9 +110,9 @@ const TABS = [
   { id: "captions",    icon: Captions,   label: "Captions" },
   { id: "text",        icon: Type,       label: "Text" },
   { id: "thumbnail",   icon: ImageIcon,  label: "Watermark" },
+  { id: "upload",      icon: Upload,     label: "Upload" },
   { id: "stickers",    icon: Layers,     label: "Stickers" },
   { id: "speed",       icon: Gauge,      label: "Speed" },
-  { id: "upload",      icon: Upload,     label: "Upload" },
   { id: "enhance",     icon: Sparkles,   label: "Enhance" },
 ];
 
@@ -1098,31 +1099,6 @@ function EditPanelContent({
             </div>
           </div>
 
-          {/* Caption segments on timeline */}
-          {captionSegments.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-[11px] font-semibold text-white/50">Timeline segments</p>
-              {captionSegments.map((seg, i) => (
-                <div key={seg.id} className="flex items-center gap-2 rounded-lg bg-white/5 border border-white/8 px-2 py-1.5">
-                  <span className="text-[9px] font-bold text-white/40 w-4 shrink-0">{i + 1}</span>
-                  <span className="text-[10px] font-medium text-white/70 flex-1 truncate">
-                    {seg.style.split("-").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
-                  </span>
-                  <span className="text-[9px] text-white/30 shrink-0">
-                    {Math.floor(seg.start)}s – {Math.ceil(seg.end)}s
-                  </span>
-                  {(seg.posX !== 0 || seg.posY !== 0) && (
-                    <span className="text-[8px] text-white/25 shrink-0 tabular-nums">
-                      {seg.posX >= 0 ? "+" : ""}{seg.posX},{seg.posY >= 0 ? "+" : ""}{seg.posY}
-                    </span>
-                  )}
-                </div>
-              ))}
-              <p className="text-[9px] text-white/25 leading-snug">
-                Drag segments on the timeline for timing. Scrub to a segment, then drag the preview to set its position.
-              </p>
-            </div>
-          )}
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
@@ -1143,7 +1119,7 @@ function EditPanelContent({
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[12px] text-white/50">
-                Position{captionSegments.length > 0 ? " · this segment" : ""}
+                Position
               </span>
               {(captionPosX !== 0 || captionPosY !== 0) && (
                 <button
@@ -1435,8 +1411,7 @@ function EditPanelContent({
           usage="timeline"
           draggable
           onAddToTimeline={onAddToTimeline}
-          title="Timeline media"
-          hint="Upload videos, images, or audio. Click an asset to add it at the playhead, or drag onto the timeline. Use + on the timeline to add more tracks."
+          title="My media"
         />
       )}
 
@@ -1835,6 +1810,36 @@ export default function ClipRefinePage() {
 
   const [aspectRatio, setAspectRatio] = useState("9:16");
 
+  // ── Draft persistence ─────────────────────────────────────────────────────
+  const { saveDraft } = useClipDraftAutosave(clipId ?? "");
+  const draftRestoredRef = useRef(false);
+  const [draftTracks, setDraftTracks] = useState<unknown[] | null>(null);
+
+  // Restore draft on mount (once)
+  useEffect(() => {
+    if (!clipId || draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    const draft = loadClipDraft(clipId);
+    if (!draft) return;
+    if (draft.aspectRatio) setAspectRatio(draft.aspectRatio);
+    if (draft.speed != null) setSpeed(draft.speed);
+    if (draft.trimStart != null) setTrimStart(draft.trimStart);
+    if (draft.trimEnd != null) setTrimEnd(draft.trimEnd);
+    if (draft.brightness != null) setBrightness(draft.brightness);
+    if (draft.contrast != null) setContrast(draft.contrast);
+    if (draft.saturation != null) setSaturation(draft.saturation);
+    if (draft.captionStyle) setCaptionStyle(draft.captionStyle as any);
+    if (draft.captionWords?.length) setCaptionWords(draft.captionWords as any);
+    if (draft.captionFontSize) setCaptionFontSize(draft.captionFontSize);
+    if (draft.captionPosX != null) setCaptionPosX(draft.captionPosX);
+    if (draft.captionPosY != null) setCaptionPosY(draft.captionPosY);
+    if (draft.textOverlays?.length) setTextOverlays(draft.textOverlays as any);
+    if (draft.placedStickers?.length) setPlacedStickers(draft.placedStickers as any);
+    if (draft.thumbnailOverlay) setThumbnailOverlay(draft.thumbnailOverlay as any);
+    if (draft.timelineTracks?.length) setDraftTracks(draft.timelineTracks);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clipId]);
+
   // Edited/exported clips derived from this clip + which one is previewed
   const [editedClips, setEditedClips] = useState<any[]>([]);
   const [activeEditId, setActiveEditId] = useState<string | null>(null);
@@ -1947,6 +1952,32 @@ export default function ClipRefinePage() {
     segmentId: string | null;
   } | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
+
+  // ── Auto-save page-level settings to draft ─────────────────────────────────
+  useEffect(() => {
+    if (!clipId || !draftRestoredRef.current) return;
+    saveDraft({
+      captionStyle,
+      captionWords: captionWords as unknown[],
+      captionFontSize,
+      captionPosX,
+      captionPosY,
+      speed,
+      trimStart,
+      trimEnd,
+      brightness,
+      contrast,
+      saturation,
+      textOverlays: textOverlays as unknown[],
+      placedStickers: placedStickers as unknown[],
+      aspectRatio,
+      thumbnailOverlay: thumbnailOverlay as unknown,
+    });
+  }, [
+    clipId, saveDraft, captionStyle, captionWords, captionFontSize,
+    captionPosX, captionPosY, speed, trimStart, trimEnd, brightness,
+    contrast, saturation, textOverlays, placedStickers, aspectRatio, thumbnailOverlay,
+  ]);
 
   // Load project aspect ratio
   const [arDropdownOpen, setArDropdownOpen] = useState(false);
@@ -2259,6 +2290,7 @@ export default function ClipRefinePage() {
             exportPollStartedRef.current = null;
             setExportUrl(data.s3Url);
             setExportPhase("done");
+            if (clipId) clearClipDraft(clipId);
             markExportCurrent();
             loadEdits();
             openAndDownload(data.s3Url, `clip-${index}.mp4`);
@@ -2422,6 +2454,12 @@ export default function ClipRefinePage() {
     exportTracksRef.current = tracks;
   }, []);
 
+  const timelineSerializedRef = useRef<unknown[] | null>(null);
+  const handleTimelineSerialize = useCallback((serializedTracks: unknown[]) => {
+    timelineSerializedRef.current = serializedTracks;
+    saveDraft({ timelineTracks: serializedTracks });
+  }, [saveDraft]);
+
   const handleTimelineTimeChange = useCallback((time: number) => {
     setCurrentTime(time);
   }, []);
@@ -2584,8 +2622,16 @@ export default function ClipRefinePage() {
   const handleAddCaptionSegment = useCallback((style: CaptionStyle) => {
     const effectiveDur = (trimEnd > 0 ? trimEnd : duration) - trimStart;
     if (effectiveDur <= 0 || !captionApiRef.current) return;
+
+    // Toggle: if a segment with this style exists, remove it
+    const existing = captionSegments.find(seg => seg.style === style);
+    if (existing) {
+      captionApiRef.current.removeSegment(existing.id);
+      return;
+    }
+
     captionApiRef.current.addSegment(style, captionWordsRef.current, effectiveDur);
-  }, [trimStart, trimEnd, duration]);
+  }, [trimStart, trimEnd, duration, captionSegments]);
 
   const activeCaptionSegment = useMemo(
     () => captionSegments.find(s => currentTime >= s.start - 0.001 && currentTime < s.end + 0.001) ?? null,
@@ -3451,6 +3497,8 @@ export default function ClipRefinePage() {
                 onCurrentTimeChange={handleTimelineTimeChange}
                 onPlayingChange={handleTimelinePlayingChange}
                 onExportTracksChange={handleExportTracksChange}
+                onTimelineSerialize={handleTimelineSerialize}
+                draftTracks={draftTracks}
                 onToggleMute={() => setMuted(m => !m)}
                 onRegisterToggle={registerTimelineToggle}
                 overlayApiRef={overlayApiRef}
