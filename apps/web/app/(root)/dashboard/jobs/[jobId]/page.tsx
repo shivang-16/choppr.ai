@@ -251,10 +251,15 @@ export default function JobPage() {
             </div>
           )}
 
-          {/* Error */}
+          {/* Error — never surface raw agent/ffmpeg dumps to users */}
           {(isFailed || error) && (
-            <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-[13px] text-red-400">
-              {job?.error ?? error ?? "Something went wrong. Please try again."}
+            <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 flex flex-col gap-0.5">
+              <p className="text-[13px] text-red-400">
+                Processing failed. Please try again in a few minutes.
+              </p>
+              <p className="text-[11px] text-red-400/70">
+                If this keeps happening, try a different video or upload the file directly.
+              </p>
             </div>
           )}
 
