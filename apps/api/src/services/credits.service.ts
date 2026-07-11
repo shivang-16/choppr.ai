@@ -105,19 +105,25 @@ export async function grantSubscriptionCredits(
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      // ADD to subscription bucket (keep leftover credits), keep topup bucket intact, update plan
+      // RESET the subscription bucket to the plan's credit amount (never accumulate).
+      // We read the old subscriptionCredits first so we can compute the correct totalCredits delta.
+      const existing = await UserCredits.findById(userId).session(session).lean() as IUserCredits | null;
+      const oldSubCredits = existing?.subscriptionCredits ?? 0;
+      // Delta to totalCredits = new allocation - old allocation (topupCredits stays untouched)
+      const delta = amount - oldSubCredits;
+
       const doc = await UserCredits.findOneAndUpdate(
         { _id: userId },
         {
           $set: {
-            plan:       planId,
-            cycleStart: now,
-            cycleEnd:   end,
+            plan:                planId,
+            cycleStart:          now,
+            cycleEnd:            end,
+            subscriptionCredits: amount,                 // RESET, not accumulate
           },
           $inc: {
-            subscriptionCredits: amount,
-            totalCredits:        amount,
-            lifetimeEarned:      amount,
+            totalCredits:   delta,                       // adjust by delta only
+            lifetimeEarned: amount,
           },
         },
         { returnDocument: "after", upsert: true, session }
