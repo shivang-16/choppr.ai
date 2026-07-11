@@ -182,7 +182,7 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
         break;
       }
 
-      await grantSubscriptionCredits(userId, planId as any);
+      await grantSubscriptionCredits(userId, planId as any, "add");
 
       await User.updateOne(
         { _id: userId },
@@ -238,7 +238,7 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
       const planId = await planIdFromProductId(productId);
       if (!planId || planId === "free") break;
 
-      await grantSubscriptionCredits(userId, planId as any);
+      await grantSubscriptionCredits(userId, planId as any, "reset");
 
       const balance = (await UserCredits.findById(userId).lean())?.totalCredits ?? 0;
       await CreditLedger.insertMany([
@@ -324,7 +324,7 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
       const planId = await planIdFromProductId(productId);
       if (!planId || planId === "free") break;
 
-      await grantSubscriptionCredits(userId, planId as any);
+      await grantSubscriptionCredits(userId, planId as any, "reset");
       await User.updateOne({ _id: userId }, { $set: { subscriptionStatus: "active" } });
 
       const balance = (await UserCredits.findById(userId).lean())?.totalCredits ?? 0;

@@ -91,11 +91,21 @@ export async function grantSignupCredits(userId: string): Promise<void> {
 /**
  * Grant (or reset) monthly subscription credits after a payment.
  * Credit amount comes from the Plan document in MongoDB.
- * Called by the Stripe webhook after invoice.paid.
+ *
+ * mode "add"   — used for subscription.active (new subscription).
+ *                Adds plan credits on top of whatever the user currently has,
+ *                so free signup credits (250) are preserved.
+ *                e.g. free user (250) subscribes to Core (500) → total 750.
+ *
+ * mode "reset" — used for subscription.renewed / plan_changed.
+ *                Resets the subscription bucket to exactly the plan amount so
+ *                credits never accumulate across billing cycles.
+ *                e.g. 300 remaining → renewal → subscription bucket back to 500.
  */
 export async function grantSubscriptionCredits(
   userId: string,
-  planId: PlanName
+  planId: PlanName,
+  mode: "add" | "reset" = "reset"
 ): Promise<void> {
   const plan   = await getPlanOrThrow(planId);
   const amount = plan.credits;
@@ -105,29 +115,49 @@ export async function grantSubscriptionCredits(
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      // RESET the subscription bucket to the plan's credit amount (never accumulate).
-      // We read the old subscriptionCredits first so we can compute the correct totalCredits delta.
-      const existing = await UserCredits.findById(userId).session(session).lean() as IUserCredits | null;
-      const oldSubCredits = existing?.subscriptionCredits ?? 0;
-      // Delta to totalCredits = new allocation - old allocation (topupCredits stays untouched)
-      const delta = amount - oldSubCredits;
+      let doc: IUserCredits;
 
-      const doc = await UserCredits.findOneAndUpdate(
-        { _id: userId },
-        {
-          $set: {
-            plan:                planId,
-            cycleStart:          now,
-            cycleEnd:            end,
-            subscriptionCredits: amount,                 // RESET, not accumulate
+      if (mode === "add") {
+        // ADD plan credits on top — preserves existing subscription and topup credits.
+        doc = await UserCredits.findOneAndUpdate(
+          { _id: userId },
+          {
+            $set: {
+              plan:       planId,
+              cycleStart: now,
+              cycleEnd:   end,
+            },
+            $inc: {
+              subscriptionCredits: amount,
+              totalCredits:        amount,
+              lifetimeEarned:      amount,
+            },
           },
-          $inc: {
-            totalCredits:   delta,                       // adjust by delta only
-            lifetimeEarned: amount,
+          { returnDocument: "after", upsert: true, session }
+        ) as IUserCredits;
+      } else {
+        // RESET the subscription bucket to the plan amount — never accumulate across cycles.
+        const existing = await UserCredits.findById(userId).session(session).lean() as IUserCredits | null;
+        const oldSubCredits = existing?.subscriptionCredits ?? 0;
+        const delta = amount - oldSubCredits; // topupCredits stays untouched
+
+        doc = await UserCredits.findOneAndUpdate(
+          { _id: userId },
+          {
+            $set: {
+              plan:                planId,
+              cycleStart:          now,
+              cycleEnd:            end,
+              subscriptionCredits: amount,
+            },
+            $inc: {
+              totalCredits:   delta,
+              lifetimeEarned: amount,
+            },
           },
-        },
-        { returnDocument: "after", upsert: true, session }
-      ) as IUserCredits;
+          { returnDocument: "after", upsert: true, session }
+        ) as IUserCredits;
+      }
 
       await writeLedger(session, userId, amount, "subscription", "grant_subscription", doc.totalCredits, {
         note: `${plan.name} plan renewal — ${amount} credits`,
