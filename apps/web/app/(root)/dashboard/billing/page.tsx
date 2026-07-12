@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
 import { Check, Zap, Loader2, CheckCircle, XCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import posthog from "posthog-js";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -85,6 +86,10 @@ function BillingContent() {
         alert(json.message ?? json.error ?? "Something went wrong");
         return;
       }
+      posthog.capture("plan_upgrade_initiated", {
+        plan_id: planId,
+        billing_interval: billing,
+      });
       // Redirect to Dodo hosted checkout
       window.location.href = json.checkoutUrl;
     } catch {
@@ -107,6 +112,7 @@ function BillingContent() {
         alert(json.message ?? json.error ?? "Something went wrong");
         return;
       }
+      posthog.capture("topup_checkout_initiated", { pack_slug: packSlug });
       window.location.href = json.checkoutUrl;
     } catch {
       alert("Could not start checkout. Please try again.");

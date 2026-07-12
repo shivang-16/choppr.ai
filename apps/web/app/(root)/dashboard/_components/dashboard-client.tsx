@@ -8,6 +8,7 @@ import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkle
 import { cn } from "@/lib/utils";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { URL_PLACEHOLDERS } from "@/lib/url-placeholders";
+import posthog from "posthog-js";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -232,6 +233,10 @@ function DashboardInner() {
       const meta = await fetchVideoMeta(trimmed, apiFetch);
       setVideo(meta);
       setVideoMode("thumbnail");
+      posthog.capture("video_url_submitted", {
+        platform: meta?.platform?.name ?? "unknown",
+        duration_secs: meta?.durationSecs ?? null,
+      });
       // Set default clip count based on video length
       if (meta?.durationSecs) {
         const mins = meta.durationSecs / 60;
@@ -284,6 +289,9 @@ function DashboardInner() {
     setError(null);
     setUploadProgress(0);
     setUploadedS3Key(null);
+    posthog.capture("file_upload_started", {
+      file_size_mb: Math.round(file.size / (1024 * 1024)),
+    });
 
     try {
       // 1. Get presigned URL
@@ -306,6 +314,9 @@ function DashboardInner() {
 
       setUploadedS3Key(s3Key);
       setUploadProgress(null);
+      posthog.capture("file_upload_completed", {
+        file_size_mb: Math.round(file.size / (1024 * 1024)),
+      });
 
       // Read local duration from the file so we can show an accurate credit estimate
       const durationSecs = await new Promise<number>((resolve) => {
@@ -364,6 +375,15 @@ function DashboardInner() {
       }
 
       const { projectId } = await res.json();
+      posthog.capture("job_created", {
+        source: uploadedS3Key ? "upload" : "url",
+        clip_model: clipModel,
+        genre,
+        clip_length: clipLength,
+        max_clips: maxClips,
+        duration_secs: video?.durationSecs ?? null,
+        has_prompt: prompt.length > 0,
+      });
       // Redirect to project page
       router.push(`/dashboard/projects/${projectId}`);
     } catch (err: unknown) {
@@ -413,6 +433,10 @@ function DashboardInner() {
       }
 
       const { projectId } = await res.json();
+      posthog.capture("full_video_edit_started", {
+        source: uploadedS3Key ? "upload" : "url",
+        duration_secs: video?.durationSecs ?? null,
+      });
       router.push(`/dashboard/projects/${projectId}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");

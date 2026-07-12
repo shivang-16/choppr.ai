@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, X, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { useApiFetch } from "@/lib/apiFetch";
+import posthog from "posthog-js";
 import {
   EXPORT_POLL_INTERVAL_MS,
   EXPORT_TIMEOUT_MS,
@@ -95,6 +96,7 @@ export default function ExportModal({ projectId, tracks, volumes, aspectRatio, o
         /* still reset UI */
       }
     }
+    posthog.capture("export_cancelled", { project_id: projectId });
     setPhase("error");
     setErrorMsg("Export cancelled");
   }
@@ -125,6 +127,12 @@ async function startExport() {
       }
 
       const { exportId } = await res.json();
+      posthog.capture("export_started", {
+        project_id: projectId,
+        caption_style: captionStyle,
+        aspect_ratio: aspectRatio,
+        clip_count: tracks.flatMap((t) => t.items.filter((i) => i.type === "video")).length,
+      });
       exportIdRef.current = exportId;
       pollStartedRef.current = Date.now();
       pollForCompletion(exportId);
@@ -163,6 +171,10 @@ async function startExport() {
           exportIdRef.current = null;
           pollStartedRef.current = null;
           setDownloadUrl(data.s3Url);
+          posthog.capture("export_completed", {
+            project_id: projectId,
+            caption_style: captionStyle,
+          });
           setPhase("done");
         } else if (data.status === "failed") {
           stopPolling();
