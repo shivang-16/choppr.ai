@@ -23,13 +23,14 @@ function uid() {
   return Math.random().toString(36).slice(2, 12);
 }
 
-/** Timeline end time of all video items (export length). */
+/** Timeline export length = end of last video item (not a sum of gaps). */
 function getExportDurationSecs(tracks: Track[]) {
   let maxEnd = 0;
   for (const track of tracks) {
     for (const item of track.items) {
       if (item.type !== "video") continue;
-      maxEnd = Math.max(maxEnd, item.startTime + item.duration);
+      const end = item.startTime + item.duration;
+      if (Number.isFinite(end)) maxEnd = Math.max(maxEnd, end);
     }
   }
   return maxEnd;
@@ -74,7 +75,7 @@ export default function EditorPage() {
   const [history, setHistory]                 = useState<HistoryEntry[]>([]);
   const [historyIdx, setHistoryIdx]           = useState(-1);
   const [thumbnailOverlay, setThumbnailOverlay] = useState<ThumbnailOverlay | null>(null);
-  const [isFreePlan, setIsFreePlan] = useState(true);
+  const [isFreePlan, setIsFreePlan] = useState<boolean | null>(null);
 
   const videoRef = useRef<VideoPreviewHandle>(null);
 
@@ -83,12 +84,15 @@ export default function EditorPage() {
     apiFetch(`${API_URL}/api/plans/me`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!d) return;
+        if (!d) {
+          setIsFreePlan(true);
+          return;
+        }
         const planId = d.currentPlanId ?? "free";
         const plan = d.plans?.find((p: any) => p.slug === planId || p._id === planId);
         setIsFreePlan(!plan || plan.slug === "free" || planId === "free");
       })
-      .catch(() => {});
+      .catch(() => setIsFreePlan(true));
   }, []);
 
   // ── Fetch project + clips → build initial tracks ──────────────────────────
@@ -472,8 +476,9 @@ export default function EditorPage() {
 
   const handleExport = () => setShowExport(true);
 
+  const timelineExportSecs = getExportDurationSecs(tracks);
   const exportRequiresUpgrade =
-    isFreePlan && getExportDurationSecs(tracks) > FREE_EXPORT_MAX_SECS;
+    isFreePlan === true && timelineExportSecs > FREE_EXPORT_MAX_SECS;
 
   return (
     <div className="flex flex-col h-screen bg-[#111] overflow-hidden select-none">

@@ -11,6 +11,7 @@ import {
   ArrowLeft, Play, Pause, Volume2, VolumeX,
   Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Type, Plus, Trash2, Smile, ImageIcon, Move,
 } from "lucide-react";
+import Link from "next/link";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,8 @@ import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_compone
 import BackgroundRenderer, { STIPOP_KEY, fetchStipopStickers, fetchStipopTrendingPacks, fetchStipopPackStickers, type StipopSticker, type StipopPack, type PlacedSticker, type ImageSegmenterRef } from "./_components/background-renderer";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+/** Free plan can only export clips up to this length. */
+const FREE_EXPORT_MAX_SECS = 5 * 60;
 
 // ── Text overlay type ─────────────────────────────────────────────────────────
 interface TextOverlay {
@@ -1396,6 +1399,7 @@ function ExportSection({
   onDownloadEdit,
   onResetAll,
   compact = false,
+  exportRequiresUpgrade = false,
 }: Pick<EditPanelProps, "exportPhase" | "exportProgress" | "exportUrl" | "exportError" | "handleExport" | "handleCancelExport" | "setExportPhase" | "setExportUrl"> & {
   handlePrimaryExportAction: () => void;
   exportReadyToDownload: boolean;
@@ -1403,6 +1407,7 @@ function ExportSection({
   onDownloadEdit?: () => void;
   onResetAll?: () => void;
   compact?: boolean;
+  exportRequiresUpgrade?: boolean;
 }) {
   const ResetLink = onResetAll ? (
     <button
@@ -1431,12 +1436,29 @@ function ExportSection({
   return (
     <div className="flex flex-col gap-2">
       {(exportPhase === "idle" || (exportPhase === "done" && !exportReadyToDownload)) && (
-        <button
-          onClick={handleExport}
-          className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
-        >
-          Export clip
-        </button>
+        exportRequiresUpgrade ? (
+          <div className="flex flex-col gap-1.5">
+            <Link
+              href="/dashboard/billing"
+              className="w-full flex items-center justify-center gap-2 rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+            >
+              <Sparkles className="h-4 w-4" />
+              Upgrade to Pro
+            </Link>
+            {!compact && (
+              <p className="text-[10px] text-white/40 text-center leading-snug">
+                Upgrade to export clips greater than 5 min
+              </p>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={handleExport}
+            className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+          >
+            Export clip
+          </button>
+        )
       )}
 
       {exportPhase === "exporting" && (
@@ -1794,6 +1816,8 @@ export default function ClipRefinePage() {
 
   // Export state
   const [exportPhase, setExportPhase]       = useState<"idle" | "exporting" | "done" | "error" | "no_credits">("idle");
+  /** null = plan not loaded yet (avoid button flicker) */
+  const [isFreePlan, setIsFreePlan]         = useState<boolean | null>(null);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportUrl, setExportUrl]           = useState<string | null>(null);
   const [exportError, setExportError]       = useState<string | null>(null);
@@ -1824,6 +1848,21 @@ export default function ClipRefinePage() {
       .catch(() => {});
   }, [projectId]);
 
+  useEffect(() => {
+    apiFetch(`${API_URL}/api/plans/me`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) {
+          setIsFreePlan(true);
+          return;
+        }
+        const planId = d.currentPlanId ?? "free";
+        const plan = d.plans?.find((p: any) => p.slug === planId || p._id === planId);
+        setIsFreePlan(!plan || plan.slug === "free" || planId === "free");
+      })
+      .catch(() => setIsFreePlan(true));
+  }, []);
+
   // Close AR dropdown on outside click
   useEffect(() => {
     if (!arDropdownOpen) return;
@@ -1836,7 +1875,7 @@ export default function ClipRefinePage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [arDropdownOpen]);
 
-  // Load clip captions on mount — always start fresh with original captions
+  // Load clip captions + duration on mount (duration from API avoids Export↔Upgrade flicker)
   useEffect(() => {
     if (!clipId) return;
 
@@ -1844,6 +1883,10 @@ export default function ClipRefinePage() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return;
+        if (typeof data.duration === "number" && data.duration > 0) {
+          setDuration(data.duration);
+          setTrimEnd((prev) => (prev > 0 ? prev : data.duration));
+        }
         if (data.captions?.length) {
           setCaptionWords(data.captions);
           setCaptionLang(data.captionLang ?? "");
@@ -1994,6 +2037,14 @@ export default function ClipRefinePage() {
 
   const handleExport = async () => {
     if (!src || exportPhase === "exporting") return;
+    if (duration <= 0) return;
+
+    const effectiveEnd = trimEnd > 0 ? trimEnd : duration;
+    const clipDuration = Math.max(0, effectiveEnd - trimStart);
+    if (isFreePlan === true && clipDuration > FREE_EXPORT_MAX_SECS) {
+      window.location.href = "/dashboard/billing";
+      return;
+    }
 
     setExportPhase("exporting");
     setExportProgress(0);
@@ -2002,22 +2053,19 @@ export default function ClipRefinePage() {
     stopExportPolling();
 
     try {
-      // Build a single-clip timeline from this clip's current settings
-      const effectiveEnd = trimEnd > 0 ? trimEnd : duration;
-      const clipDuration = effectiveEnd - trimStart;
-
+      // Slim payload: captions are loaded from DB (auto-saved). Prefer clipId over S3 URL.
       const tracks = [
         {
           id: "track-video",
           items: [{
             id: clipId,
+            clipId,
             type: "video",
             startTime: 0,
             duration: clipDuration,
             sourceDuration: duration,
             trimIn: trimStart,
             trimOut: duration - effectiveEnd,
-            src: activeSrc,
           }],
         },
         { id: "track-audio", items: [] },
@@ -2035,7 +2083,6 @@ export default function ClipRefinePage() {
           captionFontSize,
           captionPosY,
           captionPosX,
-          captionMap:     captionWords.length ? { [clipId]: captionWords } : {},
           aspectRatio,
           backgroundFill,
           brightness,
@@ -2213,6 +2260,13 @@ export default function ClipRefinePage() {
   };
 
   const effectiveTrimEnd = trimEnd > 0 ? trimEnd : duration;
+  // Export length = trimmed clip length (matches 0:00 / MM:SS on the player)
+  const exportClipDurationSecs =
+    duration > 0 ? Math.max(0, effectiveTrimEnd - trimStart) : 0;
+  // Wait for plan + duration so the button doesn't flicker Export ↔ Upgrade
+  const exportGateReady = isFreePlan !== null && duration > 0;
+  const exportRequiresUpgrade =
+    exportGateReady && isFreePlan === true && exportClipDurationSecs > FREE_EXPORT_MAX_SECS;
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -2968,6 +3022,7 @@ export default function ClipRefinePage() {
                     onResetAll={resetAll}
                     setExportPhase={setExportPhase}
                     setExportUrl={setExportUrl}
+                    exportRequiresUpgrade={exportRequiresUpgrade}
                   />
                 </div>
               </>
@@ -2986,7 +3041,22 @@ export default function ClipRefinePage() {
                   </button>
                 ))}
                 <div className="mt-auto w-full px-2 pb-3 flex flex-col items-center gap-1">
-                  {/* Circular export/download button */}
+                  {/* Circular export/download / upgrade button */}
+                  {exportRequiresUpgrade && !exportReadyToDownload && exportPhase !== "exporting" ? (
+                    <>
+                      <Link
+                        href="/dashboard/billing"
+                        title="Upgrade to export clips greater than 5 min"
+                        className="h-11 w-11 flex items-center justify-center rounded-full bg-white text-black hover:bg-white/85 active:bg-white/70 transition-all"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                      </Link>
+                      <span className="text-[9px] font-medium text-white/60 text-center leading-tight">
+                        Upgrade
+                      </span>
+                    </>
+                  ) : (
+                    <>
                   <div className="relative h-11 w-11">
                     {/* Progress ring (visible while exporting) */}
                     {exportPhase === "exporting" && (
@@ -3032,6 +3102,8 @@ export default function ClipRefinePage() {
                     >
                       Export again
                     </button>
+                  )}
+                    </>
                   )}
                 </div>
               </div>
@@ -3132,6 +3204,7 @@ export default function ClipRefinePage() {
             onResetAll={resetAll}
             setExportPhase={setExportPhase}
             setExportUrl={setExportUrl}
+            exportRequiresUpgrade={exportRequiresUpgrade}
             compact
           />
         </div>
