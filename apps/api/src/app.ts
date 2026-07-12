@@ -59,7 +59,8 @@ app.use(cors({
 // for HMAC signature verification. express.raw() is applied per-route inside.
 app.use("/api/webhooks", webhookRoutes);
 
-app.use(express.json());
+// Export timelines can include many clips; keep headroom above the default 100kb.
+app.use(express.json({ limit: "10mb" }));
 app.use(clerkMiddleware()); // must come before any route that calls getAuth()
 
 // ── Routes ──────────────────────────────────────────────────────────────────

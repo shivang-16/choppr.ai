@@ -14,6 +14,8 @@ const TrackItemSchema = z.object({
   sourceDuration: z.number(),
   trimIn:         z.number(),
   trimOut:        z.number(),
+  /** DB clip id — backend resolves src/captions from Clip collection */
+  clipId:         z.string().optional(),
   src:            z.string().optional(),
   audioDetached:  z.boolean().optional(),
   linkedAudioId:  z.string().optional(),

@@ -101,6 +101,8 @@ export interface TrackItem {
   startTime:      number;
   duration:       number;
   trimIn:         number;
+  /** DB clip id — preferred over src for resolving media + captions */
+  clipId?:        string | undefined;
   src?:           string | undefined;
   audioDetached?: boolean | undefined;
   [key: string]:  unknown; // allow extra fields from Zod schema (trimOut, sourceDuration, etc.)
@@ -155,6 +157,56 @@ export interface TextOverlay {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve missing track item `src` values from the Clip collection using clipId.
+ * Keeps the export request small (no repeated S3 URLs) and ensures captions
+ * lookup uses the same clip identity.
+ */
+async function hydrateTrackSources(
+  tracks: Track[],
+  projectId: string,
+  userId: string,
+): Promise<Track[]> {
+  const clipIds = new Set<string>();
+  for (const track of tracks) {
+    for (const item of track.items) {
+      if (item.clipId) clipIds.add(item.clipId);
+    }
+  }
+  if (clipIds.size === 0) return tracks;
+
+  const clips = await Clip.find({
+    _id: { $in: [...clipIds] },
+    projectId,
+    userId,
+  }).select({ _id: 1, s3Url: 1 }).lean();
+
+  const urlById = new Map(clips.map((c) => [c._id, c.s3Url]));
+  const missing: string[] = [];
+
+  const hydrated = tracks.map((track) => ({
+    ...track,
+    items: track.items.map((item) => {
+      if (item.src) return item;
+      if (!item.clipId) return item;
+      const url = urlById.get(item.clipId);
+      if (!url) {
+        missing.push(item.clipId);
+        return item;
+      }
+      return { ...item, src: url };
+    }),
+  }));
+
+  if (missing.length) {
+    logger.warn("Export hydrate: clipId(s) not found for project", {
+      projectId, userId, missing: [...new Set(missing)],
+    });
+  }
+
+  return hydrated;
+}
 
 const ASPECT_DIMS: Record<string, [number, number]> = {
   "9:16": [1080, 1920],
@@ -407,12 +459,15 @@ async function updateExport(exportId: string, fields: Record<string, unknown>) {
 
 export async function runExportPipeline(params: ExportPipelineParams): Promise<void> {
   const {
-    exportId, projectId, userId, tracks, volumes, speeds,
+    exportId, projectId, userId, volumes, speeds,
     captionStyle, captionFontSize, captionPosY, captionPosX, aspectRatio, backgroundFill,
     brightness = 100, contrast = 100, saturation = 100, originalClipId,
     stickers = [], textOverlays = [],
     thumbnailOverlay = null,
   } = params;
+
+  // Resolve clip media URLs server-side so the client doesn't ship large S3 URLs
+  const tracks = await hydrateTrackSources(params.tracks, projectId, userId);
 
   const run = registerExport(exportId);
   const deadline = Date.now() + EXPORT_PIPELINE_TIMEOUT_MS;
@@ -468,6 +523,13 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     videoItems.sort((a, b) => a.startTime - b.startTime);
 
     if (videoItems.length === 0) throw new Error("No video items on timeline");
+
+    const unresolved = videoItems.filter((i) => !i.src);
+    if (unresolved.length > 0) {
+      throw new Error(
+        `Could not resolve source media for ${unresolved.length} timeline item(s). Re-add the clip(s) and try again.`,
+      );
+    }
 
     // ── 2. Download source clips (deduplicate by URL) ────────────────────────
     tick();
@@ -668,7 +730,8 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
       // Load captions from DB (prefer translated captionWords over original captions)
       const captionMap: Record<string, { word: string; start: number; end: number }[]> = {};
       for (const item of videoItems) {
-        const clipDoc = await Clip.findById(item.id).lean();
+        const lookupId = item.clipId ?? item.id;
+        const clipDoc = await Clip.findById(lookupId).lean();
         if (!clipDoc) continue;
         const words = clipDoc.editSettings?.captionWords ?? clipDoc.captions ?? [];
         if (words.length) captionMap[item.id] = words as any;

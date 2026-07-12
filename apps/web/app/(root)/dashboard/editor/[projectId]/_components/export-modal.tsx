@@ -108,15 +108,34 @@ async function startExport() {
     stopPolling();
 
     try {
+      // Slim payload: omit thumbnailUrl/label and prefer clipId over repeated S3 URLs.
+      // Backend resolves src (and captions) from the Clip DB when clipId is present.
+      const slimTracks = tracks.map((t) => ({
+        id: t.id,
+        items: t.items.map((item) => ({
+          id: item.id,
+          type: item.type,
+          startTime: item.startTime,
+          duration: item.duration,
+          sourceDuration: item.sourceDuration,
+          trimIn: item.trimIn,
+          trimOut: item.trimOut,
+          ...(item.clipId ? { clipId: item.clipId } : {}),
+          // Fallback src only when we don't have a DB clip id (legacy / non-clip media)
+          ...(!item.clipId && item.src ? { src: item.src } : {}),
+          ...(item.audioDetached ? { audioDetached: true } : {}),
+          ...(item.linkedAudioId ? { linkedAudioId: item.linkedAudioId } : {}),
+        })),
+      }));
+
       const res = await apiFetch(`${API_URL}/api/exports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
-          tracks,
+          tracks: slimTracks,
           volumes,
           captionStyle,
-          captionMap: {},   // backend always fetches from DB
           aspectRatio,
         }),
       });
