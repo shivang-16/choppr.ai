@@ -174,6 +174,8 @@ function DashboardInner() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTriggeredRef = useRef(false);
+  const uploadXhrRef = useRef<XMLHttpRequest | null>(null);
+  const uploadCancelledRef = useRef(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null); // null = not uploading, 0-100 = %
   const [uploadedS3Key, setUploadedS3Key] = useState<string | null>(null);
 
@@ -279,6 +281,16 @@ function DashboardInner() {
     }, 600);
   };
 
+  const handleCancelUpload = () => {
+    uploadCancelledRef.current = true;
+    uploadXhrRef.current?.abort();
+    uploadXhrRef.current = null;
+    setUploadProgress(null);
+    setUploadedS3Key(null);
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const handleFileSelect = async (file: File) => {
     if (!file) return;
     const MAX_SIZE = 3 * 1024 * 1024 * 1024; // 3 GB
@@ -286,6 +298,7 @@ function DashboardInner() {
       setError("File too large. Maximum size is 3 GB.");
       return;
     }
+    uploadCancelledRef.current = false;
     setError(null);
     setUploadProgress(0);
     setUploadedS3Key(null);
@@ -296,12 +309,15 @@ function DashboardInner() {
     try {
       // 1. Get presigned URL
       const presignRes = await apiFetch(`${API_URL}/api/uploads/presign`, { method: "POST" });
+      if (uploadCancelledRef.current) return;
       if (!presignRes.ok) throw new Error("Failed to get upload URL");
       const { uploadUrl, s3Key } = await presignRes.json();
+      if (uploadCancelledRef.current) return;
 
       // 2. PUT directly to S3 with XMLHttpRequest for progress tracking
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+        uploadXhrRef.current = xhr;
         xhr.open("PUT", uploadUrl);
         xhr.setRequestHeader("Content-Type", "video/mp4");
         xhr.upload.onprogress = (e) => {
@@ -309,9 +325,12 @@ function DashboardInner() {
         };
         xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
         xhr.onerror = () => reject(new Error("Upload failed"));
+        xhr.onabort = () => reject(new DOMException("Upload cancelled", "AbortError"));
         xhr.send(file);
       });
 
+      if (uploadCancelledRef.current) return;
+      uploadXhrRef.current = null;
       setUploadedS3Key(s3Key);
       setUploadProgress(null);
       posthog.capture("file_upload_completed", {
@@ -330,7 +349,11 @@ function DashboardInner() {
       setVideo({ url: `[Uploaded] ${file.name}`, thumbnail: "", title: file.name, duration: dur, durationSecs });
       setVideoMode("thumbnail");
     } catch (err: unknown) {
+      uploadXhrRef.current = null;
       setUploadProgress(null);
+      // Silent cancel — don't show an error toast
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      if (uploadCancelledRef.current) return;
       setError(err instanceof Error ? err.message : "Upload failed");
     }
   };
@@ -530,10 +553,19 @@ function DashboardInner() {
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
               />
               {uploadProgress !== null ? (
-                <span className="text-[12px] text-white/50 flex items-center gap-1.5">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {uploadProgress}%
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] text-white/50 flex items-center gap-1.5">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {uploadProgress}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCancelUpload}
+                    className="text-[12px] text-white/40 hover:text-white/80 transition-colors flex items-center gap-1"
+                  >
+                    <X className="h-3.5 w-3.5" /> Cancel
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => fileInputRef.current?.click()}
