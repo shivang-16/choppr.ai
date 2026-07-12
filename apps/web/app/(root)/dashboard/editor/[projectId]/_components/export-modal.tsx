@@ -142,7 +142,10 @@ async function startExport() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? "Export request failed");
+        if (err.error === "export_duration_limit") {
+          throw new Error(err.message ?? "Upgrade to export clips greater than 5 min");
+        }
+        throw new Error(err.message ?? err.error ?? "Export request failed");
       }
 
       const { exportId } = await res.json();
@@ -321,12 +324,21 @@ async function startExport() {
           <div className="flex flex-col items-center gap-4 py-4">
             <AlertCircle className="h-10 w-10 text-red-400" />
             <p className="text-[13px] text-white/60 text-center">{errorMsg}</p>
-            <button
-              onClick={() => setPhase("settings")}
-              className="text-[12px] text-white/40 underline hover:text-white"
-            >
-              Try again
-            </button>
+            {errorMsg.toLowerCase().includes("upgrade") ? (
+              <a
+                href="/dashboard/billing"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-[13px] font-semibold text-black hover:bg-white/90 transition-colors"
+              >
+                Upgrade to Pro
+              </a>
+            ) : (
+              <button
+                onClick={() => setPhase("settings")}
+                className="text-[12px] text-white/40 underline hover:text-white"
+              >
+                Try again
+              </button>
+            )}
           </div>
         )}
       </div>

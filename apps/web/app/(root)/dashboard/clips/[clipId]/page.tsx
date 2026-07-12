@@ -24,8 +24,31 @@ import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_compone
 import BackgroundRenderer, { STIPOP_KEY, fetchStipopStickers, fetchStipopTrendingPacks, fetchStipopPackStickers, type StipopSticker, type StipopPack, type PlacedSticker, type ImageSegmenterRef } from "./_components/background-renderer";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-/** Free plan can only export clips up to this length. */
+/** Free plan can only export clips up to this length (seconds). */
 const FREE_EXPORT_MAX_SECS = 5 * 60;
+const SPEED_MIN = 0.25;
+const SPEED_MAX = 4;
+
+/** Trimmed source length before speed. */
+function getTrimmedExportSecs(trimStart: number, trimEnd: number, duration: number): number {
+  if (!(duration > 0)) return 0;
+  const end = trimEnd > 0 ? Math.min(trimEnd, duration) : duration;
+  const start = Math.min(Math.max(0, trimStart), end);
+  return Math.max(0, end - start);
+}
+
+/** Final rendered length after playback speed (matches API / FFmpeg: duration / speed). */
+function getRenderedExportSecs(
+  trimStart: number,
+  trimEnd: number,
+  duration: number,
+  speed: number,
+): number {
+  const trimmed = getTrimmedExportSecs(trimStart, trimEnd, duration);
+  if (trimmed <= 0) return 0;
+  const spd = Math.max(SPEED_MIN, Math.min(SPEED_MAX, speed || 1));
+  return trimmed / spd;
+}
 
 // ── Text overlay type ─────────────────────────────────────────────────────────
 interface TextOverlay {
@@ -337,13 +360,13 @@ interface EditPanelProps {
   setContrast: (n: number) => void;
   saturation: number;
   setSaturation: (n: number) => void;
-  exportPhase: "idle" | "exporting" | "done" | "error" | "no_credits";
+  exportPhase: "idle" | "exporting" | "done" | "error" | "no_credits" | "upgrade_required";
   exportProgress: number;
   exportUrl: string | null;
   exportError: string | null;
   handleExport: () => void;
   handleCancelExport: () => void;
-  setExportPhase: (p: "idle" | "exporting" | "done" | "error" | "no_credits") => void;
+  setExportPhase: (p: "idle" | "exporting" | "done" | "error" | "no_credits" | "upgrade_required") => void;
   setExportUrl: (u: string | null) => void;
   styleGridMaxHeight?: number | string;
   // Background overlay
@@ -1539,6 +1562,29 @@ function ExportSection({
         </>
       )}
 
+      {exportPhase === "upgrade_required" && (
+        <>
+          <div className="flex flex-col gap-1 text-[12px] text-amber-400 mb-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 shrink-0" /> Upgrade required
+            </div>
+            <p className="text-[11px] text-white/45 leading-snug pl-6">
+              {exportError ?? "Upgrade to export clips greater than 5 min"}
+            </p>
+          </div>
+          <Link
+            href="/dashboard/billing"
+            className="w-full flex items-center justify-center gap-2 rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+          >
+            <Sparkles className="h-4 w-4" />
+            Upgrade to Pro
+          </Link>
+          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
+            Cancel
+          </button>
+        </>
+      )}
+
       {ResetLink}
     </div>
   );
@@ -1815,7 +1861,7 @@ export default function ClipRefinePage() {
   const segmenterRef = useRef<ImageSegmenterRef | null>(null);
 
   // Export state
-  const [exportPhase, setExportPhase]       = useState<"idle" | "exporting" | "done" | "error" | "no_credits">("idle");
+  const [exportPhase, setExportPhase]       = useState<"idle" | "exporting" | "done" | "error" | "no_credits" | "upgrade_required">("idle");
   /** null = plan not loaded yet (avoid button flicker) */
   const [isFreePlan, setIsFreePlan]         = useState<boolean | null>(null);
   const [exportProgress, setExportProgress] = useState(0);
@@ -2039,12 +2085,17 @@ export default function ClipRefinePage() {
     if (!src || exportPhase === "exporting") return;
     if (duration <= 0) return;
 
-    const effectiveEnd = trimEnd > 0 ? trimEnd : duration;
-    const clipDuration = Math.max(0, effectiveEnd - trimStart);
-    if (isFreePlan === true && clipDuration > FREE_EXPORT_MAX_SECS) {
-      window.location.href = "/dashboard/billing";
+    const clipDuration = getTrimmedExportSecs(trimStart, trimEnd, duration);
+    if (clipDuration <= 0) return;
+    const renderedSecs = getRenderedExportSecs(trimStart, trimEnd, duration, speed);
+    if (isFreePlan === true && renderedSecs > FREE_EXPORT_MAX_SECS) {
+      setExportError("Upgrade to export clips greater than 5 min");
+      setExportPhase("upgrade_required");
       return;
     }
+
+    const effectiveEnd = trimEnd > 0 ? Math.min(trimEnd, duration) : duration;
+    const safeTrimStart = Math.min(Math.max(0, trimStart), effectiveEnd);
 
     setExportPhase("exporting");
     setExportProgress(0);
@@ -2062,10 +2113,10 @@ export default function ClipRefinePage() {
             clipId,
             type: "video",
             startTime: 0,
-            duration: clipDuration,
+            duration: clipDuration, // <-- backend free-plan gate uses this exact field
             sourceDuration: duration,
-            trimIn: trimStart,
-            trimOut: duration - effectiveEnd,
+            trimIn: safeTrimStart,
+            trimOut: Math.max(0, duration - effectiveEnd),
           }],
         },
         { id: "track-audio", items: [] },
@@ -2102,7 +2153,12 @@ export default function ClipRefinePage() {
           setExportPhase("no_credits");
           return;
         }
-        throw new Error(err.error ?? "Export failed");
+        if (err.error === "export_duration_limit") {
+          setExportError(err.message ?? "Upgrade to export clips greater than 5 min");
+          setExportPhase("upgrade_required");
+          return;
+        }
+        throw new Error(err.message ?? err.error ?? "Export failed");
       }
 
       const { exportId } = await res.json();
@@ -2259,11 +2315,9 @@ export default function ClipRefinePage() {
     else          { v.pause(); setPlaying(false); }
   };
 
-  const effectiveTrimEnd = trimEnd > 0 ? trimEnd : duration;
-  // Export length = trimmed clip length (matches 0:00 / MM:SS on the player)
-  const exportClipDurationSecs =
-    duration > 0 ? Math.max(0, effectiveTrimEnd - trimStart) : 0;
-  // Wait for plan + duration so the button doesn't flicker Export ↔ Upgrade
+  const effectiveTrimEnd = trimEnd > 0 ? Math.min(trimEnd, duration || trimEnd) : duration;
+  // Gate on rendered length (trim ÷ speed) — same as API / FFmpeg output
+  const exportClipDurationSecs = getRenderedExportSecs(trimStart, trimEnd, duration, speed);
   const exportGateReady = isFreePlan !== null && duration > 0;
   const exportRequiresUpgrade =
     exportGateReady && isFreePlan === true && exportClipDurationSecs > FREE_EXPORT_MAX_SECS;
