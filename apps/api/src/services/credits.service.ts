@@ -94,8 +94,8 @@ export async function grantSignupCredits(userId: string): Promise<void> {
  *
  * mode "add"   — used for subscription.active (new subscription).
  *                Adds plan credits on top of whatever the user currently has,
- *                so free signup credits (250) are preserved.
- *                e.g. free user (250) subscribes to Core (500) → total 750.
+ *                so free signup credits (150) are preserved.
+ *                e.g. free user (150) subscribes to Core (500) → total 650.
  *
  * mode "reset" — used for subscription.renewed / plan_changed.
  *                Resets the subscription bucket to exactly the plan amount so

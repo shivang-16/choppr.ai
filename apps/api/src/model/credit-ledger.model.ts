@@ -9,7 +9,7 @@ import mongoose, { Document, Schema } from "mongoose";
  */
 
 export type LedgerType =
-  | "grant_free_signup"    // 500 credits on new account creation
+  | "grant_free_signup"    // free plan credits on new account creation
   | "grant_subscription"   // monthly subscription credit reset
   | "grant_topup"          // one-time credit purchase
   | "grant_admin"          // manual grant by admin
