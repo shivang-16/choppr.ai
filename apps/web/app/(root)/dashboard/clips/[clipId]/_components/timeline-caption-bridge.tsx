@@ -52,6 +52,8 @@ export type CaptionTrackApi = {
   updateSegmentPosition: (id: string, posX: number, posY: number) => void;
   /** Get the current segments (read from timeline). */
   getSegments: () => CaptionSegment[];
+  /** Rescale all caption segment start/end times by `factor` (oldSpeed / newSpeed). */
+  rescaleTimings: (factor: number) => void;
 };
 
 // ── Caption track is always on top ───────────────────────────────────────────
@@ -308,10 +310,22 @@ export function useTimelineCaptionApi(
       .sort((a, b) => a.start - b.start);
   }, [editor, wordsRef]);
 
+  const rescaleTimings = useCallback((factor: number) => {
+    if (factor <= 0 || factor === 1) return;
+    const track = editor.getTimelineData()?.tracks?.find(t => t.getName() === CAPTION_TRACK);
+    if (!track) return;
+    for (const el of track.getElements()) {
+      el.setStart(el.getStart() * factor);
+      el.setEnd(el.getEnd() * factor);
+      editor.updateElement(el);
+    }
+    editor.refresh();
+  }, [editor]);
+
   useEffect(() => {
-    apiRef.current = { resetSegments, addSegment, removeSegment, updateSegmentPosition, getSegments };
+    apiRef.current = { resetSegments, addSegment, removeSegment, updateSegmentPosition, getSegments, rescaleTimings };
     return () => { apiRef.current = null; };
-  }, [apiRef, resetSegments, addSegment, removeSegment, updateSegmentPosition, getSegments]);
+  }, [apiRef, resetSegments, addSegment, removeSegment, updateSegmentPosition, getSegments, rescaleTimings]);
 
   // Push segments back to parent whenever the timeline changes
   useEffect(() => {

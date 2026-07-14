@@ -162,6 +162,10 @@ export interface TextOverlay {
   color:    string;  // hex e.g. "#ffffff"
   bold:     boolean;
   italic:   boolean;
+  /** Timeline start time (seconds). Undefined = show for entire video. */
+  startTime?: number | undefined;
+  /** Duration (seconds). Undefined = show for entire video. */
+  duration?:  number | undefined;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -853,26 +857,67 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     // ── 7. Text overlays (rendered via canvas → PNG → FFmpeg overlay) ────────
     tick();
     if (textOverlays.length > 0) {
-      logger.info(`[export:${exportId}] Applying ${textOverlays.length} text overlay(s)...`);
+      logger.info(`[export:${exportId}] Applying ${textOverlays.length} text overlay(s) with per-overlay timing...`);
 
-      const textPng = await renderTextOverlaysToBuffer(textOverlays, targetW, targetH, previewWidth);
-      const textPath = join(tmpDir, "text_overlay.png");
-      await fsp.writeFile(textPath, textPng);
+      // Separate timed overlays (have startTime+duration) from legacy always-on overlays
+      const timedOverlays = textOverlays.filter(
+        o => typeof o.startTime === "number" && typeof o.duration === "number" && o.duration > 0,
+      );
+      const untimedOverlays = textOverlays.filter(
+        o => typeof o.startTime !== "number" || typeof o.duration !== "number",
+      );
 
-      const textOut = join(tmpDir, "with_text.mp4");
-      await ffmpeg([
-        "-y",
-        "-i", finalOut,
-        "-loop", "1", "-i", textPath,
-        "-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1[vout]",
-        "-map", "[vout]", "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "copy", "-movflags", "+faststart",
-        textOut,
-      ], "text-overlay");
+      // Build a list of {path, start, end} segments to apply sequentially
+      const segments: { path: string; start?: number; end?: number }[] = [];
 
-      finalOut = textOut;
-      logger.info(`[export:${exportId}] Text overlays composited`);
+      // Each timed overlay gets its own PNG so they can appear/disappear independently
+      for (let i = 0; i < timedOverlays.length; i++) {
+        const overlay = timedOverlays[i]!;
+        const pngPath = join(tmpDir, `text_overlay_${i}.png`);
+        const buf = await renderTextOverlaysToBuffer([overlay], targetW, targetH, previewWidth);
+        await fsp.writeFile(pngPath, buf);
+        const segStart = overlay.startTime!;
+        const segEnd   = segStart + overlay.duration!;
+        segments.push({ path: pngPath, start: segStart, end: segEnd });
+      }
+
+      // Legacy always-on overlays go into a single shared PNG
+      if (untimedOverlays.length > 0) {
+        const legacyPath = join(tmpDir, "text_overlay_legacy.png");
+        const buf = await renderTextOverlaysToBuffer(untimedOverlays, targetW, targetH, previewWidth);
+        await fsp.writeFile(legacyPath, buf);
+        segments.push({ path: legacyPath }); // no start/end = whole video
+      }
+
+      // Apply each segment sequentially: output of one becomes input of the next
+      let textIn = finalOut;
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i]!;
+        const textOut = join(tmpDir, `with_text_${i}.mp4`);
+        const enableExpr = seg.start !== undefined && seg.end !== undefined
+          ? `between(t,${seg.start.toFixed(3)},${seg.end.toFixed(3)})`
+          : undefined;
+        // Always use shortest=1: -loop 1 on the PNG is infinite, so without it
+        // FFmpeg never ends the encode (progress appears stuck near ~88%).
+        const overlayFilter = enableExpr
+          ? `[0:v][1:v]overlay=0:0:enable='${enableExpr}':shortest=1[vout]`
+          : `[0:v][1:v]overlay=0:0:shortest=1[vout]`;
+        await ffmpeg([
+          "-y",
+          "-i", textIn,
+          "-loop", "1", "-i", seg.path,
+          "-filter_complex", overlayFilter,
+          "-map", "[vout]", "-map", "0:a?",
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+          "-c:a", "copy", "-movflags", "+faststart",
+          "-shortest",
+          textOut,
+        ], `text-overlay-${i}`);
+        textIn = textOut;
+      }
+
+      finalOut = textIn;
+      logger.info(`[export:${exportId}] Text overlays composited (${segments.length} segment(s))`);
     }
 
     await updateExport(exportId, { progress: 92 });

@@ -35,6 +35,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const FREE_EXPORT_MAX_SECS = 5 * 60;
 const SPEED_MIN = 0.25;
 const SPEED_MAX = 4;
+const DEFAULT_OVERLAY_DUR = 4;
 
 /** Trimmed source length before speed. */
 function getTrimmedExportSecs(trimStart: number, trimEnd: number, duration: number): number {
@@ -55,6 +56,22 @@ function getRenderedExportSecs(
   if (trimmed <= 0) return 0;
   const spd = Math.max(SPEED_MIN, Math.min(SPEED_MAX, speed || 1));
   return trimmed / spd;
+}
+
+/** Mirror of the backend computeExportCost — for display only. Backend is authoritative. */
+function computeExportCostEstimate(
+  captionStyle: string,
+  stickers: { stickerId: string }[],
+  tracks: { items: { type: string }[] }[],
+): number {
+  const BASE = 2;
+  const MAX  = 6;
+  let cost = BASE;
+  if (captionStyle && captionStyle !== "none") cost += 1;
+  if (stickers.length > 0) cost += 1;
+  const videoItems = tracks.flatMap(t => t.items.filter(i => i.type === "video"));
+  if (videoItems.length > 1) cost += 1;
+  return Math.min(cost, MAX);
 }
 
 // ── Text overlay type ─────────────────────────────────────────────────────────
@@ -1547,6 +1564,7 @@ function ExportClipButton({
   onDownload,
   size = "default",
   className,
+  creditCost,
 }: {
   exportPhase: "idle" | "exporting" | "done" | "error" | "no_credits" | "upgrade_required";
   exportProgress: number;
@@ -1556,6 +1574,7 @@ function ExportClipButton({
   onDownload: () => void;
   size?: "default" | "compact" | "circle";
   className?: string;
+  creditCost?: number;
 }) {
   const exporting = exportPhase === "exporting";
   const progress = Math.max(0, Math.min(100, exportProgress));
@@ -1604,7 +1623,9 @@ function ExportClipButton({
       ? "Download"
       : exportPhase === "no_credits"
         ? "Get credits"
-        : "Export clip";
+        : creditCost !== undefined
+          ? `Export · ${creditCost} credit${creditCost === 1 ? "" : "s"}`
+          : "Export clip";
 
   return (
     <button
@@ -1647,6 +1668,7 @@ function ExportSection({
   onResetAll,
   compact = false,
   exportRequiresUpgrade = false,
+  exportCreditCost,
 }: Pick<EditPanelProps, "exportPhase" | "exportProgress" | "exportUrl" | "exportError" | "handleExport" | "handleCancelExport" | "setExportPhase" | "setExportUrl"> & {
   handlePrimaryExportAction: () => void;
   exportReadyToDownload: boolean;
@@ -1655,6 +1677,7 @@ function ExportSection({
   onResetAll?: () => void;
   compact?: boolean;
   exportRequiresUpgrade?: boolean;
+  exportCreditCost?: number;
 }) {
   const ResetLink = onResetAll ? (
     <button
@@ -1708,6 +1731,7 @@ function ExportSection({
               onCancel={handleCancelExport}
               onDownload={handlePrimaryExportAction}
               size={compact ? "compact" : "default"}
+              creditCost={exportCreditCost}
             />
             {exportPhase === "exporting" && (
               <p className="text-[10px] text-white/25 text-center">
@@ -2015,7 +2039,7 @@ export default function ClipRefinePage() {
     const draft = loadClipDraft(clipId);
     if (!draft) return;
     if (draft.aspectRatio) setAspectRatio(draft.aspectRatio);
-    if (draft.speed != null) setSpeed(draft.speed);
+    if (draft.speed != null) { setSpeed(draft.speed); prevSpeedRef.current = draft.speed; }
     if (draft.trimStart != null) setTrimStart(draft.trimStart);
     if (draft.trimEnd != null) setTrimEnd(draft.trimEnd);
     if (draft.brightness != null) setBrightness(draft.brightness);
@@ -2046,6 +2070,9 @@ export default function ClipRefinePage() {
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted]     = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  // Raw timeline cursor position — used for overlay visibility (different from currentTime
+  // which is source time after trimStart + speed conversion)
+  const [timelineTime, setTimelineTime] = useState(0);
   const [duration, setDuration]       = useState(0);
   const [activeTab, setActiveTab]     = useState("captions");
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -2103,6 +2130,8 @@ export default function ClipRefinePage() {
 
   // Other settings
   const [speed, setSpeed]             = useState(1.0);
+  // Track previous speed for rescaling overlays when speed changes
+  const prevSpeedRef = useRef(1.0);
   const [trimStart, setTrimStart]     = useState(0);
   const [trimEnd, setTrimEnd]         = useState(0);
   const [brightness, setBrightness]   = useState(100);
@@ -2610,7 +2639,7 @@ export default function ClipRefinePage() {
       const draft = loadClipDraft(clipId, id);
       if (draft) {
         if (draft.aspectRatio) setAspectRatio(draft.aspectRatio);
-        if (draft.speed != null) setSpeed(draft.speed);
+        if (draft.speed != null) { setSpeed(draft.speed); prevSpeedRef.current = draft.speed; }
         if (draft.trimStart != null) setTrimStart(draft.trimStart);
         if (draft.trimEnd != null) setTrimEnd(draft.trimEnd);
         if (draft.brightness != null) setBrightness(draft.brightness);
@@ -2646,6 +2675,31 @@ export default function ClipRefinePage() {
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = speed;
   }, [speed]);
+
+  const handleSpeedChange = useCallback((newSpeed: number) => {
+    const oldSpeed = prevSpeedRef.current;
+    prevSpeedRef.current = newSpeed;
+    setSpeed(newSpeed);
+    if (oldSpeed === newSpeed || oldSpeed <= 0) return;
+    // Rescale factor: how much the rendered clip duration changes.
+    // oldDuration/speed = rendered duration, so factor = oldSpeed / newSpeed
+    const factor = oldSpeed / newSpeed;
+    // Rescale timeline overlay elements (text + stickers)
+    overlayApiRef.current?.rescaleTimings(factor);
+    // Rescale caption track elements
+    captionApiRef.current?.rescaleTimings(factor);
+    // Rescale React state for text overlays and placed stickers
+    setTextOverlays(prev => prev.map(t => ({
+      ...t,
+      startTime: (t.startTime ?? 0) * factor,
+      duration:  (t.duration  ?? DEFAULT_OVERLAY_DUR) * factor,
+    })));
+    setPlacedStickers(prev => prev.map(ps => ({
+      ...ps,
+      startTime: (ps.startTime ?? 0) * factor,
+      duration:  (ps.duration  ?? DEFAULT_OVERLAY_DUR) * factor,
+    })));
+  }, []);
 
   // Load the main clip into the preview <video>. Timeline may swap src for other clips;
   // do not bind src= in JSX or React will overwrite those swaps on every re-render.
@@ -2729,21 +2783,19 @@ export default function ClipRefinePage() {
     setCurrentTime(time);
   }, []);
 
-  const DEFAULT_OVERLAY_DUR = 4;
+  const handleRawTimelineTimeChange = useCallback((time: number) => {
+    setTimelineTime(time);
+  }, []);
 
   const isOverlayVisible = useCallback((startTime: number | undefined, duration: number | undefined) => {
     // If no startTime defined, always show (backwards compat)
     if (startTime === undefined || startTime === null) return true;
-    const start = startTime;
-    // Cap duration: never let a single overlay span more than its stored value capped to video duration
-    const rawDur = duration ?? DEFAULT_OVERLAY_DUR;
-    // If duration is suspiciously >= video duration, it was likely set by Twick to the full timeline —
-    // cap to DEFAULT_OVERLAY_DUR so it doesn't appear for the whole video
-    const dur = (duration !== undefined && duration < (videoRef.current?.duration ?? Infinity) - 0.5)
-      ? rawDur
-      : DEFAULT_OVERLAY_DUR;
-    return currentTime >= start - 0.05 && currentTime < start + dur + 0.05;
-  }, [currentTime, videoRef]);
+    // Use raw timeline cursor position — overlay startTime/duration are in timeline coordinates.
+    // This is correct regardless of speed or trimStart because the text/sticker elements
+    // sit at absolute timeline positions (not source-video positions).
+    const dur = duration ?? DEFAULT_OVERLAY_DUR;
+    return timelineTime >= startTime - 0.05 && timelineTime < startTime + dur + 0.05;
+  }, [timelineTime]);
 
   const handleOverlayTimingChange = useCallback((items: OverlayTimingItem[]) => {
     // Cap duration: if timeline reports a duration >= video duration, it's a Twick default
@@ -2821,7 +2873,13 @@ export default function ClipRefinePage() {
 
   const handleAddTextOverlay = useCallback(() => {
     const id = `txt-${Date.now()}`;
-    const start = overlayApiRef.current?.getCurrentTime() ?? currentTime;
+    // Place the new overlay after all existing overlays (not at cursor position).
+    // This prevents overlap when the cursor sits on an existing overlay.
+    const lastEnd = textOverlays.reduce((acc, t) => {
+      const end = (t.startTime ?? 0) + (t.duration ?? DEFAULT_OVERLAY_DUR);
+      return Math.max(acc, end);
+    }, 0);
+    const start = lastEnd;
     const overlay: TextOverlay = {
       id,
       text: "Your text",
@@ -2847,7 +2905,7 @@ export default function ClipRefinePage() {
       startTime: start,
       duration: DEFAULT_OVERLAY_DUR,
     });
-  }, [currentTime]);
+  }, [textOverlays]);
 
   const handleRemoveTextOverlay = useCallback((id: string) => {
     setTextOverlays(prev => prev.filter(o => o.id !== id));
@@ -2968,6 +3026,13 @@ export default function ClipRefinePage() {
   const exportRequiresUpgrade =
     exportGateReady && isFreePlan === true && exportClipDurationSecs > FREE_EXPORT_MAX_SECS;
 
+  // Estimated credit cost shown in the Export button (mirrors backend computeExportCost)
+  const exportCreditCost = computeExportCostEstimate(
+    captionStyle,
+    placedStickers,
+    exportTracksRef.current ?? [],
+  );
+
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
   const filterStyle = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
@@ -2985,7 +3050,7 @@ export default function ClipRefinePage() {
     captionPosX, setCaptionPosX,
     onResetCaptionPos: handleResetCaptionPos,
     captionLang, activeLang, translating, handleTranslate,
-    speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
+    speed, setSpeed: handleSpeedChange, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
     brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
     exportPhase, exportProgress, exportUrl, exportError, handleExport, handleCancelExport,
     setExportPhase, setExportUrl,
@@ -3375,6 +3440,7 @@ export default function ClipRefinePage() {
                 onDownload={handlePrimaryExportAction}
                 size="compact"
                 className="backdrop-blur-sm shadow-lg"
+                creditCost={exportCreditCost}
               />
             )}
           </div>
@@ -3807,6 +3873,7 @@ export default function ClipRefinePage() {
                 videoRef={videoRef}
                 onTrimChange={handleTimelineTrimChange}
                 onCurrentTimeChange={handleTimelineTimeChange}
+                onTimelineTimeChange={handleRawTimelineTimeChange}
                 onPlayingChange={handleTimelinePlayingChange}
                 onExportTracksChange={handleExportTracksChange}
                 onTimelineSerialize={handleTimelineSerialize}
@@ -3890,6 +3957,7 @@ export default function ClipRefinePage() {
                     setExportPhase={setExportPhase}
                     setExportUrl={setExportUrl}
                     exportRequiresUpgrade={exportRequiresUpgrade}
+                    exportCreditCost={exportCreditCost}
                   />
                 </div>
               </>
@@ -3931,6 +3999,7 @@ export default function ClipRefinePage() {
                       onCancel={handleCancelExport}
                       onDownload={handlePrimaryExportAction}
                       size="circle"
+                      creditCost={exportCreditCost}
                     />
                   )}
                   {exportReadyToDownload && exportUrl && (

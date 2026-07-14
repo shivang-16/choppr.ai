@@ -44,6 +44,8 @@ export type TimelineOverlayApi = {
     italic?: boolean;
   }) => void;
   getCurrentTime: () => number;
+  /** Rescale all overlay element start/end times by `factor` (newSpeed/oldSpeed inverse). */
+  rescaleTimings: (factor: number) => void;
 };
 
 export type OverlayTimingItem = {
@@ -217,12 +219,28 @@ export function TimelineOverlayBridge({
 
   const getCurrentTime = useCallback(() => seekRef.current, []);
 
+  const rescaleTimings = useCallback((factor: number) => {
+    if (factor <= 0 || factor === 1) return;
+    for (const trackName of [TEXT_TRACK, STICKER_TRACK]) {
+      const track = editor.getTrackByName(trackName);
+      if (!track) continue;
+      for (const el of track.getElements()) {
+        const newStart = el.getStart() * factor;
+        const newEnd   = el.getEnd()   * factor;
+        el.setStart(newStart);
+        el.setEnd(newEnd);
+        editor.updateElement(el);
+      }
+    }
+    editor.refresh();
+  }, [editor]);
+
   useEffect(() => {
-    apiRef.current = { addText, addSticker, removeById, updateText, getCurrentTime };
+    apiRef.current = { addText, addSticker, removeById, updateText, getCurrentTime, rescaleTimings };
     return () => {
       apiRef.current = null;
     };
-  }, [apiRef, addText, addSticker, removeById, updateText, getCurrentTime]);
+  }, [apiRef, addText, addSticker, removeById, updateText, getCurrentTime, rescaleTimings]);
 
   // Push timing back to parent when timeline elements move/trim/delete
   useEffect(() => {

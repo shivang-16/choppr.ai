@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { Export } from "../model/export.model.js";
 import { runExportPipeline, cancelExportPipeline, isExportPipelineActive } from "../services/export-pipeline.service.js";
-import { checkBalance, deductExportCredits, CREDITS_PER_EXPORT } from "../services/credits.service.js";
+import { checkBalance, deductExportCredits, computeExportCost, CREDITS_PER_EXPORT_BASE } from "../services/credits.service.js";
 import { UserCredits } from "../model/user-credits.model.js";
 import { logger } from "../utils/logger.js";
 
@@ -70,14 +70,16 @@ const StickerSchema = z.object({
 });
 
 const TextOverlaySchema = z.object({
-  id:       z.string(),
-  text:     z.string(),
-  x:        z.number().min(0).max(1),
-  y:        z.number().min(0).max(1),
-  fontSize: z.number().min(8).max(300),
-  color:    z.string(),
-  bold:     z.boolean().default(false),
-  italic:   z.boolean().default(false),
+  id:        z.string(),
+  text:      z.string(),
+  x:         z.number().min(0).max(1),
+  y:         z.number().min(0).max(1),
+  fontSize:  z.number().min(8).max(300),
+  color:     z.string(),
+  bold:      z.boolean().default(false),
+  italic:    z.boolean().default(false),
+  startTime: z.number().min(0).optional(),
+  duration:  z.number().min(0.1).optional(),
 });
 
 const CreateExportSchema = z.object({
@@ -137,14 +139,22 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
+    // Compute the credit cost for this specific export based on features used
+    const creditCost = computeExportCost({
+      captionStyle: req.body.captionStyle ?? "none",
+      stickers:     req.body.stickers    ?? [],
+      tracks:       req.body.tracks      ?? [],
+    });
+
     // Gate: user must have enough credits for the export
     const { ok, balance } = await checkBalance(userId);
-    if (!ok || balance < CREDITS_PER_EXPORT) {
-      logger.warn("Export rejected: insufficient credits", { userId, balance, required: CREDITS_PER_EXPORT });
+    if (!ok || balance < creditCost) {
+      logger.warn("Export rejected: insufficient credits", { userId, balance, required: creditCost });
       res.status(402).json({
         error: "insufficient_credits",
-        message: `You need at least ${CREDITS_PER_EXPORT} credit(s) to export. Your balance: ${balance}.`,
+        message: `You need at least ${creditCost} credit(s) to export. Your balance: ${balance}.`,
         balance,
+        required: creditCost,
       });
       return;
     }
@@ -177,6 +187,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       projectId,
       status:         "pending",
       progress:       0,
+      creditCost,
       captionStyle,
       captionFontSize,
       captionPosY,
@@ -198,7 +209,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
 
     logger.info("Export pipeline starting", {
       exportId, projectId, userId, aspectRatio, backgroundFill, captionStyle,
-      trackCount: tracks.length,
+      trackCount: tracks.length, creditCost,
     });
 
     // Fire-and-forget: run the pipeline in the background, return immediately
@@ -222,8 +233,8 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
         return;
       }
       try {
-        const { deducted, balanceAfter } = await deductExportCredits(userId, exportId);
-        logger.info("Export credits deducted", { exportId, userId, deducted, balanceAfter });
+        const { deducted, balanceAfter } = await deductExportCredits(userId, exportId, creditCost);
+        logger.info("Export credits deducted", { exportId, userId, deducted, balanceAfter, creditCost });
       } catch (creditErr: any) {
         logger.error("Failed to deduct export credits (export still succeeded)", {
           exportId, userId, error: creditErr?.message,
@@ -235,7 +246,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       });
     });
 
-    res.status(201).json({ exportId, status: "pending" });
+    res.status(201).json({ exportId, status: "pending", creditCost });
   } catch (err) {
     logger.error("Create export failed", { error: err });
     next(err);

@@ -152,6 +152,7 @@ export interface ClipTimelineProps {
   videoRef: RefObject<HTMLVideoElement | null>;
   onTrimChange: (trimStart: number, trimEnd: number) => void;
   onCurrentTimeChange: (time: number) => void;
+  onTimelineTimeChange?: (time: number) => void;
   onPlayingChange: (playing: boolean) => void;
   onToggleMute: () => void;
   onExportTracksChange?: (tracks: ChopprTrack[]) => void;
@@ -180,6 +181,7 @@ function ClipTimelineBridge({
   videoRef,
   onTrimChange,
   onCurrentTimeChange,
+  onTimelineTimeChange,
   onPlayingChange,
   onExportTracksChange,
   onTimelineSerialize,
@@ -198,6 +200,7 @@ function ClipTimelineBridge({
   | "videoRef"
   | "onTrimChange"
   | "onCurrentTimeChange"
+  | "onTimelineTimeChange"
   | "onPlayingChange"
   | "onExportTracksChange"
   | "onTimelineSerialize"
@@ -524,13 +527,14 @@ function ClipTimelineBridge({
 
   const reportTime = useCallback(
     (timelineTime: number, active: VideoElement | null) => {
+      onTimelineTimeChange?.(timelineTime);
       if (active && active.getId() === clipId) {
         onCurrentTimeChange(sourceTimeFor(active, timelineTime));
       } else {
         onCurrentTimeChange(timelineTime);
       }
     },
-    [clipId, onCurrentTimeChange],
+    [clipId, onCurrentTimeChange, onTimelineTimeChange],
   );
   const reportTimeRef = useRef(reportTime);
   reportTimeRef.current = reportTime;
@@ -598,14 +602,8 @@ function ClipTimelineBridge({
     const tick = (ts: number) => {
       if (playerStateRef.current !== PLAYER_STATE.PLAYING) return;
 
-      // If user is dragging the seek handle, freeze the clock but keep RAF alive
-      if (seekGestureRef.current) {
-        lastFrameTsRef.current = ts;
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
-
-      // If the user seeked during playback (handleSeek set userSeekRef), jump there
+      // User seek during playback (timeline click/drag) — apply before seek-gesture freeze
+      // so the playhead jumps immediately and playback continues from the new time.
       const userSeek = userSeekRef.current;
       if (userSeek !== null) {
         userSeekRef.current = null;
@@ -620,6 +618,13 @@ function ClipTimelineBridge({
         if (resolved.active) void applyVideoRef.current(resolved.active, jumpTo, true);
         else videoRef.current?.pause();
         reportTimeRef.current(jumpTo, resolved.active);
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      // If user is dragging the seek handle, freeze the clock but keep RAF alive
+      if (seekGestureRef.current) {
+        lastFrameTsRef.current = ts;
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
@@ -696,6 +701,17 @@ function ClipTimelineBridge({
     else videoRef.current?.pause();
     reportTime(previewTime, active);
   }, [seekTime, playerState, editor, applyVideoToElement, reportTime, videoRef, changeLog]);
+
+  // TimelineManager's SeekControl calls setSeekTime directly (not handleSeek), so while
+  // playing we must forward those seeks into userSeekRef or the RAF clock overwrites them.
+  useEffect(() => {
+    if (playerState !== PLAYER_STATE.PLAYING) return;
+    if (!initializedRef.current) return;
+    const t = Math.max(0, seekTime);
+    if (Math.abs(timelineClockRef.current - t) < 0.05) return;
+    userSeekRef.current = t;
+    timelineClockRef.current = t;
+  }, [seekTime, playerState, userSeekRef]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -1064,6 +1080,7 @@ function ClipTimelineInner(props: ClipTimelineProps) {
         videoRef={props.videoRef}
         onTrimChange={props.onTrimChange}
         onCurrentTimeChange={props.onCurrentTimeChange}
+        onTimelineTimeChange={props.onTimelineTimeChange}
         onPlayingChange={props.onPlayingChange}
         onExportTracksChange={props.onExportTracksChange}
         onTimelineSerialize={props.onTimelineSerialize}
