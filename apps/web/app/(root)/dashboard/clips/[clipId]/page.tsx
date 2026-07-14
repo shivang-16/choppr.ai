@@ -2765,6 +2765,19 @@ export default function ClipRefinePage() {
     return () => { cancelled = true; };
   }, [placedStickers.length]);
   const togglePlay = () => {
+    // Mobile: timeline is hidden — drive the preview video directly
+    if (isMobile) {
+      const v = videoRef.current;
+      if (!v) return;
+      if (v.paused) {
+        void v.play().catch(() => {});
+        setPlaying(true);
+      } else {
+        v.pause();
+        setPlaying(false);
+      }
+      return;
+    }
     timelineToggleRef.current?.();
   };
 
@@ -3603,6 +3616,12 @@ export default function ClipRefinePage() {
                       setDuration(prev => (prev > 0 && Math.abs(prev - d) < 0.5 ? prev : d));
                       setTrimEnd(prev => (prev > 0 && Math.abs(prev - d) < 0.5 ? prev : d));
                     }}
+                    onTimeUpdate={() => {
+                      // Mobile has no timeline clock — sync scrubber from the video element
+                      if (isMobile) setCurrentTime(videoRef.current?.currentTime ?? 0);
+                    }}
+                    onPlay={() => { if (isMobile) setPlaying(true); }}
+                    onPause={() => { if (isMobile) setPlaying(false); }}
                     onError={() => {
                       // Metadata failed (CORS / bad URL) — keep any API duration so timeline still mounts
                       console.warn("[clip] preview video failed to load metadata");
@@ -3865,11 +3884,54 @@ export default function ClipRefinePage() {
           </div>{/* closes video preview div */}
           </div>{/* closes top row (flex-row) */}
 
-          {/* ── Twick timeline (desktop + mobile) ── */}
-          <div className={cn(
-            "shrink-0 w-full",
-            isMobile ? "pb-safe" : ""
-          )}>
+          {/* ── Timeline (desktop) / simple playback (mobile, temporary) ── */}
+          {isMobile ? (
+            <div className="shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a] px-4 pb-3 pt-2 pb-safe">
+              <input
+                type="range"
+                min={0}
+                max={duration || 1}
+                step={0.01}
+                value={Math.min(currentTime, duration || 1)}
+                onChange={e => {
+                  const t = Number(e.target.value);
+                  setCurrentTime(t);
+                  if (videoRef.current) videoRef.current.currentTime = t;
+                }}
+                className="w-full accent-white cursor-pointer h-1"
+              />
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={togglePlay}
+                  className="h-8 w-8 flex items-center justify-center rounded-full bg-white text-black hover:bg-white/90 transition-colors"
+                >
+                  {playing
+                    ? <Pause className="h-3.5 w-3.5 fill-black" />
+                    : <Play className="h-3.5 w-3.5 fill-black ml-0.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMuted(m => !m)}
+                  className="text-white hover:text-white/70 transition-colors"
+                >
+                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </button>
+                <span className="text-[11px] font-mono text-white/70">
+                  {fmt(currentTime)} / {fmt(duration)}
+                </span>
+                {speed !== 1 && (
+                  <span className="text-[10px] font-semibold text-white/50 bg-white/8 px-1.5 py-0.5 rounded">
+                    {speed}×
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-white/45 text-center pt-0.5">
+                Switch to large screen for editor mode
+              </p>
+            </div>
+          ) : (
+          <div className="shrink-0 w-full">
             {activeSrc ? (
               duration > 0 ? (
               <ClipTimeline
@@ -3882,7 +3944,7 @@ export default function ClipRefinePage() {
                 trimEnd={effectiveTrimEnd}
                 speed={speed}
                 muted={muted}
-                isMobile={isMobile}
+                isMobile={false}
                 videoRef={videoRef}
                 onTrimChange={handleTimelineTrimChange}
                 onCurrentTimeChange={handleTimelineTimeChange}
@@ -3903,10 +3965,7 @@ export default function ClipRefinePage() {
                 resetKey={timelineResetKey}
               />
               ) : (
-              <div className={cn(
-                "shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a]",
-                isMobile ? "px-4 pb-3 pt-2" : "px-6 py-3"
-              )}>
+              <div className="shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a] px-6 py-3">
                 <div className="h-1 w-full rounded bg-white/10 animate-pulse" />
                 <div className="flex items-center gap-3 text-[11px] text-white/40">
                   Loading timeline…
@@ -3914,16 +3973,14 @@ export default function ClipRefinePage() {
               </div>
               )
             ) : (
-              <div className={cn(
-                "shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a]",
-                isMobile ? "px-4 pb-3 pt-2" : "px-6 py-3"
-              )}>
+              <div className="shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a] px-6 py-3">
                 <div className="flex items-center gap-3 text-[11px] text-white/40">
                   No video source for this clip
                 </div>
               </div>
             )}
           </div>
+          )}
         </div>{/* closes outer flex-col (video area wrapper) */}
 
         {/* ── Desktop: collapsible icon sidebar + sliding panel ── */}
