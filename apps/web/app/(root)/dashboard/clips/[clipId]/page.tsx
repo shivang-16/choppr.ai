@@ -3593,7 +3593,6 @@ export default function ClipRefinePage() {
                     key={activeSrc}
                     ref={videoRef}
                     data-keep="1"
-                    // crossOrigin only when stickers need canvas segmentation — otherwise S3 CORS can block playback
                     crossOrigin={placedStickers.length > 0 ? "anonymous" : undefined}
                     muted={muted}
                     playsInline

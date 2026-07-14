@@ -32,8 +32,9 @@ const VideoThumbnailStrip = memo(function VideoThumbnailStrip({
     video.muted = true;
     video.playsInline = true;
     video.preload = "metadata";
-    // Do NOT set crossOrigin — S3 clips don't always send CORS headers and
-    // the extraction is only for UI thumbnails, so CORS errors don't matter.
+    // S3 CORS is configured for all app origins — set crossOrigin so frames
+    // can be drawn to canvas for thumbnail extraction.
+    video.crossOrigin = "anonymous";
     video.src = src;
 
     let frameIdx = 0;
