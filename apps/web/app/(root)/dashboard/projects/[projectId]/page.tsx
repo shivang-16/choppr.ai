@@ -603,10 +603,12 @@ export default function ProjectDetailPage() {
             <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/8 px-4 py-3">
               <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
               <div className="flex flex-col gap-0.5">
-                <p className="text-[13px] font-medium text-red-300">Processing failed</p>
-                {project?.error && (
-                  <p className="text-[11px] text-red-400/70 font-mono break-all">{project.error}</p>
-                )}
+                <p className="text-[13px] font-medium text-red-300">
+                  Processing failed. Please try again in a few minutes.
+                </p>
+                <p className="text-[11px] text-red-400/70">
+                  If this keeps happening, try a different video or upload the file directly.
+                </p>
               </div>
             </div>
           )}

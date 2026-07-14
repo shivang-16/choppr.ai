@@ -15,6 +15,7 @@ import {
   ArrowLeft, Play, Pause, Volume2, VolumeX,
   Captions, Gauge, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Type, Plus, Trash2, Smile, ImageIcon, Move, Upload,
 } from "lucide-react";
+import Link from "next/link";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,35 @@ import type { ChopprTrack, TimelineOverlayApi, OverlayTimingItem, TimelineMediaA
 import { useClipDraftAutosave, loadClipDraft, clearClipDraft, type ClipDraftState } from "./_components/use-clip-draft";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+/** Free plan can only export clips up to this length (seconds). */
+const FREE_EXPORT_MAX_SECS = 5 * 60;
+const SPEED_MIN = 0.25;
+const SPEED_MAX = 4;
+
+/** Mobile bottom drawer sits above the bottom tab strip. */
+const MOBILE_STRIP_BOTTOM = "0px";
+const MOBILE_DRAWER_BOTTOM = "calc(3.25rem + 64px)";
+
+/** Trimmed source length before speed. */
+function getTrimmedExportSecs(trimStart: number, trimEnd: number, duration: number): number {
+  if (!(duration > 0)) return 0;
+  const end = trimEnd > 0 ? Math.min(trimEnd, duration) : duration;
+  const start = Math.min(Math.max(0, trimStart), end);
+  return Math.max(0, end - start);
+}
+
+/** Final rendered length after playback speed (matches API / FFmpeg: duration / speed). */
+function getRenderedExportSecs(
+  trimStart: number,
+  trimEnd: number,
+  duration: number,
+  speed: number,
+): number {
+  const trimmed = getTrimmedExportSecs(trimStart, trimEnd, duration);
+  if (trimmed <= 0) return 0;
+  const spd = Math.max(SPEED_MIN, Math.min(SPEED_MAX, speed || 1));
+  return trimmed / spd;
+}
 
 // ── Text overlay type ─────────────────────────────────────────────────────────
 interface TextOverlay {
@@ -351,13 +381,13 @@ interface EditPanelProps {
   setContrast: (n: number) => void;
   saturation: number;
   setSaturation: (n: number) => void;
-  exportPhase: "idle" | "exporting" | "done" | "error" | "no_credits";
+  exportPhase: "idle" | "exporting" | "done" | "error" | "no_credits" | "upgrade_required";
   exportProgress: number;
   exportUrl: string | null;
   exportError: string | null;
   handleExport: () => void;
   handleCancelExport: () => void;
-  setExportPhase: (p: "idle" | "exporting" | "done" | "error" | "no_credits") => void;
+  setExportPhase: (p: "idle" | "exporting" | "done" | "error" | "no_credits" | "upgrade_required") => void;
   setExportUrl: (u: string | null) => void;
   styleGridMaxHeight?: number | string;
   // Background overlay
@@ -1461,7 +1491,7 @@ function ExportClipButton({
   size = "default",
   className,
 }: {
-  exportPhase: "idle" | "exporting" | "done" | "error" | "no_credits";
+  exportPhase: "idle" | "exporting" | "done" | "error" | "no_credits" | "upgrade_required";
   exportProgress: number;
   exportReadyToDownload: boolean;
   onExport: () => void;
@@ -1556,6 +1586,7 @@ function ExportSection({
   onDownloadEdit,
   onResetAll,
   compact = false,
+  exportRequiresUpgrade = false,
 }: Pick<EditPanelProps, "exportPhase" | "exportProgress" | "exportUrl" | "exportError" | "handleExport" | "handleCancelExport" | "setExportPhase" | "setExportUrl"> & {
   handlePrimaryExportAction: () => void;
   exportReadyToDownload: boolean;
@@ -1563,6 +1594,7 @@ function ExportSection({
   onDownloadEdit?: () => void;
   onResetAll?: () => void;
   compact?: boolean;
+  exportRequiresUpgrade?: boolean;
 }) {
   const ResetLink = onResetAll ? (
     <button
@@ -1590,26 +1622,136 @@ function ExportSection({
 
   return (
     <div className={cn("flex flex-col gap-2", compact && "gap-1.5")}>
-      <ExportClipButton
-        exportPhase={exportPhase === "error" ? "idle" : exportPhase}
-        exportProgress={exportProgress}
-        exportReadyToDownload={exportReadyToDownload}
-        onExport={() => {
-          if (exportPhase === "error") setExportPhase("idle");
-          handleExport();
-        }}
-        onCancel={handleCancelExport}
-        onDownload={handlePrimaryExportAction}
-        size={compact ? "compact" : "default"}
-      />
+      {(exportPhase === "idle" || (exportPhase === "done" && !exportReadyToDownload)) && (
+        exportRequiresUpgrade ? (
+          <div className="flex flex-col gap-1.5">
+            <Link
+              href="/dashboard/billing"
+              className="w-full flex items-center justify-center gap-2 rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+            >
+              <Sparkles className="h-4 w-4" />
+              Upgrade to Pro
+            </Link>
+            {!compact && (
+              <p className="text-[10px] text-white/40 text-center leading-snug">
+                Upgrade to export clips greater than 5 min
+              </p>
+            )}
+          </div>
+        ) : (
+          <ExportClipButton
+            exportPhase={exportPhase}
+            exportProgress={exportProgress}
+            exportReadyToDownload={exportReadyToDownload}
+            onExport={handleExport}
+            onCancel={handleCancelExport}
+            onDownload={handlePrimaryExportAction}
+            size={compact ? "compact" : "default"}
+          />
+        )
+      )}
 
-      {exportReadyToDownload && exportUrl && !compact && (
-        <button
-          onClick={handleExport}
-          className="text-[11px] text-white/35 hover:text-white/60 transition-colors text-center py-1"
-        >
-          Export again
-        </button>
+      {exportPhase === "exporting" && (
+        <>
+          <div className="flex items-center justify-between text-[11px] text-white/40 mb-1">
+            <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Rendering…</span>
+            <span>{exportProgress}%</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-white transition-all duration-500" style={{ width: `${exportProgress}%` }} />
+          </div>
+          <button
+            type="button"
+            onClick={handleCancelExport}
+            className="mt-1 w-full rounded-xl border border-white/15 py-2 text-[12px] font-medium text-white/55 hover:text-white/80 hover:border-white/25 transition-colors"
+          >
+            Cancel export
+          </button>
+          <p className="text-[10px] text-white/25 text-center">
+            Times out after {EXPORT_TIMEOUT_MINUTES} minutes if stuck.
+          </p>
+        </>
+      )}
+
+      {exportReadyToDownload && exportUrl && (
+        <>
+          <div className="flex items-center gap-2 text-[12px] text-green-400 mb-1">
+            <CheckCircle className="h-4 w-4" /> Export ready!
+          </div>
+          <button
+            onClick={handlePrimaryExportAction}
+            className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+          >
+            Download
+          </button>
+          {!compact && (
+            <button
+              onClick={handleExport}
+              className="text-[11px] text-white/35 hover:text-white/60 transition-colors text-center py-1"
+            >
+              Export again
+            </button>
+          )}
+        </>
+      )}
+
+      {exportPhase === "error" && (
+        <>
+          <div className="flex flex-col gap-1 text-[12px] text-red-400 mb-1">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" /> Export failed
+            </div>
+            {exportError && (
+              <p className="text-[11px] text-red-400/80 leading-snug pl-6">{exportError}</p>
+            )}
+          </div>
+          <button
+            onClick={() => setExportPhase("idle")}
+            className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 transition-all"
+          >
+            Try again
+          </button>
+        </>
+      )}
+
+      {exportPhase === "no_credits" && (
+        <>
+          <div className="flex items-center gap-2 text-[12px] text-amber-400 mb-1">
+            <AlertCircle className="h-4 w-4" /> Not enough credits to export
+          </div>
+          <a
+            href="/pricing"
+            className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all text-center block"
+          >
+            Get more credits →
+          </a>
+          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
+            Cancel
+          </button>
+        </>
+      )}
+
+      {exportPhase === "upgrade_required" && (
+        <>
+          <div className="flex flex-col gap-1 text-[12px] text-amber-400 mb-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 shrink-0" /> Upgrade required
+            </div>
+            <p className="text-[11px] text-white/45 leading-snug pl-6">
+              {exportError ?? "Upgrade to export clips greater than 5 min"}
+            </p>
+          </div>
+          <Link
+            href="/dashboard/billing"
+            className="w-full flex items-center justify-center gap-2 rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+          >
+            <Sparkles className="h-4 w-4" />
+            Upgrade to Pro
+          </Link>
+          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
+            Cancel
+          </button>
+        </>
       )}
 
       {ResetLink}
@@ -1930,7 +2072,9 @@ export default function ClipRefinePage() {
   const segmenterRef = useRef<ImageSegmenterRef | null>(null);
 
   // Export state
-  const [exportPhase, setExportPhase]       = useState<"idle" | "exporting" | "done" | "error" | "no_credits">("idle");
+  const [exportPhase, setExportPhase]       = useState<"idle" | "exporting" | "done" | "error" | "no_credits" | "upgrade_required">("idle");
+  /** null = plan not loaded yet (avoid button flicker) */
+  const [isFreePlan, setIsFreePlan]         = useState<boolean | null>(null);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportUrl, setExportUrl]           = useState<string | null>(null);
   const [exportError, setExportError]       = useState<string | null>(null);
@@ -1995,6 +2139,21 @@ export default function ClipRefinePage() {
       .catch(() => {});
   }, [projectId]);
 
+  useEffect(() => {
+    apiFetch(`${API_URL}/api/plans/me`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) {
+          setIsFreePlan(true);
+          return;
+        }
+        const planId = d.currentPlanId ?? "free";
+        const plan = d.plans?.find((p: any) => p.slug === planId || p._id === planId);
+        setIsFreePlan(!plan || plan.slug === "free" || planId === "free");
+      })
+      .catch(() => setIsFreePlan(true));
+  }, []);
+
   // Close AR dropdown on outside click
   useEffect(() => {
     if (!arDropdownOpen) return;
@@ -2007,7 +2166,7 @@ export default function ClipRefinePage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [arDropdownOpen]);
 
-  // Load clip captions + duration on mount
+  // Load clip captions + duration on mount (duration from API avoids Export↔Upgrade flicker)
   useEffect(() => {
     if (!clipId) return;
 
@@ -2015,6 +2174,10 @@ export default function ClipRefinePage() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return;
+        if (typeof data.duration === "number" && data.duration > 0) {
+          setDuration(data.duration);
+          setTrimEnd((prev) => (prev > 0 ? prev : data.duration));
+        }
         if (data.captions?.length) {
           setCaptionWords(data.captions);
           setCaptionLang(data.captionLang ?? "");
@@ -2173,6 +2336,19 @@ export default function ClipRefinePage() {
 
   const handleExport = async () => {
     if (!src || exportPhase === "exporting") return;
+    if (duration <= 0) return;
+
+    const clipDuration = getTrimmedExportSecs(trimStart, trimEnd, duration);
+    if (clipDuration <= 0) return;
+    const renderedSecs = getRenderedExportSecs(trimStart, trimEnd, duration, speed);
+    if (isFreePlan === true && renderedSecs > FREE_EXPORT_MAX_SECS) {
+      setExportError("Upgrade to export clips greater than 5 min");
+      setExportPhase("upgrade_required");
+      return;
+    }
+
+    const effectiveEnd = trimEnd > 0 ? Math.min(trimEnd, duration) : duration;
+    const safeTrimStart = Math.min(Math.max(0, trimStart), effectiveEnd);
 
     setExportPhase("exporting");
     setExportProgress(0);
@@ -2192,12 +2368,13 @@ export default function ClipRefinePage() {
             id: "track-video",
             items: [{
               id: clipId,
+              clipId,
               type: "video" as const,
               startTime: 0,
               duration: clipDuration,
               sourceDuration: duration,
-              trimIn: trimStart,
-              trimOut: duration - effectiveEnd,
+              trimIn: safeTrimStart,
+              trimOut: Math.max(0, duration - effectiveEnd),
               src: activeSrc,
             }],
           },
@@ -2256,7 +2433,12 @@ export default function ClipRefinePage() {
           setExportPhase("no_credits");
           return;
         }
-        throw new Error(err.error ?? "Export failed");
+        if (err.error === "export_duration_limit") {
+          setExportError(err.message ?? "Upgrade to export clips greater than 5 min");
+          setExportPhase("upgrade_required");
+          return;
+        }
+        throw new Error(err.message ?? err.error ?? "Export failed");
       }
 
       const { exportId } = await res.json();
@@ -2658,7 +2840,12 @@ export default function ClipRefinePage() {
     }
   }, [activeCaptionSegment]);
 
-  const effectiveTrimEnd = trimEnd > 0 ? trimEnd : duration;
+  const effectiveTrimEnd = trimEnd > 0 ? Math.min(trimEnd, duration || trimEnd) : duration;
+  // Gate on rendered length (trim ÷ speed) — same as API / FFmpeg output
+  const exportClipDurationSecs = getRenderedExportSecs(trimStart, trimEnd, duration, speed);
+  const exportGateReady = isFreePlan !== null && duration > 0;
+  const exportRequiresUpgrade =
+    exportGateReady && isFreePlan === true && exportClipDurationSecs > FREE_EXPORT_MAX_SECS;
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -3575,6 +3762,7 @@ export default function ClipRefinePage() {
                     onResetAll={resetAll}
                     setExportPhase={setExportPhase}
                     setExportUrl={setExportUrl}
+                    exportRequiresUpgrade={exportRequiresUpgrade}
                   />
                 </div>
               </>
@@ -3593,16 +3781,32 @@ export default function ClipRefinePage() {
                   </button>
                 ))}
                 <div className="mt-auto w-full px-2 pb-3 flex flex-col items-center gap-1.5">
-                  <ExportClipButton
-                    exportPhase={exportPhase === "error" ? "idle" : exportPhase}
-                    exportProgress={exportProgress}
-                    exportReadyToDownload={exportReadyToDownload}
-                    onExport={handleExport}
-                    onCancel={handleCancelExport}
-                    onDownload={handlePrimaryExportAction}
-                    size="compact"
-                    className="w-full min-w-0"
-                  />
+                  {/* Circular export/download / upgrade button */}
+                  {exportRequiresUpgrade && !exportReadyToDownload && exportPhase !== "exporting" ? (
+                    <>
+                      <Link
+                        href="/dashboard/billing"
+                        title="Upgrade to export clips greater than 5 min"
+                        className="h-11 w-11 flex items-center justify-center rounded-full bg-white text-black hover:bg-white/85 active:bg-white/70 transition-all"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                      </Link>
+                      <span className="text-[9px] font-medium text-white/60 text-center leading-tight">
+                        Upgrade
+                      </span>
+                    </>
+                  ) : (
+                    <ExportClipButton
+                      exportPhase={exportPhase === "error" ? "idle" : exportPhase}
+                      exportProgress={exportProgress}
+                      exportReadyToDownload={exportReadyToDownload}
+                      onExport={handleExport}
+                      onCancel={handleCancelExport}
+                      onDownload={handlePrimaryExportAction}
+                      size="compact"
+                      className="w-full min-w-0"
+                    />
+                  )}
                   {exportReadyToDownload && exportUrl && (
                     <button
                       onClick={handleExport}
@@ -3617,6 +3821,104 @@ export default function ClipRefinePage() {
           </div>
         )}
       </main>
+
+      {/* ── MOBILE ONLY — outside <main> ── */}
+
+      {/* Dimmed backdrop */}
+      {isMobile && mobileDrawerOpen && (
+        <button
+          type="button"
+          aria-label="Close panel"
+          className="fixed inset-0 z-[45] bg-black/50"
+          onClick={closeDrawer}
+        />
+      )}
+
+      {/* Bottom drawer */}
+      {isMobile && drawerMounted && (
+        <div
+          className={cn(
+            "fixed left-0 right-0 z-[55] flex flex-col",
+            "bg-[#111] rounded-t-[20px] border-t border-white/10 shadow-[0_-12px_48px_rgba(0,0,0,0.8)]",
+            "transition-transform duration-300 ease-out",
+            !mobileDrawerOpen && "pointer-events-none"
+          )}
+          style={{
+            bottom: MOBILE_DRAWER_BOTTOM,
+            maxHeight: "min(60vh, calc(100vh - 16rem))",
+            transform: mobileDrawerOpen
+              ? "translateY(0)"
+              : `translateY(calc(100% + ${MOBILE_DRAWER_BOTTOM}))`,
+          }}
+        >
+          {/* Drag handle pill */}
+          <div className="flex justify-center pt-3 pb-0 shrink-0">
+            <div className="h-[3px] w-9 rounded-full bg-white/25" />
+          </div>
+
+          {/* Header: title + close */}
+          <div className="flex items-center justify-between px-4 pt-2 pb-2 shrink-0">
+            <p className="text-[13px] font-semibold text-white">{activeTabLabel}</p>
+            <button
+              onClick={closeDrawer}
+              className="h-7 w-7 flex items-center justify-center rounded-full bg-white/8 text-white/40 hover:text-white transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {/* Scrollable edit content */}
+          <div className="flex-1 overflow-y-auto px-4 pb-4 no-scrollbar min-h-0">
+            <EditPanelContent {...editPanelProps} styleGridMaxHeight={200} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Mobile bottom strip (tab icons + export button) ── */}
+      {isMobile && <div
+        className="fixed left-0 right-0 z-50 bg-[#0a0a0a]"
+        style={{ bottom: MOBILE_STRIP_BOTTOM }}
+      >
+        {/* Tab row */}
+        <div className="flex items-stretch border-b border-white/6">
+          {TABS.map(({ id, icon: Icon, label }) => (
+            <button
+              key={id}
+              onClick={() => handleMobileTab(id)}
+              className={cn(
+                "flex-1 flex flex-col items-center justify-center gap-0.5 h-11 text-[9px] font-medium transition-all",
+                activeTab === id && mobileDrawerOpen
+                  ? "text-white bg-white/8"
+                  : "text-white/40 active:bg-white/5"
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Export — compact, no helper text */}
+        <div className="px-4 py-2">
+          <ExportSection
+            exportPhase={exportPhase}
+            exportProgress={exportProgress}
+            exportUrl={exportUrl}
+            exportError={exportError}
+            handleExport={handleExport}
+            handleCancelExport={handleCancelExport}
+            handlePrimaryExportAction={handlePrimaryExportAction}
+            exportReadyToDownload={exportReadyToDownload}
+            downloadMode={downloadMode}
+            onDownloadEdit={handleDownloadEdit}
+            onResetAll={resetAll}
+            setExportPhase={setExportPhase}
+            setExportUrl={setExportUrl}
+            exportRequiresUpgrade={exportRequiresUpgrade}
+            compact
+          />
+        </div>
+      </div>}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { useApiFetch } from "@/lib/apiFetch";
 import { Loader2, Film, Trash2, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import Sidebar from "../_components/sidebar";
 import Topbar from "../_components/topbar";
+import posthog from "posthog-js";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -102,6 +103,7 @@ export default function ProjectsPage() {
     setDeleting(true);
     try {
       await apiFetch(`${API_URL}/api/projects/${deleteTarget.id}`, { method: "DELETE" });
+      posthog.capture("project_deleted", { project_id: deleteTarget.id });
       setProjects((p) => p.filter((x) => x._id !== deleteTarget.id));
       setDeleteTarget(null);
     } finally {

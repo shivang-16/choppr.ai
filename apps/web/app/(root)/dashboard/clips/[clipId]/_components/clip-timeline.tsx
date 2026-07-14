@@ -531,6 +531,36 @@ function ClipTimelineBridge({
   const reportTimeRef = useRef(reportTime);
   reportTimeRef.current = reportTime;
 
+  const lastSeekHandledRef = useRef<{ seek: number; state: string }>({
+    seek: -1,
+    state: "",
+  });
+  const seekGestureRef = useRef(false);
+
+  // Freeze the play clock while the user is interacting with the seek track
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (!target?.closest?.(".clip-timeline-shell .twick-seek-track")) return;
+      seekGestureRef.current = true;
+    };
+    const onUp = () => {
+      if (!seekGestureRef.current) return;
+      // Keep frozen briefly so onSeek can commit before the clock resumes
+      window.setTimeout(() => {
+        seekGestureRef.current = false;
+      }, 0);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
+    return () => {
+      window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+    };
+  }, []);
+
   // Play / pause — timeline clock drives preview across all clips
   useEffect(() => {
     if (rafRef.current != null) {
@@ -565,7 +595,8 @@ function ClipTimelineBridge({
 
     const tick = (ts: number) => {
       if (playerStateRef.current !== PLAYER_STATE.PLAYING) return;
-      if (switchingSrcRef.current) {
+      if (switchingSrcRef.current || seekGestureRef.current) {
+        lastFrameTsRef.current = ts;
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
@@ -596,8 +627,9 @@ function ClipTimelineBridge({
       }
 
       timelineClockRef.current = next;
+      // Only advance currentTime during playback — seekTime is reserved for user gestures
+      // so timeline clicks aren't immediately overwritten by the next clock tick.
       setCurrentTime(next);
-      setSeekTime(next);
 
       const active = resolved.active;
       if (active) void applyVideoRef.current(active, next, true);
@@ -616,21 +648,52 @@ function ClipTimelineBridge({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerState]);
 
-  // Scrub while paused (+ re-sync when timeline clips are seeded or edited)
+  // Scrub / seek: works while paused AND while playing (jump playhead mid-playback)
   useEffect(() => {
-    if (playerState === PLAYER_STATE.PLAYING) return;
     if (!initializedRef.current) return;
 
+    const playing = playerState === PLAYER_STATE.PLAYING;
+    const seekChanged =
+      Math.abs(seekTime - lastSeekHandledRef.current.seek) > 0.001;
+    const stateChanged = playerState !== lastSeekHandledRef.current.state;
+
+    // While playing, only react to an explicit user seek — not changeLog-only re-runs
+    // which would snap the playhead back to a stale seekTime.
+    if (playing && !seekChanged && !stateChanged) return;
+
+    lastSeekHandledRef.current = { seek: seekTime, state: playerState };
+
     const t = Math.max(0, seekTimeRef.current);
-    timelineClockRef.current = t;
     const videos = listVideoElements(editor);
-    const resolved = resolvePlaybackAt(videos, t, false);
-    const previewTime = resolved.time;
+    const resolved = resolvePlaybackAt(videos, t, playing);
+    const seekTo = resolved.time;
     const active = resolved.active;
-    if (active) void applyVideoToElement(active, previewTime, false);
+
+    timelineClockRef.current = seekTo;
+    if (playing) lastFrameTsRef.current = null;
+
+    if (Math.abs(seekTo - t) > 0.02) {
+      lastSeekHandledRef.current.seek = seekTo;
+      setSeekTime(seekTo);
+      setCurrentTime(seekTo);
+    } else if (playing) {
+      setCurrentTime(seekTo);
+    }
+
+    if (active) void applyVideoToElement(active, seekTo, playing);
     else videoRef.current?.pause();
-    reportTime(previewTime, active);
-  }, [seekTime, playerState, editor, applyVideoToElement, reportTime, videoRef, changeLog]);
+    reportTime(seekTo, active);
+  }, [
+    seekTime,
+    playerState,
+    editor,
+    applyVideoToElement,
+    reportTime,
+    videoRef,
+    changeLog,
+    setSeekTime,
+    setCurrentTime,
+  ]);
 
   useEffect(() => {
     const video = videoRef.current;

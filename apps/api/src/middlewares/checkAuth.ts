@@ -176,7 +176,7 @@ export const baseAuth = async (
           `New user created with username: ${user.username} and free subscription plan`
         );
 
-        // Grant 500 free signup credits (idempotent)
+        // Grant free signup credits from Plan.credits (idempotent)
         grantSignupCredits(user!._id).catch((err) => {
           logger.error(`Failed to grant signup credits to ${user!._id}: ${err}`);
         });

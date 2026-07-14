@@ -4,7 +4,34 @@ import { z } from "zod";
 import { Export } from "../model/export.model.js";
 import { runExportPipeline, cancelExportPipeline, isExportPipelineActive } from "../services/export-pipeline.service.js";
 import { checkBalance, deductExportCredits, CREDITS_PER_EXPORT } from "../services/credits.service.js";
+import { UserCredits } from "../model/user-credits.model.js";
 import { logger } from "../utils/logger.js";
+
+/** Free plan cannot export longer than this (seconds). */
+export const FREE_EXPORT_MAX_SECS = 5 * 60;
+
+const SPEED_MIN = 0.25;
+const SPEED_MAX = 4.0;
+
+/**
+ * Actual rendered export length (matches export pipeline: outputDur = duration / speed).
+ * Clip page sends one video item with duration=(trimEnd-trimStart) and speeds[id]=playback rate.
+ */
+function getExportDurationSecs(
+  tracks: { items: { id: string; type: string; duration: number }[] }[],
+  speeds: Record<string, number> = {},
+): number {
+  let total = 0;
+  for (const track of tracks) {
+    for (const item of track.items) {
+      if (item.type !== "video") continue;
+      if (!Number.isFinite(item.duration) || item.duration <= 0) continue;
+      const spd = Math.max(SPEED_MIN, Math.min(SPEED_MAX, speeds[item.id] ?? 1.0));
+      total += item.duration / spd;
+    }
+  }
+  return total;
+}
 
 const TrackItemSchema = z.object({
   id:             z.string(),
@@ -14,6 +41,8 @@ const TrackItemSchema = z.object({
   sourceDuration: z.number(),
   trimIn:         z.number(),
   trimOut:        z.number(),
+  /** DB clip id — backend resolves src/captions from Clip collection */
+  clipId:         z.string().optional(),
   src:            z.string().optional(),
   audioDetached:  z.boolean().optional(),
   linkedAudioId:  z.string().optional(),
@@ -121,6 +150,25 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
     }
 
     const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, captionSegments, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId, stickers, textOverlays, thumbnailOverlay, previewWidth } = parsed.data;
+
+    // Gate: free plan cannot export clips longer than 5 minutes (after speed)
+    const exportDurationSecs = getExportDurationSecs(tracks, speeds);
+    const userCredits = await UserCredits.findById(userId).lean();
+    const planSlug = userCredits?.plan ?? "free";
+    if (planSlug === "free" && exportDurationSecs > FREE_EXPORT_MAX_SECS) {
+      logger.warn("Export rejected: free plan duration limit", {
+        userId, planSlug, exportDurationSecs, maxSecs: FREE_EXPORT_MAX_SECS,
+      });
+      res.status(403).json({
+        error: "export_duration_limit",
+        message: "Upgrade to export clips greater than 5 min",
+        maxSecs: FREE_EXPORT_MAX_SECS,
+        durationSecs: exportDurationSecs,
+        upgradeUrl: "/dashboard/billing",
+      });
+      return;
+    }
+
     const exportId = randomUUID();
 
     await Export.create({

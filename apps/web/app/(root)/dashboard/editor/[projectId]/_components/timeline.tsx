@@ -17,6 +17,8 @@ export interface TrackItem {
   trimIn: number;        // seconds trimmed from start of source
   trimOut: number;       // seconds trimmed from end of source
   label: string;
+  /** DB clip id — used by export to resolve src/captions server-side */
+  clipId?: string;
   src?: string;
   thumbnailUrl?: string;
   audioDetached?: boolean; // if true, this video item plays muted

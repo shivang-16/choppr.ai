@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, X, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { useApiFetch } from "@/lib/apiFetch";
+import posthog from "posthog-js";
 import {
   EXPORT_POLL_INTERVAL_MS,
   EXPORT_TIMEOUT_MS,
@@ -95,6 +96,7 @@ export default function ExportModal({ projectId, tracks, volumes, aspectRatio, o
         /* still reset UI */
       }
     }
+    posthog.capture("export_cancelled", { project_id: projectId });
     setPhase("error");
     setErrorMsg("Export cancelled");
   }
@@ -106,25 +108,53 @@ async function startExport() {
     stopPolling();
 
     try {
+      // Slim payload: omit thumbnailUrl/label and prefer clipId over repeated S3 URLs.
+      // Backend resolves src (and captions) from the Clip DB when clipId is present.
+      const slimTracks = tracks.map((t) => ({
+        id: t.id,
+        items: t.items.map((item) => ({
+          id: item.id,
+          type: item.type,
+          startTime: item.startTime,
+          duration: item.duration,
+          sourceDuration: item.sourceDuration,
+          trimIn: item.trimIn,
+          trimOut: item.trimOut,
+          ...(item.clipId ? { clipId: item.clipId } : {}),
+          // Fallback src only when we don't have a DB clip id (legacy / non-clip media)
+          ...(!item.clipId && item.src ? { src: item.src } : {}),
+          ...(item.audioDetached ? { audioDetached: true } : {}),
+          ...(item.linkedAudioId ? { linkedAudioId: item.linkedAudioId } : {}),
+        })),
+      }));
+
       const res = await apiFetch(`${API_URL}/api/exports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
-          tracks,
+          tracks: slimTracks,
           volumes,
           captionStyle,
-          captionMap: {},   // backend always fetches from DB
           aspectRatio,
         }),
       });
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? "Export request failed");
+        if (err.error === "export_duration_limit") {
+          throw new Error(err.message ?? "Upgrade to export clips greater than 5 min");
+        }
+        throw new Error(err.message ?? err.error ?? "Export request failed");
       }
 
       const { exportId } = await res.json();
+      posthog.capture("export_started", {
+        project_id: projectId,
+        caption_style: captionStyle,
+        aspect_ratio: aspectRatio,
+        clip_count: tracks.flatMap((t) => t.items.filter((i) => i.type === "video")).length,
+      });
       exportIdRef.current = exportId;
       pollStartedRef.current = Date.now();
       pollForCompletion(exportId);
@@ -163,6 +193,10 @@ async function startExport() {
           exportIdRef.current = null;
           pollStartedRef.current = null;
           setDownloadUrl(data.s3Url);
+          posthog.capture("export_completed", {
+            project_id: projectId,
+            caption_style: captionStyle,
+          });
           setPhase("done");
         } else if (data.status === "failed") {
           stopPolling();
@@ -290,12 +324,21 @@ async function startExport() {
           <div className="flex flex-col items-center gap-4 py-4">
             <AlertCircle className="h-10 w-10 text-red-400" />
             <p className="text-[13px] text-white/60 text-center">{errorMsg}</p>
-            <button
-              onClick={() => setPhase("settings")}
-              className="text-[12px] text-white/40 underline hover:text-white"
-            >
-              Try again
-            </button>
+            {errorMsg.toLowerCase().includes("upgrade") ? (
+              <a
+                href="/dashboard/billing"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-[13px] font-semibold text-black hover:bg-white/90 transition-colors"
+              >
+                Upgrade to Pro
+              </a>
+            ) : (
+              <button
+                onClick={() => setPhase("settings")}
+                className="text-[12px] text-white/40 underline hover:text-white"
+              >
+                Try again
+              </button>
+            )}
           </div>
         )}
       </div>

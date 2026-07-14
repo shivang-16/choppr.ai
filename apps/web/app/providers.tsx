@@ -1,6 +1,7 @@
 import React from "react";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "next-themes";
+import PostHogIdentify from "@/components/posthog-identify";
 
 const Providers = ({ children }: { children: React.ReactNode }) => {
   return (
@@ -21,6 +22,7 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
         attribute={"class"}
         defaultTheme="dark"
         disableTransitionOnChange>
+        <PostHogIdentify />
         {children}
       </ThemeProvider>
     </ClerkProvider>

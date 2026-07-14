@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Undo2, Redo2, Share2, Download, Cloud } from "lucide-react";
+import { ChevronDown, Undo2, Redo2, Share2, Download, Cloud, Sparkles } from "lucide-react";
 import ChopprLogo from "@/components/choppr-logo";
 import Link from "next/link";
 
@@ -13,14 +13,25 @@ interface Props {
   canUndo: boolean;
   canRedo: boolean;
   projectId: string;
+  /** Free-plan lock when export duration exceeds the free limit */
+  exportRequiresUpgrade?: boolean;
 }
 
-export default function EditorTopbar({ title, onUndo, onRedo, onExport, canUndo, canRedo, projectId }: Props) {
+export default function EditorTopbar({
+  title,
+  onUndo,
+  onRedo,
+  onExport,
+  canUndo,
+  canRedo,
+  projectId,
+  exportRequiresUpgrade = false,
+}: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [localTitle, setLocalTitle] = useState(title);
 
   return (
-    <header className="flex h-11 items-center justify-between border-b border-white/8 bg-[#1a1a1a] px-3 shrink-0 z-50">
+    <header className="flex min-h-11 items-center justify-between border-b border-white/8 bg-[#1a1a1a] px-3 py-1.5 shrink-0 z-50">
       {/* Left — logo + title */}
       <div className="flex items-center gap-3">
         <Link href="/dashboard">
@@ -79,13 +90,29 @@ export default function EditorTopbar({ title, onUndo, onRedo, onExport, canUndo,
           <Share2 className="h-3.5 w-3.5" />
           Share
         </button>
-        <button
-          onClick={onExport}
-          className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12px] font-semibold text-black hover:bg-white/90 transition-colors active:scale-95"
-        >
-          <Download className="h-3.5 w-3.5" />
-          Export
-        </button>
+
+        {exportRequiresUpgrade ? (
+          <div className="flex flex-col items-end gap-0.5 leading-tight">
+            <Link
+              href="/dashboard/billing"
+              className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12px] font-semibold text-black hover:bg-white/90 transition-colors active:scale-95"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Upgrade to Pro
+            </Link>
+            <span className="text-[9px] text-white/40 max-w-[170px] text-right">
+              Upgrade to export clips greater than 5 min
+            </span>
+          </div>
+        ) : (
+          <button
+            onClick={onExport}
+            className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[12px] font-semibold text-black hover:bg-white/90 transition-colors active:scale-95"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </button>
+        )}
       </div>
     </header>
   );

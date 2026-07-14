@@ -16,9 +16,24 @@ import ExportModal from "./_components/export-modal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const INITIAL_ZOOM = 60;
+/** Free plan can only export timelines up to this length. */
+const FREE_EXPORT_MAX_SECS = 5 * 60;
 
 function uid() {
   return Math.random().toString(36).slice(2, 12);
+}
+
+/** Timeline export length = end of last video item (not a sum of gaps). */
+function getExportDurationSecs(tracks: Track[]) {
+  let maxEnd = 0;
+  for (const track of tracks) {
+    for (const item of track.items) {
+      if (item.type !== "video") continue;
+      const end = item.startTime + item.duration;
+      if (Number.isFinite(end)) maxEnd = Math.max(maxEnd, end);
+    }
+  }
+  return maxEnd;
 }
 
 interface DbClip {
@@ -60,8 +75,25 @@ export default function EditorPage() {
   const [history, setHistory]                 = useState<HistoryEntry[]>([]);
   const [historyIdx, setHistoryIdx]           = useState(-1);
   const [thumbnailOverlay, setThumbnailOverlay] = useState<ThumbnailOverlay | null>(null);
+  const [isFreePlan, setIsFreePlan] = useState<boolean | null>(null);
 
   const videoRef = useRef<VideoPreviewHandle>(null);
+
+  // ── Plan (free users capped at 5 min export) ───────────────────────────────
+  useEffect(() => {
+    apiFetch(`${API_URL}/api/plans/me`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) {
+          setIsFreePlan(true);
+          return;
+        }
+        const planId = d.currentPlanId ?? "free";
+        const plan = d.plans?.find((p: any) => p.slug === planId || p._id === planId);
+        setIsFreePlan(!plan || plan.slug === "free" || planId === "free");
+      })
+      .catch(() => setIsFreePlan(true));
+  }, []);
 
   // ── Fetch project + clips → build initial tracks ──────────────────────────
   useEffect(() => {
@@ -269,6 +301,7 @@ export default function EditorPage() {
   const handleDropMedia = (trackId: string, startTime: number, media: { id: string; src: string; duration: number; label: string; type: TrackItemType; thumbnailUrl?: string }) => {
     const newItem: TrackItem = {
       id: uid(),
+      clipId: media.id, // preserve DB clip id across cuts (item.id is timeline-local)
       type: media.type,
       startTime,
       duration: media.duration,
@@ -395,6 +428,7 @@ export default function EditorPage() {
     // Create an audio item at the same timeline position
     const audioItem: TrackItem = {
       id: audioItemId,
+      clipId: selectedItem.clipId,
       type: "audio",
       startTime: selectedItem.startTime,
       duration: selectedItem.duration,
@@ -442,9 +476,13 @@ export default function EditorPage() {
 
   const handleExport = () => setShowExport(true);
 
+  const timelineExportSecs = getExportDurationSecs(tracks);
+  const exportRequiresUpgrade =
+    isFreePlan === true && timelineExportSecs > FREE_EXPORT_MAX_SECS;
+
   return (
     <div className="flex flex-col h-screen bg-[#111] overflow-hidden select-none">
-      {showExport && (
+      {showExport && !exportRequiresUpgrade && (
         <ExportModal
           projectId={projectId}
           tracks={tracks}
@@ -462,6 +500,7 @@ export default function EditorPage() {
         onUndo={undo}
         onRedo={redo}
         onExport={handleExport}
+        exportRequiresUpgrade={exportRequiresUpgrade}
       />
 
       {/* Main layout */}
