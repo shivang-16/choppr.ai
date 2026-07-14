@@ -3654,7 +3654,7 @@ export default function ClipRefinePage() {
                     style={{
                       zIndex: 4,
                       touchAction: "none", // prevent browser scroll/zoom hijacking touch events
-                      cursor: activeTab === "captions" && captionStyle !== "none"
+                      cursor: captionStyle !== "none"
                         ? (captionDragRef.current ? "grabbing" : "grab")
                         : "pointer",
                     }}
@@ -3676,7 +3676,7 @@ export default function ClipRefinePage() {
                     }}
                     onPointerMove={(e) => {
                       if (!captionDragRef.current) return;
-                      if (activeTab !== "captions" || captionStyle === "none") return;
+                      if (captionStyle === "none") return;
                       const { startX, startY, startPosX, startPosY, rectW, rectH, segmentId } = captionDragRef.current;
                       const deltaX = e.clientX - startX;
                       const deltaY = e.clientY - startY;
@@ -3698,7 +3698,6 @@ export default function ClipRefinePage() {
                     onPointerUp={(e) => {
                       const ref = captionDragRef.current;
                       const wasDrag = ref
-                        && activeTab === "captions"
                         && captionStyle !== "none"
                         && (Math.abs(e.clientX - ref.startX) >= 8 || Math.abs(e.clientY - ref.startY) >= 8);
                       if (wasDrag && ref?.segmentId && captionApiRef.current) {
