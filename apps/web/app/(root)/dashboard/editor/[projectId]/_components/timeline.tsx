@@ -18,22 +18,22 @@ const VideoThumbnailStrip = memo(function VideoThumbnailStrip({
   zoom: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const extractedRef = useRef(false);
 
   const thumbCount = Math.min(Math.ceil(duration * zoom / 48), 20);
 
   useEffect(() => {
-    if (extractedRef.current) return;
-    extractedRef.current = true;
-
     const container = containerRef.current;
     if (!container) return;
+
+    // Clear stale canvases from previous extraction
+    container.innerHTML = "";
 
     const video = document.createElement("video");
     video.muted = true;
     video.playsInline = true;
     video.preload = "metadata";
-    video.crossOrigin = "anonymous";
+    // Do NOT set crossOrigin — S3 clips don't always send CORS headers and
+    // the extraction is only for UI thumbnails, so CORS errors don't matter.
     video.src = src;
 
     let frameIdx = 0;
@@ -72,7 +72,6 @@ const VideoThumbnailStrip = memo(function VideoThumbnailStrip({
     }, { once: true });
 
     video.addEventListener("error", () => {
-      // If video can't load, just show gradient background
       video.removeAttribute("src");
       video.load();
     }, { once: true });

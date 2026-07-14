@@ -221,12 +221,51 @@ function ClipTimelineBridge({
   const syncingRef = useRef(false);
   const initializedRef = useRef(false);
   const lastSrcRef = useRef("");
+  // Tracks the last trim values we sent up so we don't echo them back down.
+  const lastReportedTrimRef = useRef<{ start: number; end: number } | null>(null);
+  // Tracks the last external (prop) trim that was intentionally pushed INTO the timeline.
+  // We use a ref so the sync effect can depend on it without causing re-renders.
+  const externalTrimRef = useRef({ start: trimStart, end: trimEnd > 0 ? trimEnd : duration, speed });
+  // Bump this counter (via setExternalTrimVersion) to trigger the prop→timeline sync
+  // ONLY on genuine external changes (reset, speed, draft load) — not on echoes.
+  const [externalTrimVersion, setExternalTrimVersion] = useState(0);
   const playerStateRef = useRef(playerState);
   playerStateRef.current = playerState;
   const currentTimeRef = useRef(currentTime);
   currentTimeRef.current = currentTime;
   const seekTimeRef = useRef(seekTime);
   seekTimeRef.current = seekTime;
+
+  // Detect genuine external trim/speed changes (not echoes of our own onTrimChange calls)
+  // and bump externalTrimVersion to trigger the prop→timeline sync effect.
+  useEffect(() => {
+    const incomingEnd = trimEnd > 0 ? trimEnd : duration;
+    const lr = lastReportedTrimRef.current;
+    // If this matches what we just reported upward, it's our own echo — skip.
+    if (
+      lr &&
+      Math.abs(lr.start - trimStart) < 0.02 &&
+      Math.abs(lr.end - incomingEnd) < 0.02 &&
+      Math.abs(externalTrimRef.current.speed - speed) < 0.01
+    ) {
+      // Clear the echo guard now that it's been consumed
+      lastReportedTrimRef.current = null;
+      return;
+    }
+    // Check if anything actually changed vs last external push
+    const prev = externalTrimRef.current;
+    if (
+      Math.abs(prev.start - trimStart) < 0.02 &&
+      Math.abs(prev.end - incomingEnd) < 0.02 &&
+      Math.abs(prev.speed - speed) < 0.01
+    ) {
+      return;
+    }
+    // Genuine external change — record it and trigger the sync
+    externalTrimRef.current = { start: trimStart, end: incomingEnd, speed };
+    setExternalTrimVersion(v => v + 1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimStart, trimEnd, duration, speed]);
 
   const activeElementIdRef = useRef<string | null>(null);
   const videoMetaLoadedRef = useRef(new Set<string>());
@@ -251,6 +290,10 @@ function ClipTimelineBridge({
     if (Math.abs(totalDuration - desired) < 0.05) return;
     editor.getContext().setTotalDuration(desired);
   }, [editor, totalDuration]);
+  // Stable ref so the prop→timeline sync effect doesn't re-fire when totalDuration
+  // changes during a drag (which would override Twick's mid-drag element state).
+  const ensurePaddingRef = useRef(ensurePadding);
+  ensurePaddingRef.current = ensurePadding;
 
   // Seed primary clip on first load / source change
   useEffect(() => {
@@ -259,12 +302,14 @@ function ClipTimelineBridge({
     let cancelled = false;
 
     const rebuild = async () => {
-      // Already seeded successfully — only bail if the main clip is still present
+      // Already seeded successfully — only bail if ANY video clips are present.
+      // After a split/cut, the main clip ID is gone but split pieces remain — those
+      // count as content, so never reseed over them.
       if (lastSrcRef.current === src && initializedRef.current) {
-        if (findPrimaryVideoElement(editor, clipId) || listVideoElements(editor).length > 0) {
+        if (listVideoElements(editor).length > 0) {
           return;
         }
-        // Timeline was emptied somehow — allow a full reseed
+        // Timeline is genuinely empty (e.g. user deleted all clips) — allow reseed
         initializedRef.current = false;
       }
 
@@ -393,35 +438,40 @@ function ClipTimelineBridge({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, duration, editor, clipId, aspectRatio]);
 
-  // Sync primary clip trim length / in-point without resetting its timeline position
+  // Sync primary clip trim into the timeline element.
+  // Depends on externalTrimVersion (an integer counter), NOT on trimStart/trimEnd/duration
+  // directly — this prevents the effect from re-running every render when only Twick's
+  // internal drag state changed, which was what caused the snap-back.
   useEffect(() => {
     if (!initializedRef.current || syncingRef.current) return;
     const element = findPrimaryVideoElement(editor, clipId);
     if (!element) return;
 
-    const end = trimEnd > 0 ? trimEnd : duration;
-    const len = Math.max(0.1, end - trimStart);
+    const { start: wantedStart, end: wantedEnd, speed: wantedSpeed } = externalTrimRef.current;
+    const len = Math.max(0.1, wantedEnd - wantedStart);
     const timelineStart = element.getStart();
     const currentLen = element.getEnd() - element.getStart();
 
-    if (
-      Math.abs(element.getStartAt() - trimStart) < 0.02 &&
+    const alreadyMatch =
+      Math.abs(element.getStartAt() - wantedStart) < 0.02 &&
       Math.abs(currentLen - len) < 0.02 &&
-      Math.abs(element.getPlaybackRate() - speed) < 0.01
-    ) {
-      return;
-    }
+      Math.abs(element.getPlaybackRate() - wantedSpeed) < 0.01;
+    if (alreadyMatch) return;
 
     syncingRef.current = true;
-    element.setStart(timelineStart).setEnd(timelineStart + len).setStartAt(trimStart);
-    element.setPlaybackRate(speed);
+    element.setStart(timelineStart).setEnd(timelineStart + len).setStartAt(wantedStart);
+    element.setPlaybackRate(wantedSpeed);
     editor.updateElement(element);
     editor.refresh();
-    ensurePadding();
+    ensurePaddingRef.current();
     syncingRef.current = false;
-  }, [trimStart, trimEnd, duration, editor, clipId, speed, ensurePadding]);
+  // Depends on externalTrimVersion (bumped only on genuine external changes), NOT on
+  // ensurePadding directly — removing it prevents re-firing when totalDuration changes
+  // during a drag (ensurePadding is accessed via a stable ref instead).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalTrimVersion, editor, clipId]);
 
-  // Primary clip trim from timeline handles -> parent state (in-point + length only)
+  // Primary clip trim FROM timeline handles → parent state.
   useEffect(() => {
     if (!initializedRef.current || syncingRef.current) return;
     const element = findPrimaryVideoElement(editor, clipId);
@@ -436,9 +486,11 @@ function ClipTimelineBridge({
       return;
     }
 
-    syncingRef.current = true;
+    // Record what we're reporting so the external-change detector skips the echo.
+    lastReportedTrimRef.current = { start: newTrimStart, end: newTrimEnd };
+    // Update externalTrimRef so the sync effect sees the new "known" state
+    externalTrimRef.current = { start: newTrimStart, end: newTrimEnd, speed: externalTrimRef.current.speed };
     onTrimChange(newTrimStart, newTrimEnd);
-    syncingRef.current = false;
   }, [changeLog, editor, clipId, effectiveTrimEnd, onTrimChange, trimStart]);
 
   // Push full timeline to parent for export + keep drag padding

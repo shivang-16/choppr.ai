@@ -2263,7 +2263,8 @@ export default function ClipRefinePage() {
         const apiDur = Number(data.duration) || (Number(data.endTime) - Number(data.startTime)) || 0;
         if (apiDur > 0 && duration <= 0) {
           setDuration(apiDur);
-          setTrimEnd(apiDur);
+          // Only reset trimEnd if it hasn't been restored from a draft
+          setTrimEnd((prev) => (prev > 0 ? prev : apiDur));
         }
       })
       .catch(() => {});
@@ -3614,7 +3615,8 @@ export default function ClipRefinePage() {
                       if (!Number.isFinite(d) || d <= 0) return;
                       // Always trust metadata for the main clip when duration is missing/stale
                       setDuration(prev => (prev > 0 && Math.abs(prev - d) < 0.5 ? prev : d));
-                      setTrimEnd(prev => (prev > 0 && Math.abs(prev - d) < 0.5 ? prev : d));
+                      // Only update trimEnd if it hasn't been set from a draft or trim operation
+                      setTrimEnd(prev => (prev > 0 ? prev : d));
                     }}
                     onTimeUpdate={() => {
                       // Mobile has no timeline clock — sync scrubber from the video element
