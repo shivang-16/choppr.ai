@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { randomUUID } from "crypto";
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { UserAsset, IUserAsset } from "../model/user-asset.model.js";
+import { UserAsset, IUserAsset, UserAssetUsage } from "../model/user-asset.model.js";
 import { logger } from "../utils/logger.js";
 
 const s3 = new S3Client({
@@ -15,32 +15,50 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.S3_MEDIA_BUCKET ?? "choppr-media";
 
-const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+const MIME_EXT: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/jpg":  "jpg",
   "image/png":  "png",
   "image/webp": "webp",
   "image/gif":  "gif",
+  "video/mp4":       "mp4",
+  "video/webm":      "webm",
+  "video/quicktime": "mov",
+  "audio/mpeg": "mp3",
+  "audio/mp3":  "mp3",
+  "audio/wav":  "wav",
+  "audio/x-wav": "wav",
+  "audio/aac":  "aac",
+  "audio/ogg":  "ogg",
 };
 
+function extFromMime(mime: string): string {
+  return MIME_EXT[mime] ?? mime.split("/")[1]?.split("+")[0] ?? "bin";
+}
+
 function assetTypeFromMime(mime: string): IUserAsset["assetType"] {
-  if (mime.startsWith("image/"))  return "image";
-  if (mime.startsWith("audio/"))  return "audio";
-  if (mime.startsWith("video/"))  return "video";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("video/")) return "video";
   return "other";
 }
 
+function parseUsage(raw: unknown): UserAssetUsage {
+  return raw === "watermark" ? "watermark" : "timeline";
+}
+
 // POST /api/user-assets/presign
-// Body: { mimeType, fileName, sizeBytes }
+// Body: { mimeType, fileName, sizeBytes, usage?: "timeline" | "watermark" }
 export async function presignAssetUpload(req: Request, res: Response, next: NextFunction) {
   try {
     const userId = (req as any).user?._id;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { mimeType, fileName, sizeBytes } = req.body as {
+    const { mimeType, fileName, sizeBytes, usage: rawUsage } = req.body as {
       mimeType: string;
       fileName: string;
       sizeBytes?: number;
+      usage?: string;
     };
 
     if (!mimeType || !fileName) {
@@ -48,7 +66,8 @@ export async function presignAssetUpload(req: Request, res: Response, next: Next
       return;
     }
 
-    const ext = ALLOWED_IMAGE_TYPES[mimeType] ?? mimeType.split("/")[1] ?? "bin";
+    const usage = parseUsage(rawUsage);
+    const ext = extFromMime(mimeType);
     const assetId = randomUUID();
     const s3Key   = `user-assets/${userId}/${assetId}.${ext}`;
     const s3Url   = `https://${BUCKET}.s3.${process.env.AWS_REGION ?? "us-east-1"}.amazonaws.com/${s3Key}`;
@@ -61,7 +80,6 @@ export async function presignAssetUpload(req: Request, res: Response, next: Next
 
     const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
 
-    // Pre-create the DB record (will be confirmed on complete)
     const asset = await UserAsset.create({
       _id:       assetId,
       userId,
@@ -71,9 +89,10 @@ export async function presignAssetUpload(req: Request, res: Response, next: Next
       mimeType,
       sizeBytes: sizeBytes ?? 0,
       assetType: assetTypeFromMime(mimeType),
+      usage,
     });
 
-    logger.info("Asset presign issued", { userId, assetId, s3Key, mimeType });
+    logger.info("Asset presign issued", { userId, assetId, s3Key, mimeType, usage });
 
     res.json({ uploadUrl, assetId, s3Key, s3Url, bucket: BUCKET, asset });
   } catch (err) {
@@ -82,17 +101,22 @@ export async function presignAssetUpload(req: Request, res: Response, next: Next
   }
 }
 
-// GET /api/user-assets
-// Returns all assets for the authenticated user
+// GET /api/user-assets?type=video&usage=timeline
 export async function listUserAssets(req: Request, res: Response, next: NextFunction) {
   try {
     const userId = (req as any).user?._id;
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const { type } = req.query as { type?: string };
+    const { type, usage } = req.query as { type?: string; usage?: string };
 
-    const filter: Record<string, string> = { userId };
+    const filter: Record<string, unknown> = { userId };
     if (type) filter.assetType = type;
+    // Legacy assets may lack `usage`; treat them as timeline media.
+    if (usage === "timeline") {
+      filter.$or = [{ usage: "timeline" }, { usage: { $exists: false } }];
+    } else if (usage === "watermark") {
+      filter.usage = "watermark";
+    }
 
     const assets = await UserAsset.find(filter).sort({ createdAt: -1 }).lean();
 
@@ -115,9 +139,7 @@ export async function deleteUserAsset(req: Request, res: Response, next: NextFun
       return;
     }
 
-    // Delete from S3
     await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: asset.s3Key }));
-
     await UserAsset.findByIdAndDelete(assetId);
 
     logger.info("Asset deleted", { userId, assetId });
