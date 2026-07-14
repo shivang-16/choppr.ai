@@ -46,33 +46,45 @@ function safeParse(raw: string | null): ClipDraftState | null {
  * Load a previously saved draft from localStorage.
  * Returns null if no draft exists or it's corrupted.
  */
-export function loadClipDraft(clipId: string): ClipDraftState | null {
+export function loadClipDraft(clipId: string, editId?: string | null): ClipDraftState | null {
   if (typeof window === "undefined") return null;
   try {
-    return safeParse(localStorage.getItem(storageKey(clipId)));
+    return safeParse(localStorage.getItem(storageKey(editId ? `${clipId}:${editId}` : clipId)));
   } catch {
     return null;
   }
 }
 
 /** Delete a draft (e.g. after successful export). */
-export function clearClipDraft(clipId: string) {
+export function clearClipDraft(clipId: string, editId?: string | null) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.removeItem(storageKey(clipId));
+    localStorage.removeItem(storageKey(editId ? `${clipId}:${editId}` : clipId));
   } catch { /* noop */ }
 }
 
 /**
  * Hook: auto-saves clip editing state to localStorage.
  * Call `saveDraft(state)` whenever state changes — it debounces internally.
+ * Pass `editId` to scope the draft to a specific exported version.
  */
-export function useClipDraftAutosave(clipId: string) {
+export function useClipDraftAutosave(clipId: string, editId?: string | null) {
+  const effectiveKey = editId ? `${clipId}:${editId}` : clipId;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestRef = useRef<Partial<ClipDraftState> | null>(null);
+  // Track the key to detect version switches and reset accumulated state
+  const prevKeyRef = useRef(effectiveKey);
+  if (prevKeyRef.current !== effectiveKey) {
+    prevKeyRef.current = effectiveKey;
+    latestRef.current = null;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }
 
   const flush = useCallback(() => {
-    if (!latestRef.current || !clipId) return;
+    if (!latestRef.current || !effectiveKey) return;
     try {
       const payload: ClipDraftState = {
         version: 2,
@@ -95,9 +107,9 @@ export function useClipDraftAutosave(clipId: string) {
         timelineTracks: null,
         ...latestRef.current,
       };
-      localStorage.setItem(storageKey(clipId), JSON.stringify(payload));
+      localStorage.setItem(storageKey(effectiveKey), JSON.stringify(payload));
     } catch { /* quota exceeded — ignore */ }
-  }, [clipId]);
+  }, [effectiveKey]);
 
   const saveDraft = useCallback((state: Partial<ClipDraftState>) => {
     latestRef.current = { ...latestRef.current, ...state };

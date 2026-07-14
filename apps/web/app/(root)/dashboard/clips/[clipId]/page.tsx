@@ -1998,7 +1998,12 @@ export default function ClipRefinePage() {
   const [aspectRatio, setAspectRatio] = useState("9:16");
 
   // ── Draft persistence ─────────────────────────────────────────────────────
-  const { saveDraft } = useClipDraftAutosave(clipId ?? "");
+  // Edited/exported clips derived from this clip + which one is previewed
+  // Declared here (before useClipDraftAutosave) so we can scope the draft key to the active version.
+  const [editedClips, setEditedClips] = useState<any[]>([]);
+  const [activeEditId, setActiveEditId] = useState<string | null>(null);
+
+  const { saveDraft, flush: flushDraft } = useClipDraftAutosave(clipId ?? "", activeEditId);
   const draftRestoredRef = useRef(false);
   const [draftTracks, setDraftTracks] = useState<unknown[] | null>(null);
   const [timelineResetKey, setTimelineResetKey] = useState(0);
@@ -2027,10 +2032,6 @@ export default function ClipRefinePage() {
     if (draft.timelineTracks?.length) setDraftTracks(draft.timelineTracks);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clipId]);
-
-  // Edited/exported clips derived from this clip + which one is previewed
-  const [editedClips, setEditedClips] = useState<any[]>([]);
-  const [activeEditId, setActiveEditId] = useState<string | null>(null);
 
   const videoRef              = useRef<HTMLVideoElement>(null);
   const timelineToggleRef     = useRef<(() => void) | null>(null);
@@ -2518,7 +2519,7 @@ export default function ClipRefinePage() {
             exportPollStartedRef.current = null;
             setExportUrl(data.s3Url);
             setExportPhase("done");
-            if (clipId) clearClipDraft(clipId);
+            if (clipId) clearClipDraft(clipId, activeEditId);
             markExportCurrent();
             loadEdits();
             openAndDownload(data.s3Url, `clip-${index}.mp4`);
@@ -2594,20 +2595,52 @@ export default function ClipRefinePage() {
   // Switch which version (original or an edit) the preview + edits are based on
   const selectVersion = useCallback((id: string | null) => {
     if (id === activeEditId) return;
+    // Flush current draft before switching so unsaved changes are persisted
+    flushDraft();
+    // Reset overlay tracking refs so the new version starts fresh
+    lastOverlayReportRef.current = new Set();
+    timelineOverlayIdsRef.current = new Set();
     setActiveEditId(id);
     setPlaying(false);
     setCurrentTime(0);
-    applyDefaults();
-  }, [activeEditId, applyDefaults]);
+    setDraftTracks(null);
+    setTimelineResetKey(k => k + 1);
+    // Restore the target version's draft (keyed by editId or null for Original)
+    if (clipId) {
+      const draft = loadClipDraft(clipId, id);
+      if (draft) {
+        if (draft.aspectRatio) setAspectRatio(draft.aspectRatio);
+        if (draft.speed != null) setSpeed(draft.speed);
+        if (draft.trimStart != null) setTrimStart(draft.trimStart);
+        if (draft.trimEnd != null) setTrimEnd(draft.trimEnd);
+        if (draft.brightness != null) setBrightness(draft.brightness);
+        if (draft.contrast != null) setContrast(draft.contrast);
+        if (draft.saturation != null) setSaturation(draft.saturation);
+        if (draft.captionStyle) setCaptionStyle(draft.captionStyle as any);
+        if (draft.captionWords?.length) setCaptionWords(draft.captionWords as any);
+        if (draft.captionFontSize) setCaptionFontSize(draft.captionFontSize);
+        if (draft.captionPosX != null) setCaptionPosX(draft.captionPosX);
+        if (draft.captionPosY != null) setCaptionPosY(draft.captionPosY);
+        if (draft.textOverlays?.length) setTextOverlays(draft.textOverlays as any);
+        if (draft.placedStickers?.length) setPlacedStickers(draft.placedStickers as any);
+        if (draft.thumbnailOverlay) setThumbnailOverlay(draft.thumbnailOverlay as any);
+        if (draft.timelineTracks?.length) setDraftTracks(draft.timelineTracks);
+      } else {
+        applyDefaults();
+      }
+    } else {
+      applyDefaults();
+    }
+  }, [activeEditId, applyDefaults, clipId, flushDraft]);
 
   // Reset every edit setting AND go back to the original video
   const resetAll = useCallback(() => {
-    clearClipDraft(clipId);
+    clearClipDraft(clipId, activeEditId);
     setDraftTracks(null);
     setActiveEditId(null);
     setTimelineResetKey(k => k + 1);
     applyDefaults();
-  }, [applyDefaults, clipId]);
+  }, [applyDefaults, clipId, activeEditId]);
 
   // Sync speed
   useEffect(() => {
@@ -2699,14 +2732,29 @@ export default function ClipRefinePage() {
   const DEFAULT_OVERLAY_DUR = 4;
 
   const isOverlayVisible = useCallback((startTime: number | undefined, duration: number | undefined) => {
-    const start = startTime ?? 0;
-    const dur = duration ?? DEFAULT_OVERLAY_DUR;
-    return currentTime >= start - 0.02 && currentTime < start + dur - 0.02;
-  }, [currentTime]);
+    // If no startTime defined, always show (backwards compat)
+    if (startTime === undefined || startTime === null) return true;
+    const start = startTime;
+    // Cap duration: never let a single overlay span more than its stored value capped to video duration
+    const rawDur = duration ?? DEFAULT_OVERLAY_DUR;
+    // If duration is suspiciously >= video duration, it was likely set by Twick to the full timeline —
+    // cap to DEFAULT_OVERLAY_DUR so it doesn't appear for the whole video
+    const dur = (duration !== undefined && duration < (videoRef.current?.duration ?? Infinity) - 0.5)
+      ? rawDur
+      : DEFAULT_OVERLAY_DUR;
+    return currentTime >= start - 0.05 && currentTime < start + dur + 0.05;
+  }, [currentTime, videoRef]);
 
   const handleOverlayTimingChange = useCallback((items: OverlayTimingItem[]) => {
-    const textById = new Map(items.filter(i => i.kind === "text").map(i => [i.id, i]));
-    const stickerById = new Map(items.filter(i => i.kind === "sticker").map(i => [i.id, i]));
+    // Cap duration: if timeline reports a duration >= video duration, it's a Twick default
+    // that spans the whole video. Cap it to DEFAULT_OVERLAY_DUR.
+    const videoDur = videoRef.current?.duration ?? Infinity;
+    const cappedItems = items.map(item => ({
+      ...item,
+      duration: item.duration >= videoDur - 0.5 ? DEFAULT_OVERLAY_DUR : item.duration,
+    }));
+    const textById = new Map(cappedItems.filter(i => i.kind === "text").map(i => [i.id, i]));
+    const stickerById = new Map(cappedItems.filter(i => i.kind === "sticker").map(i => [i.id, i]));
     const reported = new Set([...textById.keys(), ...stickerById.keys()]);
 
     // Ids that were on the timeline last report but are gone now → deleted on timeline
@@ -2723,8 +2771,30 @@ export default function ClipRefinePage() {
       setPlacedStickers(prev => prev.filter(ps => !removed.includes(ps.stickerId)));
     }
 
-    setTextOverlays(prev =>
-      prev.map(t => {
+    // Update timing on existing overlays
+    setTextOverlays(prev => {
+      const existingIds = new Set(prev.map(t => t.id));
+      // Re-add any text elements that exist on the timeline but were lost from state
+      // (e.g. after page refresh where draftTracks restored the timeline but textOverlays was empty)
+      const missing: TextOverlay[] = [];
+      for (const [id, timing] of textById) {
+        if (!existingIds.has(id)) {
+          missing.push({
+            id,
+            text: timing.text ?? "Text",
+            x: 0.5,
+            y: 0.5,
+            fontSize: 20,
+            color: "#ffffff",
+            bold: false,
+            italic: false,
+            startTime: timing.startTime,
+            duration: timing.duration,
+          });
+          timelineOverlayIdsRef.current.add(id);
+        }
+      }
+      const updated = prev.map(t => {
         const timing = textById.get(t.id);
         if (!timing) return t;
         if (
@@ -2732,8 +2802,9 @@ export default function ClipRefinePage() {
           Math.abs((t.duration ?? DEFAULT_OVERLAY_DUR) - timing.duration) < 0.02
         ) return t;
         return { ...t, startTime: timing.startTime, duration: timing.duration };
-      }),
-    );
+      });
+      return missing.length ? [...updated, ...missing] : updated;
+    });
 
     setPlacedStickers(prev =>
       prev.map(ps => {
@@ -2746,7 +2817,7 @@ export default function ClipRefinePage() {
         return { ...ps, startTime: timing.startTime, duration: timing.duration };
       }),
     );
-  }, []);
+  }, [videoRef]);
 
   const handleAddTextOverlay = useCallback(() => {
     const id = `txt-${Date.now()}`;

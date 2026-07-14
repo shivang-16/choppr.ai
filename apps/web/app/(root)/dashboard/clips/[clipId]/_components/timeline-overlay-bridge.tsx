@@ -51,6 +51,8 @@ export type OverlayTimingItem = {
   startTime: number;
   duration: number;
   kind: "text" | "sticker";
+  /** For text elements: the current text content (used to recover state after refresh) */
+  text?: string;
 };
 
 const TEXT_TRACK = "Text";
@@ -128,6 +130,13 @@ export function TimelineOverlayBridge({
       el.setStart(start).setEnd(start + dur);
       const track = getOrCreateTrack(editor, TEXT_TRACK);
       await editor.addElementToTrack(track, el);
+      // Re-apply timing after addElementToTrack in case Twick reset start/end
+      const added = findElementById(editor, opts.id);
+      if (added) {
+        added.setStart(start);
+        added.setEnd(start + dur);
+        editor.updateElement(added);
+      }
       ensureOverlayTracksOnTop(editor);
       editor.refresh();
     },
@@ -158,6 +167,13 @@ export function TimelineOverlayBridge({
       el.setStart(start).setEnd(start + dur);
       const track = getOrCreateTrack(editor, STICKER_TRACK);
       await editor.addElementToTrack(track, el);
+      // Re-apply timing after addElementToTrack in case Twick reset start/end
+      const added = findElementById(editor, opts.id);
+      if (added) {
+        added.setStart(start);
+        added.setEnd(start + dur);
+        editor.updateElement(added);
+      }
       ensureOverlayTracksOnTop(editor);
       editor.refresh();
     },
@@ -218,11 +234,13 @@ export function TimelineOverlayBridge({
         name === TEXT_TRACK ? "text" : name === STICKER_TRACK ? "sticker" : null;
       if (!kind) continue;
       for (const el of track.getElements()) {
+        const dur = Math.max(0.1, el.getEnd() - el.getStart());
         items.push({
           id: el.getId(),
           startTime: el.getStart(),
-          duration: Math.max(0.1, el.getEnd() - el.getStart()),
+          duration: dur,
           kind,
+          text: kind === "text" && el instanceof TextElement ? el.getText() : undefined,
         });
       }
     }

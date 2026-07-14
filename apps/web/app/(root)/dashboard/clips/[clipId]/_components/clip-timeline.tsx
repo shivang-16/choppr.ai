@@ -1038,6 +1038,14 @@ function ClipTimelineInner(props: ClipTimelineProps) {
     };
   }, []);
 
+  // Cleanup orphaned offscreen <video> elements on unmount to prevent Chrome's
+  // WebMediaPlayer limit from being hit across HMR / route transitions.
+  useEffect(() => {
+    return () => {
+      document.querySelectorAll('video[style*="left: -9999px"]').forEach(v => v.remove());
+    };
+  }, []);
+
   return (
     <div className={cn(
       "clip-timeline-shell",
