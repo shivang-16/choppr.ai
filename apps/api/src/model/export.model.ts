@@ -8,7 +8,6 @@ export interface IExport {
   projectId:       string;
   status:          ExportStatus;
   progress:        number;
-  creditCost:      number;
   s3Key?:          string;
   s3Url?:          string;
   error?:          string;
@@ -42,7 +41,6 @@ const ExportSchema = new Schema<IExport>(
     projectId:    { type: String, required: true, index: true },
     status:       { type: String, enum: ["pending","rendering","done","failed","cancelled"], default: "pending" },
     progress:     { type: Number, default: 0, min: 0, max: 100 },
-    creditCost:   { type: Number, default: 2 },
     s3Key:        { type: String },
     s3Url:        { type: String },
     error:        { type: String },

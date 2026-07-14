@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { CaptionSegment } from "./timeline-caption-bridge";
 
 // Google Fonts loaded via a <link> injected once — provides the display fonts
 // that match the server-side TTFs in assets/fonts/.
@@ -126,9 +125,6 @@ interface Props {
   posOffset?:  number; // vertical offset in % of height (- = up, + = down)
   hOffset?:    number; // horizontal offset in % of width (- = left, + = right)
   language?:   string; // BCP-47 language code, e.g. "hi", "mr", "en"
-  /** When provided, the renderer picks the active segment at each frame instead of using `words`+`style`. */
-  segments?: CaptionSegment[];
-  currentTime?: number;
 }
 
 // ── Per-style font families (match server-side assets/fonts TTFs) ─────────────
@@ -254,42 +250,8 @@ const ST_FONTS = [
   { font: F_DEFAULT, weight: "400" },
 ];
 
-export default function CaptionRenderer({
-  videoRef, words, style, fontSize = 50, aspectRatio = "9:16", posOffset = 0, hOffset = 0, language,
-  segments, currentTime,
-}: Props) {
+export default function CaptionRenderer({ videoRef, words, style, fontSize = 50, aspectRatio = "9:16", posOffset = 0, hOffset = 0, language }: Props) {
   ensureGFontsLoaded();
-
-  // When segments are provided, resolve active segment per frame using video.currentTime
-  const resolveActive = (): {
-    activeWords: CaptionWord[];
-    activeStyle: CaptionStyle;
-    posX: number;
-    posY: number;
-  } => {
-    if (segments && segments.length > 0) {
-      const t = currentTime ?? videoRef.current?.currentTime ?? 0;
-      const seg = segments.find(s => t >= s.start - 0.001 && t < s.end + 0.001);
-      if (seg) {
-        return {
-          activeWords: seg.words,
-          activeStyle: seg.style,
-          posX: seg.posX ?? hOffset,
-          posY: seg.posY ?? posOffset,
-        };
-      }
-      return { activeWords: [], activeStyle: "none", posX: hOffset, posY: posOffset };
-    }
-    return { activeWords: words, activeStyle: style, posX: hOffset, posY: posOffset };
-  };
-
-  const {
-    activeWords: resolvedWords,
-    activeStyle: resolvedStyle,
-    posX: resolvedPosX,
-    posY: resolvedPosY,
-  } = resolveActive();
-
   const canvasW = aspectRatio === "16:9" ? 1920 : 1080;
   const canvasH = aspectRatio === "16:9" ? 1080 : aspectRatio === "1:1" ? 1080 : 1920;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -300,56 +262,22 @@ export default function CaptionRenderer({
   // Detect Devanagari script either from the language code or from the words themselves
   const isDevanagari = language
     ? ["hi", "mr", "ne", "kok", "bho", "mai", "dgo"].some(l => language.startsWith(l))
-    : wordsHaveDevanagari(resolvedWords);
+    : wordsHaveDevanagari(words);
 
   useEffect(() => {
+    if (style === "none") return;
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const video  = videoRef.current;
+    if (!canvas || !video) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    if (resolvedStyle === "none") {
-      // Clear any previously drawn caption when there's nothing to show
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      return;
-    }
-    const video  = videoRef.current;
-    if (!video) return;
-
-    const baseCfg = CFG[resolvedStyle];
+    const baseCfg = CFG[style];
     // When rendering Devanagari script, override the font to Noto Sans Devanagari
     // and use a differentiated font weight so each style still looks visually distinct.
     const cfg = isDevanagari
-      ? { ...baseCfg, font: F_DEVA, weight: DEVA_WEIGHT[resolvedStyle] ?? "700" }
+      ? { ...baseCfg, font: F_DEVA, weight: DEVA_WEIGHT[style] ?? "700" }
       : baseCfg;
-
-    // If segments mode: words change per-frame based on currentTime, so re-resolve on each draw
-    const getWords = (): CaptionWord[] => {
-      if (segments && segments.length > 0) {
-        const t = video.currentTime;
-        const seg = segments.find(s => t >= s.start - 0.001 && t < s.end + 0.001);
-        return seg?.words ?? [];
-      }
-      return resolvedWords;
-    };
-
-    const getStyle = (): CaptionStyle => {
-      if (segments && segments.length > 0) {
-        const t = video.currentTime;
-        const seg = segments.find(s => t >= s.start - 0.001 && t < s.end + 0.001);
-        return seg?.style ?? "none";
-      }
-      return resolvedStyle;
-    };
-
-    const getPos = (): { h: number; v: number } => {
-      if (segments && segments.length > 0) {
-        const t = video.currentTime;
-        const seg = segments.find(s => t >= s.start - 0.001 && t < s.end + 0.001);
-        if (seg) return { h: seg.posX ?? 0, v: seg.posY ?? 0 };
-      }
-      return { h: resolvedPosX, v: resolvedPosY };
-    };
 
     const draw = () => {
       const t  = video.currentTime;
@@ -357,61 +285,46 @@ export default function CaptionRenderer({
       const ch = canvas.height;
       ctx.clearRect(0, 0, cw, ch);
 
-      // In segments mode, resolve the active segment at this frame
-      const frameWords = getWords();
-      const frameStyle = getStyle();
-      if (frameStyle === "none" || frameWords.length === 0) {
-        rafRef.current = requestAnimationFrame(draw);
-        return;
-      }
-
-      // Resolve cfg for this frame's style (may differ in segment mode)
-      const frameCfgBase = CFG[frameStyle] ?? cfg;
-      const frameCfg = isDevanagari
-        ? { ...frameCfgBase, font: F_DEVA, weight: DEVA_WEIGHT[frameStyle] ?? "700" }
-        : frameCfgBase;
-
-      const activeIdx = frameWords.findIndex(w => t >= w.start && t < w.end);
+      const activeIdx = words.findIndex(w => t >= w.start && t < w.end);
       if (activeIdx === -1) { rafRef.current = requestAnimationFrame(draw); return; }
 
-      const active = frameWords[activeIdx]!;
+      const active = words[activeIdx]!;
       // Scale font relative to canvas width — 9:16 reference is 1080px, 16:9 is 1920px
       const baseRef  = aspectRatio === "16:9" ? 1920 : 1080;
       const fs       = fontSize * (cw / baseRef);
-      const { h: frameHOffset, v: framePosOffset } = getPos();
       // hOffset is normalized -100..100: 0 = centered, -100 = full left safe edge, +100 = full right safe edge.
       const SAFE_H   = 0.85;
-      const cx       = cw / 2 + (frameHOffset / 100) * (cw / 2) * SAFE_H;
+      const cx       = cw / 2 + (hOffset / 100) * (cw / 2) * SAFE_H;
       // posOffset is normalized -100..100: 0 = style default, -100 = top, +100 = bottom.
       // Interpolate across the full safe area, asymmetrically around the default.
       const SAFE_TOP = 0.06, SAFE_BOTTOM = 0.96;
-      const base     = frameCfg.yRatio;
-      const frac     = framePosOffset >= 0
-        ? base + (framePosOffset / 100) * (SAFE_BOTTOM - base)
-        : base + (framePosOffset / 100) * (base - SAFE_TOP);
+      const base     = cfg.yRatio;
+      const frac     = posOffset >= 0
+        ? base + (posOffset / 100) * (SAFE_BOTTOM - base)
+        : base + (posOffset / 100) * (base - SAFE_TOP);
       const cy       = ch * frac;
 
       // Window of words to display
-      const windowWords = frameCfg.showAll
-        ? frameStyle === "full-line"
+      const windowWords = cfg.showAll
+        ? style === "full-line"
           // Full-line: scan blocks from the start to find the one containing activeIdx
           ? (() => {
               const GAP   = 0.5;
               const MAX_W = 7;
               let s = 0;
-              while (s < frameWords.length) {
+              while (s < words.length) {
                 let e = s;
                 while (
-                  e < frameWords.length - 1 &&
+                  e < words.length - 1 &&
                   (e - s) < MAX_W - 1 &&
-                  (frameWords[e + 1]!.start - frameWords[e]!.end) < GAP
+                  (words[e + 1]!.start - words[e]!.end) < GAP
                 ) e++;
-                if (activeIdx >= s && activeIdx <= e) return frameWords.slice(s, e + 1);
+                if (activeIdx >= s && activeIdx <= e) return words.slice(s, e + 1);
                 s = e + 1;
               }
               return [active];
             })()
-          : frameWords.slice(Math.max(0, activeIdx - 2), Math.min(frameWords.length, activeIdx + 3))
+          : words.slice(Math.max(0, activeIdx - 2), Math.min(words.length, activeIdx + 3))
         : [active];
 
       // Measure each word at the font size it will actually be rendered at so the
@@ -419,19 +332,19 @@ export default function CaptionRenderer({
       const measured = windowWords.map((w, wi) => {
         const isActive = w.start === active.start;
         let wfs = fs;
-        if (frameStyle === "word-pop"      && isActive) wfs = fs * 1.5;
-        if (frameStyle === "comic"         && isActive) wfs = fs * 1.2;
-        if (frameStyle === "mr-beast"      && isActive) wfs = fs * 1.6;
-        if (frameStyle === "stack-reveal"  && isActive) wfs = fs * 1.3;
-        if (frameStyle === "shake"         && isActive) wfs = fs * 1.3;
-        if (frameStyle === "gradient-pop"  && isActive) wfs = fs * 1.4;
-        if (frameStyle === "solo-pop"      && isActive) wfs = fs * 1.8;
-        if (frameStyle === "solo-red"      && isActive) wfs = fs * 1.8;
-        if (frameStyle === "solo-glow"     && isActive) wfs = fs * 1.7;
-        if (frameStyle === "solo-box"      && isActive) wfs = fs * 1.6;
-        if (frameStyle === "solo-gradient" && isActive) wfs = fs * 1.8;
-        if (frameStyle === "solo-shake"    && isActive) wfs = fs * 1.8;
-        ctx.font = `${frameCfg.weight} ${wfs}px ${frameCfg.font}`;
+        if (style === "word-pop"      && isActive) wfs = fs * 1.5;
+        if (style === "comic"         && isActive) wfs = fs * 1.2;
+        if (style === "mr-beast"      && isActive) wfs = fs * 1.6;
+        if (style === "stack-reveal"  && isActive) wfs = fs * 1.3;
+        if (style === "shake"         && isActive) wfs = fs * 1.3;
+        if (style === "gradient-pop"  && isActive) wfs = fs * 1.4;
+        if (style === "solo-pop"      && isActive) wfs = fs * 1.8;
+        if (style === "solo-red"      && isActive) wfs = fs * 1.8;
+        if (style === "solo-glow"     && isActive) wfs = fs * 1.7;
+        if (style === "solo-box"      && isActive) wfs = fs * 1.6;
+        if (style === "solo-gradient" && isActive) wfs = fs * 1.8;
+        if (style === "solo-shake"    && isActive) wfs = fs * 1.8;
+        ctx.font = `${cfg.weight} ${wfs}px ${cfg.font}`;
         return {
           ...w,
           isActive,
@@ -443,7 +356,7 @@ export default function CaptionRenderer({
 
       // Full-line: wrap words into rows that fit within 88% of canvas width
       // All words in the block render at full brightness — no active/inactive distinction
-      if (frameStyle === "full-line") {
+      if (style === "full-line") {
         const maxLineW = cw * 0.88;
         const lineH    = fs * 1.5;
         // Split into rows
@@ -471,13 +384,13 @@ export default function CaptionRenderer({
           const ry = startY + ri * lineH;
 
           rowWords.forEach((m) => {
-            if (frameCfg.outline) {
-              ctx.strokeStyle = frameCfg.outline.color;
-              ctx.lineWidth   = frameCfg.outline.width;
+            if (cfg.outline) {
+              ctx.strokeStyle = cfg.outline.color;
+              ctx.lineWidth   = cfg.outline.width;
               ctx.lineJoin    = "round";
               ctx.strokeText(m.word, rx, ry);
             }
-            ctx.fillStyle = frameCfg.activeColor as string;
+            ctx.fillStyle = cfg.activeColor as string;
             ctx.fillText(m.word, rx, ry);
             rx += m.width;
           });
@@ -487,8 +400,9 @@ export default function CaptionRenderer({
         return;
       }
 
+
       // ── Font Cycle: solo word, cycling font per word index (white only) ─
-      if (frameStyle === "font-cycle") {
+      if (style === "font-cycle") {
         const stSlot = ST_FONTS[activeIdx % ST_FONTS.length]!;
         const stFont  = isDevanagari ? F_DEVA : stSlot.font;
         const stW     = isDevanagari ? "400" : stSlot.weight;
@@ -510,29 +424,29 @@ export default function CaptionRenderer({
       }
 
       // ── All display-stack styles (3-row unified layout) ──────────────────
-      if (DISPLAY_STACK_STYLES.has(frameStyle)) {
+      if (DISPLAY_STACK_STYLES.has(style)) {
         const prevWords = windowWords.filter(w => w.end   <= active.start);
         const nextWords = windowWords.filter(w => w.start >= active.end);
-        const activeFs  = frameStyle === "gothic" ? fs * 2.4 : fs * 2.8;
-        const contextFs = frameStyle === "gothic" ? fs * 1.0 : fs * 1.1;
+        const activeFs  = style === "gothic" ? fs * 2.4 : fs * 2.8;
+        const contextFs = style === "gothic" ? fs * 1.0 : fs * 1.1;
         const rowGap    = fs * 0.2;
 
         let shakeX = 0, activeYOffset = 0, upYOffset = 0, downYOffset = 0;
-        const tNow = Date.now();
-        if (frameStyle === "stack-shake") {
-          shakeX        = Math.sin(tNow / 30) * 6;
-          activeYOffset = Math.cos(tNow / 40) * 3;
+        const t = Date.now();
+        if (style === "stack-shake") {
+          shakeX        = Math.sin(t / 30) * 6;
+          activeYOffset = Math.cos(t / 40) * 3;
         }
-        if (frameStyle === "stack-wave") {
-          activeYOffset = Math.sin(tNow / 220) * 10;
-          upYOffset     = Math.sin(tNow / 220 + 1.0) * 6;
-          downYOffset   = Math.sin(tNow / 220 - 1.0) * 6;
+        if (style === "stack-wave") {
+          activeYOffset = Math.sin(t / 220) * 10;
+          upYOffset     = Math.sin(t / 220 + 1.0) * 6;
+          downYOffset   = Math.sin(t / 220 - 1.0) * 6;
         }
 
-        drawThreeRowStack(ctx, frameCfg, prevWords, active.word, nextWords, cx, cy, fs, {
+        drawThreeRowStack(ctx, cfg, prevWords, active.word, nextWords, cx, cy, fs, {
           activeFs, contextFs, rowGap,
           shakeX, activeYOffset, upYOffset, downYOffset,
-          contextItalic: frameStyle === "word-stack",
+          contextItalic: style === "word-stack",
         });
         rafRef.current = requestAnimationFrame(draw);
         return;
@@ -548,13 +462,13 @@ export default function CaptionRenderer({
 
         // Apply row scale to keep text within canvas bounds
         const wfs = m.wfs * rowScale;
-        ctx.font = `${frameCfg.weight} ${wfs}px ${frameCfg.font}`;
+        ctx.font = `${cfg.weight} ${wfs}px ${cfg.font}`;
 
         // Y animation
         let drawY = cy;
 
         // Bounce
-        if (frameStyle === "bounce" && isA) {
+        if (style === "bounce" && isA) {
           const key = String(m.start);
           if (!bounceRef.current[key]) bounceRef.current[key] = Date.now();
           const el = (Date.now() - bounceRef.current[key]!) / 1000;
@@ -562,13 +476,13 @@ export default function CaptionRenderer({
         }
 
         // Wave — each word oscillates at slightly different phase
-        if (frameStyle === "wave") {
+        if (style === "wave") {
           const phase = m.wi * 0.6;
           drawY = cy + Math.sin(Date.now() / 200 + phase) * (isA ? 12 : 6);
         }
 
         // Shake — rapid horizontal vibration on active word
-        if ((frameStyle === "shake" || frameStyle === "solo-shake") && isA) {
+        if ((style === "shake" || style === "solo-shake") && isA) {
           const shakeAmt = Math.sin(Date.now() / 30) * 4;
           drawY += Math.cos(Date.now() / 40) * 2;
           x += shakeAmt;
@@ -576,49 +490,49 @@ export default function CaptionRenderer({
 
         // Glitch offset
         let glitchX = 0;
-        if (frameStyle === "glitch" && isA) {
+        if (style === "glitch" && isA) {
           glitchX = Math.random() > 0.85 ? (Math.random() - 0.5) * 8 : 0;
         }
 
-        const color = isA ? frameCfg.activeColor : frameCfg.inactiveColor;
-        if (color === "transparent" && !frameCfg.outline) { x += m.width * rowScale; return; }
+        const color = isA ? cfg.activeColor : cfg.inactiveColor;
+        if (color === "transparent" && !cfg.outline) { x += m.width * rowScale; return; }
 
         // Background pill
-        if (frameCfg.bg && isA) {
+        if (cfg.bg && isA) {
           const pad = 14;
           const bw  = ctx.measureText(m.word).width + pad * 2;
           const bh  = wfs * 1.35;
-          ctx.fillStyle = frameCfg.bg;
-          roundRect(ctx, x - pad, drawY - wfs, bw, bh, frameStyle === "comic" ? 4 : 10);
+          ctx.fillStyle = cfg.bg;
+          roundRect(ctx, x - pad, drawY - wfs, bw, bh, style === "comic" ? 4 : 10);
           ctx.fill();
         }
 
         // Shadow (shadow style)
-        if (frameStyle === "shadow") {
+        if (style === "shadow") {
           ctx.shadowColor = "rgba(0,0,0,0.95)"; ctx.shadowBlur = 10;
           ctx.shadowOffsetX = 3; ctx.shadowOffsetY = 3;
         }
 
         // Glow
-        if (frameCfg.glow && isA) {
-          ctx.shadowColor = frameCfg.glow; ctx.shadowBlur = 24;
+        if (cfg.glow && isA) {
+          ctx.shadowColor = cfg.glow; ctx.shadowBlur = 24;
         }
 
         // Typewriter cursor blink
-        if (frameStyle === "typewriter" && isA) {
+        if (style === "typewriter" && isA) {
           ctx.shadowColor = "#00FF41"; ctx.shadowBlur = 16;
         }
 
         // Outline / stroke
-        if (frameCfg.outline) {
-          ctx.strokeStyle   = frameCfg.outline.color;
-          ctx.lineWidth     = frameCfg.outline.width;
+        if (cfg.outline) {
+          ctx.strokeStyle   = cfg.outline.color;
+          ctx.lineWidth     = cfg.outline.width;
           ctx.lineJoin      = "round";
           ctx.strokeText(m.word, x + glitchX, drawY);
         }
 
         // Glitch second layer (cyan offset)
-        if (frameStyle === "glitch" && isA) {
+        if (style === "glitch" && isA) {
           ctx.fillStyle = "rgba(0,255,255,0.6)";
           ctx.fillText(m.word, x + 3, drawY - 2);
         }
@@ -626,16 +540,16 @@ export default function CaptionRenderer({
         // Fill color
         if (color === "gradient") {
           // Gradient per word
-          const pal   = frameStyle === "gradient-gold" ? GOLD : (frameStyle === "gradient-pop" || frameStyle === "solo-gradient") ? PURPLE_POP : RAINBOW;
+          const pal   = style === "gradient-gold" ? GOLD : (style === "gradient-pop" || style === "solo-gradient") ? PURPLE_POP : RAINBOW;
           const grd   = ctx.createLinearGradient(x, drawY - wfs, x + ctx.measureText(m.word).width, drawY);
           pal.forEach((c, i) => grd.addColorStop(i / (pal.length - 1), c));
-          ctx.fillStyle = isA ? grd : frameCfg.inactiveColor;
-        } else if (frameStyle === "outline-white" && isA) {
+          ctx.fillStyle = isA ? grd : cfg.inactiveColor;
+        } else if (style === "outline-white" && isA) {
           // Outline-only — no fill, just stroke was applied above
           ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
           x += m.width * rowScale; return;
         } else {
-          ctx.fillStyle = isA ? color : frameCfg.inactiveColor;
+          ctx.fillStyle = isA ? color : cfg.inactiveColor;
         }
 
         ctx.fillText(m.word, x + glitchX, drawY);
@@ -652,9 +566,9 @@ export default function CaptionRenderer({
 
     draw();
     return () => cancelAnimationFrame(rafRef.current);
-  }, [videoRef, words, style, fontSize, posOffset, hOffset, aspectRatio, isDevanagari, segments, resolvedPosX, resolvedPosY]);
+  }, [videoRef, words, style, fontSize, posOffset, hOffset, aspectRatio, isDevanagari]);
 
-  if (resolvedStyle === "none" && (!segments || segments.length === 0)) return null;
+  if (style === "none") return null;
 
   return (
     <canvas

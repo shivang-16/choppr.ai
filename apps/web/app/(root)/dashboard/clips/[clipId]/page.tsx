@@ -1,19 +1,15 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback, useMemo } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import type React from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
-const ClipTimeline = dynamic(
-  () => import("./_components/clip-timeline"),
-  { ssr: false },
-);
 import { useApiFetch } from "@/lib/apiFetch";
 import {
   ArrowLeft, Play, Pause, Volume2, VolumeX,
-  Captions, Gauge, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Type, Plus, Trash2, Smile, ImageIcon, Move, Upload,
+  Captions, Gauge, Scissors, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Type, Plus, Trash2, Smile, ImageIcon, Move,
 } from "lucide-react";
 import Link from "next/link";
 import Sidebar from "../../_components/sidebar";
@@ -26,16 +22,12 @@ import {
 } from "@/lib/export-polling";
 import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_components/caption-renderer";
 import BackgroundRenderer, { STIPOP_KEY, fetchStipopStickers, fetchStipopTrendingPacks, fetchStipopPackStickers, type StipopSticker, type StipopPack, type PlacedSticker, type ImageSegmenterRef } from "./_components/background-renderer";
-import { UploadPanel } from "./_components/upload-panel";
-import type { ChopprTrack, TimelineOverlayApi, OverlayTimingItem, TimelineMediaApi, CaptionTrackApi, CaptionSegment } from "./_components/clip-timeline";
-import { useClipDraftAutosave, loadClipDraft, clearClipDraft, type ClipDraftState } from "./_components/use-clip-draft";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 /** Free plan can only export clips up to this length (seconds). */
 const FREE_EXPORT_MAX_SECS = 5 * 60;
 const SPEED_MIN = 0.25;
 const SPEED_MAX = 4;
-const DEFAULT_OVERLAY_DUR = 4;
 
 /** Trimmed source length before speed. */
 function getTrimmedExportSecs(trimStart: number, trimEnd: number, duration: number): number {
@@ -58,22 +50,6 @@ function getRenderedExportSecs(
   return trimmed / spd;
 }
 
-/** Mirror of the backend computeExportCost — for display only. Backend is authoritative. */
-function computeExportCostEstimate(
-  captionStyle: string,
-  stickers: { stickerId: string }[],
-  tracks: { items: { type: string }[] }[],
-): number {
-  const BASE = 2;
-  const MAX  = 6;
-  let cost = BASE;
-  if (captionStyle && captionStyle !== "none") cost += 1;
-  if (stickers.length > 0) cost += 1;
-  const videoItems = tracks.flatMap(t => t.items.filter(i => i.type === "video"));
-  if (videoItems.length > 1) cost += 1;
-  return Math.min(cost, MAX);
-}
-
 // ── Text overlay type ─────────────────────────────────────────────────────────
 interface TextOverlay {
   id: string;
@@ -84,10 +60,6 @@ interface TextOverlay {
   color: string;
   bold: boolean;
   italic: boolean;
-  /** Timeline start (seconds). Controls when text appears in preview. */
-  startTime?: number;
-  /** How long the text stays visible (seconds). */
-  duration?: number;
 }
 
 // ── Thumbnail overlay type ────────────────────────────────────────────────────
@@ -151,16 +123,13 @@ function useIsMobile() {
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const TABS = [
   { id: "captions",    icon: Captions,   label: "Captions" },
-  { id: "upload",      icon: Upload,     label: "Upload" },
   { id: "text",        icon: Type,       label: "Text" },
   { id: "thumbnail",   icon: ImageIcon,  label: "Watermark" },
   { id: "stickers",    icon: Layers,     label: "Stickers" },
   { id: "speed",       icon: Gauge,      label: "Speed" },
+  { id: "trim",        icon: Scissors,   label: "Trim" },
   { id: "enhance",     icon: Sparkles,   label: "Enhance" },
 ];
-
-/** Mobile: all edit tools stacked on the left of the preview. */
-const MOBILE_SIDE_TABS = TABS;
 
 // ── Caption styles ────────────────────────────────────────────────────────────
 type CaptionStyleEntry = {
@@ -364,8 +333,6 @@ interface EditPanelProps {
   hideTranscript?: boolean;
   captionStyle: CaptionStyle;
   setCaptionStyle: (s: CaptionStyle) => void;
-  onAddCaptionSegment: (style: CaptionStyle) => void;
-  captionSegments: CaptionSegment[];
   captionWords: CaptionWord[];
   onCaptionWordsChange: (words: CaptionWord[]) => void;
   captionFontSize: number;
@@ -374,7 +341,6 @@ interface EditPanelProps {
   setCaptionPosY: (n: number) => void;
   captionPosX: number;
   setCaptionPosX: (n: number) => void;
-  onResetCaptionPos: () => void;
   captionLang: string;
   activeLang: string;
   translating: boolean;
@@ -405,23 +371,13 @@ interface EditPanelProps {
   styleGridMaxHeight?: number | string;
   // Background overlay
   placedStickers: PlacedSticker[];
-  setPlacedStickers: React.Dispatch<React.SetStateAction<PlacedSticker[]>>;
+  setPlacedStickers: (s: PlacedSticker[]) => void;
   segmentationReady: boolean;
   // Text overlays
   textOverlays: TextOverlay[];
   setTextOverlays: React.Dispatch<React.SetStateAction<TextOverlay[]>>;
   selectedTextId: string | null;
   setSelectedTextId: (id: string | null) => void;
-  onAddTextOverlay?: () => void;
-  onRemoveTextOverlay?: (id: string) => void;
-  onToggleSticker?: (s: StipopSticker) => void;
-  onRemoveSticker?: (id: string) => void;
-  onClearStickers?: () => void;
-  onAddToTimeline?: (asset: {
-    type: "video" | "audio" | "image";
-    url: string;
-    name?: string;
-  }) => void;
   // Thumbnail overlay
   thumbnailOverlay: ThumbnailOverlayState | null;
   setThumbnailOverlay: (o: ThumbnailOverlayState | null) => void;
@@ -440,15 +396,12 @@ const STIPOP_CATEGORIES = [
 ];
 
 function StipopStickerPicker({
-  placedStickers, setPlacedStickers, segmentationReady, styleGridMaxHeight, onToggleSticker, onRemoveSticker, onClearStickers,
+  placedStickers, setPlacedStickers, segmentationReady, styleGridMaxHeight,
 }: {
   placedStickers: PlacedSticker[];
-  setPlacedStickers: React.Dispatch<React.SetStateAction<PlacedSticker[]>>;
+  setPlacedStickers: (s: PlacedSticker[]) => void;
   segmentationReady: boolean;
   styleGridMaxHeight: number | string;
-  onToggleSticker?: (s: StipopSticker) => void;
-  onRemoveSticker?: (id: string) => void;
-  onClearStickers?: () => void;
 }) {
   // "trending" | "category" | "search" | "pack"
   type ViewMode = "trending" | "category" | "search" | "pack";
@@ -519,10 +472,6 @@ function StipopStickerPicker({
   };
 
   const placeStickerFromResult = (s: StipopSticker) => {
-    if (onToggleSticker) {
-      onToggleSticker(s);
-      return;
-    }
     const key = `stipop:${s.id}`;
     const isPlaced = placedStickers.some(ps => ps.stickerId === key);
     if (isPlaced) {
@@ -535,8 +484,6 @@ function StipopStickerPicker({
         x: 0.15 + Math.random() * 0.7,
         y: 0.15 + Math.random() * 0.7,
         scale: 1,
-        startTime: 0,
-        duration: 4,
       }]);
     }
   };
@@ -704,13 +651,7 @@ function StipopStickerPicker({
           <div className="h-px bg-white/6" />
           <div className="flex items-center justify-between">
             <p className="text-[10px] font-medium text-white/50">Placed ({placedStickers.length})</p>
-            <button
-              onClick={() => {
-                if (onClearStickers) onClearStickers();
-                else setPlacedStickers([]);
-              }}
-              className="text-[10px] text-white/25 hover:text-red-400 transition-colors"
-            >
+            <button onClick={() => setPlacedStickers([])} className="text-[10px] text-white/25 hover:text-red-400 transition-colors">
               Remove all
             </button>
           </div>
@@ -726,22 +667,15 @@ function StipopStickerPicker({
                 type="range" min={0.3} max={2} step={0.1}
                 value={ps.scale}
                 onChange={e => {
-                  setPlacedStickers(prev => {
-                    const updated = [...prev];
-                    const cur = updated[i];
-                    if (!cur) return prev;
-                    updated[i] = { ...cur, scale: Number(e.target.value) };
-                    return updated;
-                  });
+                  const updated = [...placedStickers];
+                  updated[i] = { ...ps, scale: Number(e.target.value) };
+                  setPlacedStickers(updated);
                 }}
                 className="w-14 accent-white cursor-pointer"
                 title="Size"
               />
               <button
-                onClick={() => {
-                  if (onRemoveSticker) onRemoveSticker(ps.stickerId);
-                  else setPlacedStickers(prev => prev.filter((_, j) => j !== i));
-                }}
+                onClick={() => setPlacedStickers(placedStickers.filter((_, j) => j !== i))}
                 className="text-white/25 hover:text-red-400 transition-colors"
               >
                 <X className="h-3 w-3" />
@@ -786,7 +720,7 @@ function ThumbnailTabContent({
   const [selectedStyle, setSelectedStyle]       = useState<string>(thumbnailOverlay?.styleId ?? "full");
 
   useEffect(() => {
-    apiFetch(`${API_URL}/api/user-assets?usage=watermark&type=image`)
+    apiFetch(`${API_URL}/api/user-assets?type=image`)
       .then(r => r.json())
       .then(setAssets)
       .catch(() => {})
@@ -812,7 +746,7 @@ function ThumbnailTabContent({
       const presignRes = await apiFetch(`${API_URL}/api/user-assets/presign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mimeType: file.type, fileName: file.name, sizeBytes: file.size, usage: "watermark" }),
+        body: JSON.stringify({ mimeType: file.type, fileName: file.name, sizeBytes: file.size }),
       });
       const { uploadUrl, asset } = await presignRes.json();
       await new Promise<void>((resolve, reject) => {
@@ -1036,7 +970,7 @@ function RemoveBgButton({
       const presignRes = await apiFetch(`${API_URL}/api/user-assets/presign`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ mimeType: "image/png", fileName: file.name, sizeBytes: file.size, usage: "watermark" }),
+        body:    JSON.stringify({ mimeType: "image/png", fileName: file.name, sizeBytes: file.size }),
       });
       const { uploadUrl, asset } = await presignRes.json();
 
@@ -1075,8 +1009,8 @@ function RemoveBgButton({
 }
 
 function EditPanelContent({
-  activeTab, hideTranscript = false, captionStyle, setCaptionStyle, onAddCaptionSegment, captionSegments, captionWords, onCaptionWordsChange, captionFontSize, setCaptionFontSize,
-  captionPosY, setCaptionPosY, captionPosX, setCaptionPosX, onResetCaptionPos,
+  activeTab, hideTranscript = false, captionStyle, setCaptionStyle, captionWords, onCaptionWordsChange, captionFontSize, setCaptionFontSize,
+  captionPosY, setCaptionPosY, captionPosX, setCaptionPosX,
   captionLang, activeLang, translating, handleTranslate,
   speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
   brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
@@ -1084,8 +1018,6 @@ function EditPanelContent({
   styleGridMaxHeight = 360,
   placedStickers, setPlacedStickers, segmentationReady,
   textOverlays, setTextOverlays, selectedTextId, setSelectedTextId,
-  onAddTextOverlay, onRemoveTextOverlay, onToggleSticker, onRemoveSticker, onClearStickers,
-  onAddToTimeline,
   thumbnailOverlay, setThumbnailOverlay,
 }: EditPanelProps) {
   const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
@@ -1109,15 +1041,10 @@ function EditPanelContent({
                     {group.styles.map(s => (
                       <button
                         key={s.id}
-                        onClick={() => {
-                          setCaptionStyle(s.id);
-                          onAddCaptionSegment(s.id);
-                        }}
+                        onClick={() => setCaptionStyle(s.id)}
                         className={cn(
-                          "relative rounded-xl border transition-all overflow-hidden cursor-pointer",
-                          captionSegments.some(seg => seg.style === s.id)
-                            ? "border-white/50 ring-1 ring-white/20"
-                            : "border-white/8 bg-white/3 hover:border-white/20"
+                          "relative rounded-xl border transition-all overflow-hidden",
+                          captionStyle === s.id ? "border-white/50 ring-1 ring-white/20" : "border-white/8 bg-white/3 hover:border-white/20"
                         )}
                       >
                         {/* Preview area */}
@@ -1132,7 +1059,6 @@ function EditPanelContent({
                         <div className="px-2 py-1 flex items-center justify-between bg-[#181818]">
                           <span className="text-[9px] font-semibold text-white/60 truncate leading-tight">{s.label}</span>
                           {captionStyle === s.id && <Check className="h-2.5 w-2.5 text-white/70 shrink-0 ml-1" />}
-                          {captionSegments.some(seg => seg.style === s.id) && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shrink-0 ml-1" />}
                         </div>
                       </button>
                     ))}
@@ -1141,7 +1067,6 @@ function EditPanelContent({
               ))}
             </div>
           </div>
-
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
@@ -1161,12 +1086,10 @@ function EditPanelContent({
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="text-[12px] text-white/50">
-                Position
-              </span>
+              <span className="text-[12px] text-white/50">Position</span>
               {(captionPosX !== 0 || captionPosY !== 0) && (
                 <button
-                  onClick={onResetCaptionPos}
+                  onClick={() => { setCaptionPosX(0); setCaptionPosY(0); }}
                   className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
                 >
                   Reset
@@ -1174,9 +1097,7 @@ function EditPanelContent({
               )}
             </div>
             <p className="text-[10px] text-white/30 leading-snug">
-              {captionSegments.length > 1
-                ? "Scrub to each caption segment, then drag on the preview — each style keeps its own position."
-                : "Drag the caption directly on the preview to reposition it."}
+              Drag the caption directly on the preview to reposition it.
             </p>
           </div>
 
@@ -1252,15 +1173,8 @@ function EditPanelContent({
             <p className="text-[12px] font-medium text-white/70">Text overlays</p>
             <button
               onClick={() => {
-                if (onAddTextOverlay) {
-                  onAddTextOverlay();
-                  return;
-                }
                 const id = `txt-${Date.now()}`;
-                setTextOverlays(prev => [...prev, {
-                  id, text: "Your text", x: 0.5, y: 0.5, fontSize: 20, color: "#ffffff",
-                  bold: false, italic: false, startTime: 0, duration: 4,
-                }]);
+                setTextOverlays(prev => [...prev, { id, text: "Your text", x: 0.5, y: 0.5, fontSize: 20, color: "#ffffff", bold: false, italic: false }]);
                 setSelectedTextId(id);
               }}
               className="flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
@@ -1385,14 +1299,7 @@ function EditPanelContent({
                   >I</button>
                   {/* Delete */}
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (onRemoveTextOverlay) onRemoveTextOverlay(t.id);
-                      else {
-                        setTextOverlays(prev => prev.filter(o => o.id !== t.id));
-                        if (selectedTextId === t.id) setSelectedTextId(null);
-                      }
-                    }}
+                    onClick={(e) => { e.stopPropagation(); setTextOverlays(prev => prev.filter(o => o.id !== t.id)); if (selectedTextId === t.id) setSelectedTextId(null); }}
                     className="ml-auto text-white/25 hover:text-red-400 transition-colors cursor-pointer"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -1403,9 +1310,7 @@ function EditPanelContent({
           })}
 
           {textOverlays.length > 0 && (
-            <p className="text-[10px] text-white/25 text-center">
-              Drag text on the video to reposition · trim on the timeline to control when it shows
-            </p>
+            <p className="text-[10px] text-white/25 text-center">Drag text on the video to reposition</p>
           )}
         </div>
       )}
@@ -1416,9 +1321,6 @@ function EditPanelContent({
           setPlacedStickers={setPlacedStickers}
           segmentationReady={segmentationReady}
           styleGridMaxHeight={styleGridMaxHeight}
-          onToggleSticker={onToggleSticker}
-          onRemoveSticker={onRemoveSticker}
-          onClearStickers={onClearStickers}
         />
       )}
 
@@ -1449,13 +1351,31 @@ function EditPanelContent({
         </div>
       )}
 
-      {activeTab === "upload" && (
-        <UploadPanel
-          usage="timeline"
-          draggable
-          onAddToTimeline={onAddToTimeline}
-          title="My media"
-        />
+      {activeTab === "trim" && (
+        <div className="flex flex-col gap-4">
+          <p className="text-[12px] font-medium text-white/70">Trim clip</p>
+          {[
+            { label: "Start", value: trimStart, set: setTrimStart, other: effectiveTrimEnd, isStart: true },
+            { label: "End",   value: effectiveTrimEnd, set: (v: number) => setTrimEnd(Math.max(v, trimStart + 0.5)), other: trimStart, isStart: false },
+          ].map(({ label, value, set, other, isStart }) => (
+            <div key={label} className="flex flex-col gap-1.5">
+              <div className="flex justify-between text-[11px] text-white/40">
+                <span>{label}</span><span>{fmt(value)}</span>
+              </div>
+              <input type="range" min={0} max={duration} step={0.1} value={value}
+                onChange={e => {
+                  const v = Number(e.target.value);
+                  set(isStart ? Math.min(v, other - 0.5) : Math.max(v, other + 0.5));
+                  if (videoRef.current) videoRef.current.currentTime = v;
+                }}
+                className="w-full accent-white cursor-pointer" />
+            </div>
+          ))}
+          <div className="rounded-xl border border-white/8 bg-white/3 px-4 py-3 flex justify-between">
+            <span className="text-[12px] text-white/40">Duration after trim</span>
+            <span className="text-[13px] font-semibold text-white/70">{fmt(effectiveTrimEnd - trimStart)}</span>
+          </div>
+        </div>
       )}
 
       {activeTab === "enhance" && (
@@ -1494,171 +1414,6 @@ function EditPanelContent({
   );
 }
 
-/**
- * Water-fill SVG layer.
- * direction="horizontal" (default) — fills left→right; wave on the right edge scrolls vertically.
- * direction="vertical"             — rises bottom→top; wave on the top edge scrolls horizontally.
- * The wave animates continuously even when progress is fixed.
- */
-function WaterFill({ progress, direction = "horizontal" }: { progress: number; direction?: "horizontal" | "vertical" }) {
-  const p = Math.max(0, Math.min(100, progress));
-
-  if (direction === "vertical") {
-    // Water rises from bottom; start at ~5% so first fill is visible
-    const fillHeight = Math.max(5, p);
-    return (
-      <span
-        className="absolute inset-x-0 bottom-0 pointer-events-none overflow-hidden transition-[height] duration-500 ease-out"
-        style={{ height: `${fillHeight}%` }}
-        aria-hidden
-      >
-        <span className="absolute inset-0 bg-white" />
-        {/* Horizontal wave scrolls left continuously */}
-        <svg
-          className="absolute -top-[10px] left-0 w-[200%] animate-[chopprWaterScroll_2.2s_linear_infinite]"
-          style={{ height: 20 }}
-          viewBox="0 0 400 20"
-          preserveAspectRatio="none"
-          aria-hidden
-        >
-          <path
-            d="M0 10 C25 0, 50 20, 75 10 C100 0, 125 20, 150 10 C175 0, 200 20, 225 10 C250 0, 275 20, 300 10 C325 0, 350 20, 375 10 C400 0, 400 20, 400 20 L0 20 Z"
-            fill="white"
-          />
-        </svg>
-      </span>
-    );
-  }
-
-  // Horizontal: fills left→right; wave on the right edge scrolls vertically
-  const fillWidth = Math.max(3, p);
-  return (
-    <span
-      className="absolute inset-y-0 left-0 pointer-events-none overflow-hidden transition-[width] duration-300 ease-out"
-      style={{ width: `${fillWidth}%` }}
-      aria-hidden
-    >
-      <span className="absolute inset-0 bg-white" />
-      {/* Vertical wave on right edge — tall SVG, scrolls upward */}
-      <svg
-        className="absolute top-0 right-0 h-[200%] w-4 animate-[chopprWaterScrollV_1.6s_linear_infinite]"
-        viewBox="0 0 16 200"
-        preserveAspectRatio="none"
-        aria-hidden
-      >
-        <path
-          d="M8 0 C13 12, 3 24, 8 36 C13 48, 3 60, 8 72 C13 84, 3 96, 8 108 C13 120, 3 132, 8 144 C13 156, 3 168, 8 180 C13 192, 8 200, 8 200 L0 200 L0 0 Z"
-          fill="white"
-        />
-      </svg>
-    </span>
-  );
-}
-
-function ExportClipButton({
-  exportPhase,
-  exportProgress,
-  exportReadyToDownload,
-  onExport,
-  onCancel,
-  onDownload,
-  size = "default",
-  className,
-  creditCost,
-}: {
-  exportPhase: "idle" | "exporting" | "done" | "error" | "no_credits" | "upgrade_required";
-  exportProgress: number;
-  exportReadyToDownload: boolean;
-  onExport: () => void;
-  onCancel: () => void;
-  onDownload: () => void;
-  size?: "default" | "compact" | "circle";
-  className?: string;
-  creditCost?: number;
-}) {
-  const exporting = exportPhase === "exporting";
-  const progress = Math.max(0, Math.min(100, exportProgress));
-
-  const handleClick = () => {
-    if (exporting) { onCancel(); return; }
-    if (exportReadyToDownload) { onDownload(); return; }
-    if (exportPhase === "no_credits") { window.location.href = "/pricing"; return; }
-    onExport();
-  };
-
-  /* ── Circle variant (collapsed sidebar) ── */
-  if (size === "circle") {
-    const icon = exporting
-      ? <X className="h-4 w-4 relative z-10" />
-      : exportReadyToDownload
-        ? <Download className="h-4 w-4 relative z-10" />
-        : <Upload className="h-4 w-4 relative z-10" />;
-    const title = exporting ? "Cancel export" : exportReadyToDownload ? "Download" : "Export clip";
-    return (
-      <button
-        type="button"
-        onClick={handleClick}
-        title={title}
-        aria-label={title}
-        className={cn(
-          "relative h-11 w-11 flex items-center justify-center rounded-full overflow-hidden transition-all active:scale-[0.94] cursor-pointer",
-          exporting
-            ? "bg-[#1a1a2e] border border-white/20 text-white"
-            : "bg-white text-black hover:bg-white/85",
-          className,
-        )}
-      >
-        {exporting && <WaterFill progress={progress} direction="vertical" />}
-        <span className={cn("relative z-10", exporting && "mix-blend-difference text-white")}>
-          {icon}
-        </span>
-      </button>
-    );
-  }
-
-  /* ── Default / compact variant ── */
-  const label = exporting
-    ? "Cancel"
-    : exportReadyToDownload
-      ? "Download"
-      : exportPhase === "no_credits"
-        ? "Get credits"
-        : creditCost !== undefined
-          ? `Export · ${creditCost} credit${creditCost === 1 ? "" : "s"}`
-          : "Export clip";
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className={cn(
-        "relative overflow-hidden font-semibold transition-all active:scale-[0.98] cursor-pointer",
-        size === "compact"
-          ? "rounded-xl px-3 py-1.5 text-[11px] min-w-[5.5rem]"
-          : "w-full rounded-2xl py-3 text-[14px]",
-        exporting
-          ? "bg-[#0d0d1a] border border-white/20 text-white"
-          : exportReadyToDownload
-            ? "bg-white text-black hover:bg-white/90"
-            : "bg-white text-black hover:bg-white/90",
-        className,
-      )}
-      aria-label={label}
-    >
-      {exporting && <WaterFill progress={progress} />}
-      <span
-        className={cn(
-          "relative z-10 inline-flex items-center justify-center gap-1.5",
-          exporting && "mix-blend-difference text-white",
-        )}
-      >
-        {exportReadyToDownload && !exporting && <Download className="h-3.5 w-3.5" />}
-        {label}
-      </span>
-    </button>
-  );
-}
-
 function ExportSection({
   exportPhase, exportProgress, exportUrl, exportError, handleExport, handleCancelExport,
   handlePrimaryExportAction, setExportPhase, setExportUrl,
@@ -1668,7 +1423,6 @@ function ExportSection({
   onResetAll,
   compact = false,
   exportRequiresUpgrade = false,
-  exportCreditCost,
 }: Pick<EditPanelProps, "exportPhase" | "exportProgress" | "exportUrl" | "exportError" | "handleExport" | "handleCancelExport" | "setExportPhase" | "setExportUrl"> & {
   handlePrimaryExportAction: () => void;
   exportReadyToDownload: boolean;
@@ -1677,7 +1431,6 @@ function ExportSection({
   onResetAll?: () => void;
   compact?: boolean;
   exportRequiresUpgrade?: boolean;
-  exportCreditCost?: number;
 }) {
   const ResetLink = onResetAll ? (
     <button
@@ -1704,9 +1457,9 @@ function ExportSection({
   }
 
   return (
-    <div className={cn("flex flex-col gap-2", compact && "gap-1.5")}>
-      {(exportPhase === "idle" || exportPhase === "exporting" || (exportPhase === "done" && !exportReadyToDownload)) && (
-        exportRequiresUpgrade && exportPhase !== "exporting" ? (
+    <div className="flex flex-col gap-2">
+      {(exportPhase === "idle" || (exportPhase === "done" && !exportReadyToDownload)) && (
+        exportRequiresUpgrade ? (
           <div className="flex flex-col gap-1.5">
             <Link
               href="/dashboard/billing"
@@ -1722,24 +1475,35 @@ function ExportSection({
             )}
           </div>
         ) : (
-          <>
-            <ExportClipButton
-              exportPhase={exportPhase}
-              exportProgress={exportProgress}
-              exportReadyToDownload={exportReadyToDownload}
-              onExport={handleExport}
-              onCancel={handleCancelExport}
-              onDownload={handlePrimaryExportAction}
-              size={compact ? "compact" : "default"}
-              creditCost={exportCreditCost}
-            />
-            {exportPhase === "exporting" && (
-              <p className="text-[10px] text-white/25 text-center">
-                Times out after {EXPORT_TIMEOUT_MINUTES} minutes if stuck.
-              </p>
-            )}
-          </>
+          <button
+            onClick={handleExport}
+            className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
+          >
+            Export clip
+          </button>
         )
+      )}
+
+      {exportPhase === "exporting" && (
+        <>
+          <div className="flex items-center justify-between text-[11px] text-white/40 mb-1">
+            <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Rendering…</span>
+            <span>{exportProgress}%</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-white transition-all duration-500" style={{ width: `${exportProgress}%` }} />
+          </div>
+          <button
+            type="button"
+            onClick={handleCancelExport}
+            className="mt-1 w-full rounded-xl border border-white/15 py-2 text-[12px] font-medium text-white/55 hover:text-white/80 hover:border-white/25 transition-colors"
+          >
+            Cancel export
+          </button>
+          <p className="text-[10px] text-white/25 text-center">
+            Times out after {EXPORT_TIMEOUT_MINUTES} minutes if stuck.
+          </p>
+        </>
       )}
 
       {exportReadyToDownload && exportUrl && (
@@ -1753,14 +1517,12 @@ function ExportSection({
           >
             Download
           </button>
-          {!compact && (
-            <button
-              onClick={handleExport}
-              className="text-[11px] text-white/35 hover:text-white/60 transition-colors text-center py-1"
-            >
-              Export again
-            </button>
-          )}
+          <button
+            onClick={handleExport}
+            className="text-[11px] text-white/35 hover:text-white/60 transition-colors text-center py-1"
+          >
+            Export again
+          </button>
         </>
       )}
 
@@ -1794,7 +1556,7 @@ function ExportSection({
           >
             Get more credits →
           </a>
-          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center cursor-pointer">
+          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
             Cancel
           </button>
         </>
@@ -1817,7 +1579,7 @@ function ExportSection({
             <Sparkles className="h-4 w-4" />
             Upgrade to Pro
           </Link>
-          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center cursor-pointer">
+          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
             Cancel
           </button>
         </>
@@ -2021,58 +1783,14 @@ export default function ClipRefinePage() {
 
   const [aspectRatio, setAspectRatio] = useState("9:16");
 
-  // ── Draft persistence ─────────────────────────────────────────────────────
   // Edited/exported clips derived from this clip + which one is previewed
-  // Declared here (before useClipDraftAutosave) so we can scope the draft key to the active version.
   const [editedClips, setEditedClips] = useState<any[]>([]);
   const [activeEditId, setActiveEditId] = useState<string | null>(null);
 
-  const { saveDraft, flush: flushDraft } = useClipDraftAutosave(clipId ?? "", activeEditId);
-  const draftRestoredRef = useRef(false);
-  const [draftTracks, setDraftTracks] = useState<unknown[] | null>(null);
-  const [timelineResetKey, setTimelineResetKey] = useState(0);
-
-  // Restore draft on mount (once)
-  useEffect(() => {
-    if (!clipId || draftRestoredRef.current) return;
-    draftRestoredRef.current = true;
-    const draft = loadClipDraft(clipId);
-    if (!draft) return;
-    if (draft.aspectRatio) setAspectRatio(draft.aspectRatio);
-    if (draft.speed != null) { setSpeed(draft.speed); prevSpeedRef.current = draft.speed; }
-    if (draft.trimStart != null) setTrimStart(draft.trimStart);
-    if (draft.trimEnd != null) setTrimEnd(draft.trimEnd);
-    if (draft.brightness != null) setBrightness(draft.brightness);
-    if (draft.contrast != null) setContrast(draft.contrast);
-    if (draft.saturation != null) setSaturation(draft.saturation);
-    if (draft.captionStyle) setCaptionStyle(draft.captionStyle as any);
-    if (draft.captionWords?.length) setCaptionWords(draft.captionWords as any);
-    if (draft.captionFontSize) setCaptionFontSize(draft.captionFontSize);
-    if (draft.captionPosX != null) setCaptionPosX(draft.captionPosX);
-    if (draft.captionPosY != null) setCaptionPosY(draft.captionPosY);
-    if (draft.textOverlays?.length) setTextOverlays(draft.textOverlays as any);
-    if (draft.placedStickers?.length) setPlacedStickers(draft.placedStickers as any);
-    if (draft.thumbnailOverlay) setThumbnailOverlay(draft.thumbnailOverlay as any);
-    if (draft.timelineTracks?.length) setDraftTracks(draft.timelineTracks);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clipId]);
-
   const videoRef              = useRef<HTMLVideoElement>(null);
-  const timelineToggleRef     = useRef<(() => void) | null>(null);
-  const exportTracksRef       = useRef<ChopprTrack[] | null>(null);
-  const overlayApiRef         = useRef<TimelineOverlayApi | null>(null);
-  const mediaApiRef           = useRef<TimelineMediaApi | null>(null);
-  const captionApiRef         = useRef<CaptionTrackApi | null>(null);
-  const captionWordsRef       = useRef<import("./_components/caption-renderer").CaptionWord[]>([]);
-  const [captionSegments, setCaptionSegments] = useState<CaptionSegment[]>([]);
-  const timelineOverlayIdsRef = useRef<Set<string>>(new Set());
-  const lastOverlayReportRef  = useRef<Set<string>>(new Set());
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted]     = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  // Raw timeline cursor position — used for overlay visibility (different from currentTime
-  // which is source time after trimStart + speed conversion)
-  const [timelineTime, setTimelineTime] = useState(0);
   const [duration, setDuration]       = useState(0);
   const [activeTab, setActiveTab]     = useState("captions");
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -2122,16 +1840,11 @@ export default function ClipRefinePage() {
   const [captionFontSize, setCaptionFontSize] = useState(50);
   const [captionPosY, setCaptionPosY]         = useState(0);
   const [captionPosX, setCaptionPosX]         = useState(0);
-
-  // Keep the ref in sync so timeline-caption-bridge can access latest words
-  useEffect(() => { captionWordsRef.current = captionWords; }, [captionWords]);
   const [translating, setTranslating]     = useState(false);
   const [activeLang, setActiveLang]       = useState("");
 
   // Other settings
   const [speed, setSpeed]             = useState(1.0);
-  // Track previous speed for rescaling overlays when speed changes
-  const prevSpeedRef = useRef(1.0);
   const [trimStart, setTrimStart]     = useState(0);
   const [trimEnd, setTrimEnd]         = useState(0);
   const [brightness, setBrightness]   = useState(100);
@@ -2162,42 +1875,8 @@ export default function ClipRefinePage() {
   // Sticker drag state — using refs so no stale closures
   const dragRef = useRef<{ idx: number; rectLeft: number; rectTop: number; rectW: number; rectH: number } | null>(null);
   // Caption position drag state
-  const captionDragRef = useRef<{
-    startX: number;
-    startY: number;
-    startPosX: number;
-    startPosY: number;
-    rectW: number;
-    rectH: number;
-    segmentId: string | null;
-  } | null>(null);
+  const captionDragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number; rectW: number; rectH: number } | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
-
-  // ── Auto-save page-level settings to draft ─────────────────────────────────
-  useEffect(() => {
-    if (!clipId || !draftRestoredRef.current) return;
-    saveDraft({
-      captionStyle,
-      captionWords: captionWords as unknown[],
-      captionFontSize,
-      captionPosX,
-      captionPosY,
-      speed,
-      trimStart,
-      trimEnd,
-      brightness,
-      contrast,
-      saturation,
-      textOverlays: textOverlays as unknown[],
-      placedStickers: placedStickers as unknown[],
-      aspectRatio,
-      thumbnailOverlay: thumbnailOverlay as unknown,
-    });
-  }, [
-    clipId, saveDraft, captionStyle, captionWords, captionFontSize,
-    captionPosX, captionPosY, speed, trimStart, trimEnd, brightness,
-    contrast, saturation, textOverlays, placedStickers, aspectRatio, thumbnailOverlay,
-  ]);
 
   // Load project aspect ratio
   const [arDropdownOpen, setArDropdownOpen] = useState(false);
@@ -2259,15 +1938,8 @@ export default function ClipRefinePage() {
           setCaptionLang(data.captionLang ?? "");
           setActiveLang((data.captionLang ?? "").split("-")[0]);
         }
-        // Prefer API duration so timeline isn't stuck waiting on <video> metadata
-        const apiDur = Number(data.duration) || (Number(data.endTime) - Number(data.startTime)) || 0;
-        if (apiDur > 0 && duration <= 0) {
-          setDuration(apiDur);
-          setTrimEnd(apiDur);
-        }
       })
       .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clipId]);
 
   // Load edited/exported versions of this clip (blocks shown below the preview)
@@ -2398,16 +2070,15 @@ export default function ClipRefinePage() {
     stopExportPolling();
     exportIdRef.current = null;
     exportPollStartedRef.current = null;
-    setExportError(null);
-    setExportProgress(0);
-    setExportPhase("idle");
     if (exportId) {
       try {
         await apiFetch(`${API_URL}/api/exports/${exportId}/cancel`, { method: "POST" });
       } catch {
-        /* UI already reset */
+        /* still reset UI */
       }
     }
+    setExportError("Export cancelled");
+    setExportPhase("error");
   }, [apiFetch, stopExportPolling]);
 
   const handleExport = async () => {
@@ -2433,39 +2104,23 @@ export default function ClipRefinePage() {
     stopExportPolling();
 
     try {
-      const timelineTracks = exportTracksRef.current;
-      const hasTimelineClips = (timelineTracks?.[0]?.items?.length ?? 0) > 0;
-
-      const tracks = hasTimelineClips ? timelineTracks! : (() => {
-        const effectiveEnd = trimEnd > 0 ? trimEnd : duration;
-        const clipDuration = effectiveEnd - trimStart;
-        return [
-          {
-            id: "track-video",
-            items: [{
-              id: clipId,
-              clipId,
-              type: "video" as const,
-              startTime: 0,
-              duration: clipDuration,
-              sourceDuration: duration,
-              trimIn: safeTrimStart,
-              trimOut: Math.max(0, duration - effectiveEnd),
-              src: activeSrc,
-            }],
-          },
-          { id: "track-audio", items: [] },
-        ];
-      })();
-
-      const volumes: Record<string, number> = { [clipId]: 100 };
-      const speedsMap: Record<string, number> = { [clipId]: speed };
-      for (const track of tracks) {
-        for (const item of track.items) {
-          volumes[item.id] = volumes[item.id] ?? 100;
-          speedsMap[item.id] = item.id === clipId ? speed : (speedsMap[item.id] ?? 1);
-        }
-      }
+      // Slim payload: captions are loaded from DB (auto-saved). Prefer clipId over S3 URL.
+      const tracks = [
+        {
+          id: "track-video",
+          items: [{
+            id: clipId,
+            clipId,
+            type: "video",
+            startTime: 0,
+            duration: clipDuration, // <-- backend free-plan gate uses this exact field
+            sourceDuration: duration,
+            trimIn: safeTrimStart,
+            trimOut: Math.max(0, duration - effectiveEnd),
+          }],
+        },
+        { id: "track-audio", items: [] },
+      ];
 
       const res = await apiFetch(`${API_URL}/api/exports`, {
         method: "POST",
@@ -2473,23 +2128,12 @@ export default function ClipRefinePage() {
         body: JSON.stringify({
           projectId: projectId || clipId,
           tracks,
-          volumes,
-          speeds: speedsMap,
+          volumes:      { [clipId]: 100 },
+          speeds:       { [clipId]: speed },
           captionStyle,
           captionFontSize,
           captionPosY,
           captionPosX,
-          captionMap:     captionWords.length ? { [clipId]: captionWords } : {},
-          captionSegments: captionSegments.length
-            ? captionSegments.map(s => ({
-                style: s.style,
-                start: s.start,
-                end: s.end,
-                posX: s.posX,
-                posY: s.posY,
-                words: s.words,
-              }))
-            : [],
           aspectRatio,
           backgroundFill,
           brightness,
@@ -2548,19 +2192,13 @@ export default function ClipRefinePage() {
             exportPollStartedRef.current = null;
             setExportUrl(data.s3Url);
             setExportPhase("done");
-            if (clipId) clearClipDraft(clipId, activeEditId);
             markExportCurrent();
             loadEdits();
             openAndDownload(data.s3Url, `clip-${index}.mp4`);
           } else if (data.status === "failed") {
             failExport(data.error ?? "Export failed on server");
           } else if (data.status === "cancelled") {
-            stopExportPolling();
-            exportIdRef.current = null;
-            exportPollStartedRef.current = null;
-            setExportError(null);
-            setExportProgress(0);
-            setExportPhase("idle");
+            failExport(data.error ?? "Export cancelled");
           }
         } catch (err) {
           console.warn("[export] poll failed, retrying…", err);
@@ -2606,7 +2244,6 @@ export default function ClipRefinePage() {
     setPlacedStickers([]);
     setTextOverlays([]);
     setBackgroundFill("blur");
-    setCaptionSegments([]);
     // Restore the original (untranslated) captions
     apiFetch(`${API_URL}/api/clips/${clipId}`)
       .then(r => (r.ok ? r.json() : null))
@@ -2624,103 +2261,22 @@ export default function ClipRefinePage() {
   // Switch which version (original or an edit) the preview + edits are based on
   const selectVersion = useCallback((id: string | null) => {
     if (id === activeEditId) return;
-    // Flush current draft before switching so unsaved changes are persisted
-    flushDraft();
-    // Reset overlay tracking refs so the new version starts fresh
-    lastOverlayReportRef.current = new Set();
-    timelineOverlayIdsRef.current = new Set();
     setActiveEditId(id);
     setPlaying(false);
     setCurrentTime(0);
-    setDraftTracks(null);
-    setTimelineResetKey(k => k + 1);
-    // Restore the target version's draft (keyed by editId or null for Original)
-    if (clipId) {
-      const draft = loadClipDraft(clipId, id);
-      if (draft) {
-        if (draft.aspectRatio) setAspectRatio(draft.aspectRatio);
-        if (draft.speed != null) { setSpeed(draft.speed); prevSpeedRef.current = draft.speed; }
-        if (draft.trimStart != null) setTrimStart(draft.trimStart);
-        if (draft.trimEnd != null) setTrimEnd(draft.trimEnd);
-        if (draft.brightness != null) setBrightness(draft.brightness);
-        if (draft.contrast != null) setContrast(draft.contrast);
-        if (draft.saturation != null) setSaturation(draft.saturation);
-        if (draft.captionStyle) setCaptionStyle(draft.captionStyle as any);
-        if (draft.captionWords?.length) setCaptionWords(draft.captionWords as any);
-        if (draft.captionFontSize) setCaptionFontSize(draft.captionFontSize);
-        if (draft.captionPosX != null) setCaptionPosX(draft.captionPosX);
-        if (draft.captionPosY != null) setCaptionPosY(draft.captionPosY);
-        if (draft.textOverlays?.length) setTextOverlays(draft.textOverlays as any);
-        if (draft.placedStickers?.length) setPlacedStickers(draft.placedStickers as any);
-        if (draft.thumbnailOverlay) setThumbnailOverlay(draft.thumbnailOverlay as any);
-        if (draft.timelineTracks?.length) setDraftTracks(draft.timelineTracks);
-      } else {
-        applyDefaults();
-      }
-    } else {
-      applyDefaults();
-    }
-  }, [activeEditId, applyDefaults, clipId, flushDraft]);
+    applyDefaults();
+  }, [activeEditId, applyDefaults]);
 
   // Reset every edit setting AND go back to the original video
   const resetAll = useCallback(() => {
-    clearClipDraft(clipId, activeEditId);
-    setDraftTracks(null);
     setActiveEditId(null);
-    setTimelineResetKey(k => k + 1);
     applyDefaults();
-  }, [applyDefaults, clipId, activeEditId]);
+  }, [applyDefaults]);
 
   // Sync speed
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = speed;
   }, [speed]);
-
-  const handleSpeedChange = useCallback((newSpeed: number) => {
-    const oldSpeed = prevSpeedRef.current;
-    prevSpeedRef.current = newSpeed;
-    setSpeed(newSpeed);
-    if (oldSpeed === newSpeed || oldSpeed <= 0) return;
-    // Rescale factor: how much the rendered clip duration changes.
-    // oldDuration/speed = rendered duration, so factor = oldSpeed / newSpeed
-    const factor = oldSpeed / newSpeed;
-    // Rescale timeline overlay elements (text + stickers)
-    overlayApiRef.current?.rescaleTimings(factor);
-    // Rescale caption track elements
-    captionApiRef.current?.rescaleTimings(factor);
-    // Rescale React state for text overlays and placed stickers
-    setTextOverlays(prev => prev.map(t => ({
-      ...t,
-      startTime: (t.startTime ?? 0) * factor,
-      duration:  (t.duration  ?? DEFAULT_OVERLAY_DUR) * factor,
-    })));
-    setPlacedStickers(prev => prev.map(ps => ({
-      ...ps,
-      startTime: (ps.startTime ?? 0) * factor,
-      duration:  (ps.duration  ?? DEFAULT_OVERLAY_DUR) * factor,
-    })));
-  }, []);
-
-  // Load the main clip into the preview <video>. Timeline may swap src for other clips;
-  // do not bind src= in JSX or React will overwrite those swaps on every re-render.
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !activeSrc) return;
-    let target = activeSrc;
-    try {
-      target = new URL(activeSrc, window.location.href).href;
-    } catch {
-      /* keep raw string */
-    }
-    const current = video.currentSrc || video.src || "";
-    if (current && (current === target || current === activeSrc)) return;
-    video.src = activeSrc;
-    video.load();
-    setCurrentTime(0);
-    setPlaying(false);
-    // Don't zero duration here — that unmounts ClipTimeline and causes "Loading…" stuck state.
-    // Duration is refreshed from onLoadedMetadata / API when available.
-  }, [activeSrc]);
 
   // Load MediaPipe segmentation lazily when user picks an overlay
   useEffect(() => {
@@ -2753,271 +2309,11 @@ export default function ClipRefinePage() {
     return () => { cancelled = true; };
   }, [placedStickers.length]);
   const togglePlay = () => {
-    timelineToggleRef.current?.();
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play().catch(() => {}); setPlaying(true); }
+    else          { v.pause(); setPlaying(false); }
   };
-
-  const registerTimelineToggle = useCallback((toggle: (() => void) | null) => {
-    timelineToggleRef.current = toggle;
-  }, []);
-
-  const handleTimelineTrimChange = useCallback((start: number, end: number) => {
-    setTrimStart(start);
-    setTrimEnd(end);
-  }, []);
-
-  const handleTimelinePlayingChange = useCallback((next: boolean) => {
-    setPlaying(next);
-  }, []);
-
-  const handleExportTracksChange = useCallback((tracks: ChopprTrack[]) => {
-    exportTracksRef.current = tracks;
-  }, []);
-
-  const timelineSerializedRef = useRef<unknown[] | null>(null);
-  const handleTimelineSerialize = useCallback((serializedTracks: unknown[]) => {
-    timelineSerializedRef.current = serializedTracks;
-    saveDraft({ timelineTracks: serializedTracks });
-  }, [saveDraft]);
-
-  const handleTimelineTimeChange = useCallback((time: number) => {
-    setCurrentTime(time);
-  }, []);
-
-  const handleRawTimelineTimeChange = useCallback((time: number) => {
-    setTimelineTime(time);
-  }, []);
-
-  const isOverlayVisible = useCallback((startTime: number | undefined, duration: number | undefined) => {
-    // If no startTime defined, always show (backwards compat)
-    if (startTime === undefined || startTime === null) return true;
-    // Use raw timeline cursor position — overlay startTime/duration are in timeline coordinates.
-    // This is correct regardless of speed or trimStart because the text/sticker elements
-    // sit at absolute timeline positions (not source-video positions).
-    const dur = duration ?? DEFAULT_OVERLAY_DUR;
-    return timelineTime >= startTime - 0.05 && timelineTime < startTime + dur + 0.05;
-  }, [timelineTime]);
-
-  const handleOverlayTimingChange = useCallback((items: OverlayTimingItem[]) => {
-    // Cap duration: if timeline reports a duration >= video duration, it's a Twick default
-    // that spans the whole video. Cap it to DEFAULT_OVERLAY_DUR.
-    const videoDur = videoRef.current?.duration ?? Infinity;
-    const cappedItems = items.map(item => ({
-      ...item,
-      duration: item.duration >= videoDur - 0.5 ? DEFAULT_OVERLAY_DUR : item.duration,
-    }));
-    const textById = new Map(cappedItems.filter(i => i.kind === "text").map(i => [i.id, i]));
-    const stickerById = new Map(cappedItems.filter(i => i.kind === "sticker").map(i => [i.id, i]));
-    const reported = new Set([...textById.keys(), ...stickerById.keys()]);
-
-    // Ids that were on the timeline last report but are gone now → deleted on timeline
-    const removed: string[] = [];
-    for (const id of lastOverlayReportRef.current) {
-      if (!reported.has(id)) removed.push(id);
-    }
-    lastOverlayReportRef.current = reported;
-    for (const id of reported) timelineOverlayIdsRef.current.add(id);
-    for (const id of removed) timelineOverlayIdsRef.current.delete(id);
-
-    if (removed.length) {
-      setTextOverlays(prev => prev.filter(t => !removed.includes(t.id)));
-      setPlacedStickers(prev => prev.filter(ps => !removed.includes(ps.stickerId)));
-    }
-
-    // Update timing on existing overlays
-    setTextOverlays(prev => {
-      const existingIds = new Set(prev.map(t => t.id));
-      // Re-add any text elements that exist on the timeline but were lost from state
-      // (e.g. after page refresh where draftTracks restored the timeline but textOverlays was empty)
-      const missing: TextOverlay[] = [];
-      for (const [id, timing] of textById) {
-        if (!existingIds.has(id)) {
-          missing.push({
-            id,
-            text: timing.text ?? "Text",
-            x: 0.5,
-            y: 0.5,
-            fontSize: 20,
-            color: "#ffffff",
-            bold: false,
-            italic: false,
-            startTime: timing.startTime,
-            duration: timing.duration,
-          });
-          timelineOverlayIdsRef.current.add(id);
-        }
-      }
-      const updated = prev.map(t => {
-        const timing = textById.get(t.id);
-        if (!timing) return t;
-        if (
-          Math.abs((t.startTime ?? 0) - timing.startTime) < 0.02 &&
-          Math.abs((t.duration ?? DEFAULT_OVERLAY_DUR) - timing.duration) < 0.02
-        ) return t;
-        return { ...t, startTime: timing.startTime, duration: timing.duration };
-      });
-      return missing.length ? [...updated, ...missing] : updated;
-    });
-
-    setPlacedStickers(prev =>
-      prev.map(ps => {
-        const timing = stickerById.get(ps.stickerId);
-        if (!timing) return ps;
-        if (
-          Math.abs((ps.startTime ?? 0) - timing.startTime) < 0.02 &&
-          Math.abs((ps.duration ?? DEFAULT_OVERLAY_DUR) - timing.duration) < 0.02
-        ) return ps;
-        return { ...ps, startTime: timing.startTime, duration: timing.duration };
-      }),
-    );
-  }, [videoRef]);
-
-  const handleAddTextOverlay = useCallback(() => {
-    const id = `txt-${Date.now()}`;
-    // Place the new overlay after all existing overlays (not at cursor position).
-    // This prevents overlap when the cursor sits on an existing overlay.
-    const lastEnd = textOverlays.reduce((acc, t) => {
-      const end = (t.startTime ?? 0) + (t.duration ?? DEFAULT_OVERLAY_DUR);
-      return Math.max(acc, end);
-    }, 0);
-    const start = lastEnd;
-    const overlay: TextOverlay = {
-      id,
-      text: "Your text",
-      x: 0.5,
-      y: 0.5,
-      fontSize: 20,
-      color: "#ffffff",
-      bold: false,
-      italic: false,
-      startTime: start,
-      duration: DEFAULT_OVERLAY_DUR,
-    };
-    setTextOverlays(prev => [...prev, overlay]);
-    setSelectedTextId(id);
-    timelineOverlayIdsRef.current.add(id);
-    void overlayApiRef.current?.addText({
-      id,
-      text: overlay.text,
-      color: overlay.color,
-      fontSize: overlay.fontSize,
-      bold: overlay.bold,
-      italic: overlay.italic,
-      startTime: start,
-      duration: DEFAULT_OVERLAY_DUR,
-    });
-  }, [textOverlays]);
-
-  const handleRemoveTextOverlay = useCallback((id: string) => {
-    setTextOverlays(prev => prev.filter(o => o.id !== id));
-    setSelectedTextId(prev => (prev === id ? null : prev));
-    timelineOverlayIdsRef.current.delete(id);
-    overlayApiRef.current?.removeById(id);
-  }, []);
-
-  const handleToggleSticker = useCallback((s: StipopSticker) => {
-    const key = `stipop:${s.id}`;
-    setPlacedStickers(prev => {
-      const isPlaced = prev.some(ps => ps.stickerId === key);
-      if (isPlaced) {
-        timelineOverlayIdsRef.current.delete(key);
-        overlayApiRef.current?.removeById(key);
-        return prev.filter(ps => ps.stickerId !== key);
-      }
-      const start = overlayApiRef.current?.getCurrentTime() ?? currentTime;
-      void overlayApiRef.current?.addSticker({
-        id: key,
-        url: s.renderUrl,
-        name: s.title || "Sticker",
-        startTime: start,
-        duration: DEFAULT_OVERLAY_DUR,
-      });
-      timelineOverlayIdsRef.current.add(key);
-      return [...prev, {
-        stickerId: key,
-        stickerUrl: s.renderUrl,
-        previewUrl: s.previewUrl,
-        x: 0.15 + Math.random() * 0.7,
-        y: 0.15 + Math.random() * 0.7,
-        scale: 1,
-        startTime: start,
-        duration: DEFAULT_OVERLAY_DUR,
-      }];
-    });
-  }, [currentTime]);
-
-  const handleRemoveSticker = useCallback((id: string) => {
-    setPlacedStickers(prev => prev.filter(ps => ps.stickerId !== id));
-    timelineOverlayIdsRef.current.delete(id);
-    overlayApiRef.current?.removeById(id);
-  }, []);
-
-  const handleClearStickers = useCallback(() => {
-    setPlacedStickers(prev => {
-      for (const ps of prev) {
-        timelineOverlayIdsRef.current.delete(ps.stickerId);
-        overlayApiRef.current?.removeById(ps.stickerId);
-      }
-      return [];
-    });
-  }, []);
-
-  // Keep timeline text clip label/style in sync when panel edits text
-  useEffect(() => {
-    const api = overlayApiRef.current;
-    if (!api) return;
-    for (const t of textOverlays) {
-      if (!timelineOverlayIdsRef.current.has(t.id)) continue;
-      api.updateText({
-        id: t.id,
-        text: t.text,
-        color: t.color,
-        fontSize: t.fontSize,
-        bold: t.bold,
-        italic: t.italic,
-      });
-    }
-    // Only re-sync when text content/style changes — not timing
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [textOverlays.map(t => `${t.id}:${t.text}:${t.color}:${t.fontSize}:${t.bold}:${t.italic}`).join("|")]);
-
-  const handleAddCaptionSegment = useCallback((style: CaptionStyle) => {
-    const effectiveDur = (trimEnd > 0 ? trimEnd : duration) - trimStart;
-    if (effectiveDur <= 0 || !captionApiRef.current) return;
-
-    // Toggle: if a segment with this style exists, remove it
-    const existing = captionSegments.find(seg => seg.style === style);
-    if (existing) {
-      captionApiRef.current.removeSegment(existing.id);
-      return;
-    }
-
-    captionApiRef.current.addSegment(style, captionWordsRef.current, effectiveDur);
-  }, [trimStart, trimEnd, duration, captionSegments]);
-
-  const activeCaptionSegment = useMemo(
-    () => captionSegments.find(s => currentTime >= s.start - 0.001 && currentTime < s.end + 0.001) ?? null,
-    [captionSegments, currentTime],
-  );
-
-  // Keep panel X/Y knobs in sync with the caption segment under the playhead
-  useEffect(() => {
-    if (!activeCaptionSegment) return;
-    setCaptionPosX(activeCaptionSegment.posX);
-    setCaptionPosY(activeCaptionSegment.posY);
-  }, [activeCaptionSegment?.id, activeCaptionSegment?.posX, activeCaptionSegment?.posY]);
-
-  const handleResetCaptionPos = useCallback(() => {
-    if (activeCaptionSegment && captionApiRef.current) {
-      captionApiRef.current.updateSegmentPosition(activeCaptionSegment.id, 0, 0);
-    }
-    setCaptionPosX(0);
-    setCaptionPosY(0);
-    if (activeCaptionSegment) {
-      setCaptionSegments(prev =>
-        prev.map(s => s.id === activeCaptionSegment.id ? { ...s, posX: 0, posY: 0 } : s),
-      );
-    }
-  }, [activeCaptionSegment]);
 
   const effectiveTrimEnd = trimEnd > 0 ? Math.min(trimEnd, duration || trimEnd) : duration;
   // Gate on rendered length (trim ÷ speed) — same as API / FFmpeg output
@@ -3026,13 +2322,6 @@ export default function ClipRefinePage() {
   const exportRequiresUpgrade =
     exportGateReady && isFreePlan === true && exportClipDurationSecs > FREE_EXPORT_MAX_SECS;
 
-  // Estimated credit cost shown in the Export button (mirrors backend computeExportCost)
-  const exportCreditCost = computeExportCostEstimate(
-    captionStyle,
-    placedStickers,
-    exportTracksRef.current ?? [],
-  );
-
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
   const filterStyle = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
@@ -3040,30 +2329,18 @@ export default function ClipRefinePage() {
   const exportReadyToDownload = exportPhase === "done" && !!exportUrl && !isExportStale();
 
   const editPanelProps: EditPanelProps = {
-    activeTab, captionStyle, setCaptionStyle,
-    onAddCaptionSegment: handleAddCaptionSegment,
-    captionSegments,
-    captionWords,
+    activeTab, captionStyle, setCaptionStyle, captionWords,
     onCaptionWordsChange: setCaptionWords,
     captionFontSize, setCaptionFontSize,
     captionPosY, setCaptionPosY,
     captionPosX, setCaptionPosX,
-    onResetCaptionPos: handleResetCaptionPos,
     captionLang, activeLang, translating, handleTranslate,
-    speed, setSpeed: handleSpeedChange, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
+    speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
     brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
     exportPhase, exportProgress, exportUrl, exportError, handleExport, handleCancelExport,
     setExportPhase, setExportUrl,
     placedStickers, setPlacedStickers, segmentationReady,
     textOverlays, setTextOverlays, selectedTextId, setSelectedTextId,
-    onAddTextOverlay: handleAddTextOverlay,
-    onRemoveTextOverlay: handleRemoveTextOverlay,
-    onToggleSticker: handleToggleSticker,
-    onRemoveSticker: handleRemoveSticker,
-    onClearStickers: handleClearStickers,
-    onAddToTimeline: (asset) => {
-      void mediaApiRef.current?.addMedia(asset);
-    },
     thumbnailOverlay, setThumbnailOverlay,
   };
   const handleMobileTab = (id: string) => {
@@ -3080,25 +2357,12 @@ export default function ClipRefinePage() {
 
   const activeTabLabel = TABS.find(t => t.id === activeTab)?.label ?? "";
 
-  const renderMobileSideTab = ({ id, icon: Icon, label }: typeof TABS[number]) => (
-    <button
-      key={id}
-      type="button"
-      onClick={() => handleMobileTab(id)}
-      className={cn(
-        "flex flex-col items-center justify-center gap-0.5 w-11 py-1.5 rounded-xl border backdrop-blur-sm transition-all cursor-pointer",
-        activeTab === id && mobileDrawerOpen
-          ? "border-white/25 bg-white/15 text-white"
-          : "border-white/10 bg-black/55 text-white/55 active:bg-white/10 active:text-white",
-      )}
-      aria-label={label}
-    >
-      <Icon className="h-3.5 w-3.5 shrink-0" />
-      <span className="text-[8px] font-medium leading-tight text-center px-0.5 truncate max-w-full">
-        {label === "Watermark" ? "Mark" : label}
-      </span>
-    </button>
-  );
+  // Height breakdown on mobile:
+  //   system nav (MobileBottomBar): fixed bottom-0, h-12 = 48px
+  //   bottom strip (tabs + export):  fixed bottom-12, ~96px
+  //   total reserved at bottom:      ~144px = 9rem
+  const MOBILE_STRIP_BOTTOM = "3rem";      // = bottom-12, above system nav
+  const MOBILE_DRAWER_BOTTOM = "9rem";     // strip top edge = 48 + 96 = 144px
 
   return (
     <div className="flex min-h-screen bg-[#0a0a0a]">
@@ -3137,14 +2401,6 @@ export default function ClipRefinePage() {
           50%  { background-position: 100% 50%; }
           100% { background-position: 0% 50%; }
         }
-        @keyframes chopprWaterScroll {
-          from { transform: translateX(0); }
-          to   { transform: translateX(-50%); }
-        }
-        @keyframes chopprWaterScrollV {
-          from { transform: translateY(0); }
-          to   { transform: translateY(-50%); }
-        }
       `}</style>
       <Sidebar />
       <Topbar />
@@ -3152,7 +2408,7 @@ export default function ClipRefinePage() {
       <main
         className={cn(
           "mt-12 flex-1 flex overflow-hidden relative",
-          isMobile ? "flex-col ml-0 pb-[3.25rem]" : "flex-row ml-14 pb-0"
+          isMobile ? "flex-col ml-0 pb-[9rem]" : "flex-row ml-14 pb-0"
         )}
         style={{ height: "calc(100vh - 48px)" }}
       >
@@ -3236,72 +2492,29 @@ export default function ClipRefinePage() {
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-black items-center justify-center relative">
           <button
             onClick={() => router.back()}
-            className="absolute top-3 left-3 z-20 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 text-[11px] text-white/50 hover:text-white transition-colors backdrop-blur-sm"
+            className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 text-[11px] text-white/50 hover:text-white transition-colors backdrop-blur-sm"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             <span>Back</span>
           </button>
 
-          {/* Mobile: all edit tools — vertically centered on the left */}
-          {isMobile && (
-            <div className="absolute top-1/2 left-2 z-20 -translate-y-1/2 flex flex-col gap-1 pointer-events-auto">
-              {MOBILE_SIDE_TABS.map(renderMobileSideTab)}
-            </div>
-          )}
-
-          {/* Mobile side panel — confined to the preview frame above the timeline */}
-          {isMobile && mobileDrawerOpen && (
-            <button
-              type="button"
-              aria-label="Close panel"
-              className="absolute inset-0 z-[40] bg-black/45"
-              onClick={closeDrawer}
-            />
-          )}
-          {isMobile && drawerMounted && (
-            <div
-              className={cn(
-                "absolute top-0 bottom-0 left-0 z-[45] flex flex-col bg-[#111] border-r border-white/10 rounded-r-2xl shadow-[0_0_48px_rgba(0,0,0,0.8)]",
-                "transition-transform duration-300 ease-out w-[min(78%,280px)]",
-                !mobileDrawerOpen && "pointer-events-none",
-              )}
-              style={{
-                transform: mobileDrawerOpen ? "translateX(0)" : "translateX(-105%)",
-              }}
-            >
-              <div className="flex items-center justify-between px-3 pt-2.5 pb-2 shrink-0 border-b border-white/6">
-                <p className="text-[13px] font-semibold text-white">{activeTabLabel}</p>
-                <button
-                  onClick={closeDrawer}
-                  className="h-7 w-7 flex items-center justify-center rounded-full bg-white/8 text-white/40 hover:text-white transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto px-3 py-2.5 no-scrollbar min-h-0">
-                <EditPanelContent {...editPanelProps} styleGridMaxHeight={160} />
-              </div>
-            </div>
-          )}
-
-          {/* Aspect ratio + mobile export (top right) */}
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
-            <div ref={arDropdownRef} className="relative">
+          {/* Aspect ratio + background fill picker */}
+          <div ref={arDropdownRef} className="absolute top-3 right-3 z-10">
             <button
               onClick={() => setArDropdownOpen(o => !o)}
-              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 backdrop-blur-sm hover:border-white/20 transition-colors"
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1 backdrop-blur-sm hover:border-white/20 transition-colors"
             >
               {aspectRatio === "9:16" && (
-                <svg viewBox="0 0 10 18" className="h-3.5 w-2 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="8" height="16" rx="1.5" /></svg>
+                <svg viewBox="0 0 10 18" className="h-3 w-1.5 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="8" height="16" rx="1.5" /></svg>
               )}
               {aspectRatio === "1:1" && (
-                <svg viewBox="0 0 14 14" className="h-3 w-3 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="12" height="12" rx="1.5" /></svg>
+                <svg viewBox="0 0 14 14" className="h-2.5 w-2.5 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="12" height="12" rx="1.5" /></svg>
               )}
               {aspectRatio === "16:9" && (
-                <svg viewBox="0 0 18 11" className="h-2 w-3.5 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="16" height="9" rx="1.5" /></svg>
+                <svg viewBox="0 0 18 11" className="h-1.5 w-3 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="16" height="9" rx="1.5" /></svg>
               )}
-              <span className="text-[11px] font-semibold text-white/70">{aspectRatio}</span>
-              <svg viewBox="0 0 10 6" className="h-2 w-2.5 text-white/30 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 1l4 4 4-4" /></svg>
+              <span className="text-[10px] font-semibold text-white/70">{aspectRatio}</span>
+              <svg viewBox="0 0 10 6" className="h-2 w-2 text-white/30 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 1l4 4 4-4" /></svg>
             </button>
 
             {arDropdownOpen && (
@@ -3429,26 +2642,12 @@ export default function ClipRefinePage() {
 
               </div>
             )}
-            </div>
-            {isMobile && (
-              <ExportClipButton
-                exportPhase={exportPhase === "error" ? "idle" : exportPhase}
-                exportProgress={exportProgress}
-                exportReadyToDownload={exportReadyToDownload}
-                onExport={handleExport}
-                onCancel={handleCancelExport}
-                onDownload={handlePrimaryExportAction}
-                size="compact"
-                className="backdrop-blur-sm shadow-lg"
-                creditCost={exportCreditCost}
-              />
-            )}
           </div>
 
           <div className={cn(
             "relative flex items-center justify-center w-full flex-1 min-h-0 overflow-hidden",
             !isMobile && "px-6 py-8",
-            isMobile && "pl-14 pr-3 py-3"
+            isMobile && "px-2 py-3"
           )}>
             {src ? (
               <div
@@ -3556,7 +2755,7 @@ export default function ClipRefinePage() {
                   )}
                   <BackgroundRenderer
                     videoRef={videoRef}
-                    placedStickers={placedStickers.filter(ps => isOverlayVisible(ps.startTime, ps.duration))}
+                    placedStickers={placedStickers}
                     segmentationReady={segmentationReady}
                     segmenter={segmenterRef}
                     filterStyle={filterStyle}
@@ -3566,47 +2765,26 @@ export default function ClipRefinePage() {
                   <video
                     key={activeSrc}
                     ref={videoRef}
-                    // crossOrigin only when stickers need canvas segmentation — otherwise S3 CORS can block playback
-                    crossOrigin={placedStickers.length > 0 ? "anonymous" : undefined}
+                    src={activeSrc}
                     muted={muted}
                     playsInline
-                    preload="auto"
+                    loop
                     className="w-full h-full"
                     style={{
                       objectFit: backgroundFill === "none" ? "cover" : "contain",
                       filter: filterStyle,
-                      opacity: placedStickers.some(ps => isOverlayVisible(ps.startTime, ps.duration)) && segmentationReady ? 0 : 1,
+                      opacity: placedStickers.length > 0 && segmentationReady ? 0 : 1,
                     }}
-                    onLoadedData={() => {
-                      const v = videoRef.current;
-                      if (v && v.paused && v.currentTime < 0.05) {
-                        try { v.currentTime = 0; } catch { /* ignore */ }
-                      }
-                    }}
+                    onTimeUpdate={() => setCurrentTime(videoRef.current?.currentTime ?? 0)}
                     onLoadedMetadata={() => {
                       const d = videoRef.current?.duration ?? 0;
-                      if (!Number.isFinite(d) || d <= 0) return;
-                      // Always trust metadata for the main clip when duration is missing/stale
-                      setDuration(prev => (prev > 0 && Math.abs(prev - d) < 0.5 ? prev : d));
-                      setTrimEnd(prev => (prev > 0 && Math.abs(prev - d) < 0.5 ? prev : d));
+                      setDuration(d);
+                      setTrimEnd(d);
                     }}
-                    onError={() => {
-                      // Metadata failed (CORS / bad URL) — keep any API duration so timeline still mounts
-                      console.warn("[clip] preview video failed to load metadata");
-                    }}
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
                   />
-                  <CaptionRenderer
-                    videoRef={videoRef}
-                    words={captionWords}
-                    style={captionStyle}
-                    fontSize={captionFontSize}
-                    aspectRatio={aspectRatio}
-                    posOffset={captionPosY}
-                    hOffset={captionPosX}
-                    language={activeLang}
-                    segments={captionSegments.length > 0 ? captionSegments : undefined}
-                    currentTime={currentTime}
-                  />
+                  <CaptionRenderer videoRef={videoRef} words={captionWords} style={captionStyle} fontSize={captionFontSize} aspectRatio={aspectRatio} posOffset={captionPosY} hOffset={captionPosX} language={activeLang} />
                   {/* Thumbnail overlay — draggable, sits above captions overlay */}
                   {thumbnailOverlay && (
                     <DraggableThumbnailOverlay
@@ -3633,34 +2811,25 @@ export default function ClipRefinePage() {
                       captionDragRef.current = {
                         startX: e.clientX,
                         startY: e.clientY,
-                        startPosX: activeCaptionSegment?.posX ?? captionPosX,
-                        startPosY: activeCaptionSegment?.posY ?? captionPosY,
+                        startPosX: captionPosX,
+                        startPosY: captionPosY,
                         rectW: rect.width,
                         rectH: rect.height,
-                        segmentId: activeCaptionSegment?.id ?? null,
                       };
                       e.currentTarget.setPointerCapture(e.pointerId);
                     }}
                     onPointerMove={(e) => {
                       if (!captionDragRef.current) return;
                       if (activeTab !== "captions" || captionStyle === "none") return;
-                      const { startX, startY, startPosX, startPosY, rectW, rectH, segmentId } = captionDragRef.current;
+                      const { startX, startY, startPosX, startPosY, rectW, rectH } = captionDragRef.current;
                       const deltaX = e.clientX - startX;
                       const deltaY = e.clientY - startY;
                       // 8px threshold — large enough for finger jitter, small enough to feel instant
                       if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
                       const dx = (deltaX / rectW) * 200;
                       const dy = (deltaY / rectH) * 200;
-                      const nextX = Math.round(Math.max(-100, Math.min(100, startPosX + dx)));
-                      const nextY = Math.round(Math.max(-100, Math.min(100, startPosY + dy)));
-                      setCaptionPosX(nextX);
-                      setCaptionPosY(nextY);
-                      // Optimistic local update so preview tracks the drag immediately
-                      if (segmentId) {
-                        setCaptionSegments(prev =>
-                          prev.map(s => s.id === segmentId ? { ...s, posX: nextX, posY: nextY } : s),
-                        );
-                      }
+                      setCaptionPosX(Math.round(Math.max(-100, Math.min(100, startPosX + dx))));
+                      setCaptionPosY(Math.round(Math.max(-100, Math.min(100, startPosY + dy))));
                     }}
                     onPointerUp={(e) => {
                       const ref = captionDragRef.current;
@@ -3668,13 +2837,6 @@ export default function ClipRefinePage() {
                         && activeTab === "captions"
                         && captionStyle !== "none"
                         && (Math.abs(e.clientX - ref.startX) >= 8 || Math.abs(e.clientY - ref.startY) >= 8);
-                      if (wasDrag && ref?.segmentId && captionApiRef.current) {
-                        const deltaX = e.clientX - ref.startX;
-                        const deltaY = e.clientY - ref.startY;
-                        const nextX = Math.round(Math.max(-100, Math.min(100, ref.startPosX + (deltaX / ref.rectW) * 200)));
-                        const nextY = Math.round(Math.max(-100, Math.min(100, ref.startPosY + (deltaY / ref.rectH) * 200)));
-                        captionApiRef.current.updateSegmentPosition(ref.segmentId, nextX, nextY);
-                      }
                       captionDragRef.current = null;
                       if (!wasDrag && !dragRef.current) togglePlay();
                     }}
@@ -3690,7 +2852,6 @@ export default function ClipRefinePage() {
 
                 {/* Draggable sticker handles — outside overflow-hidden so they can be dragged freely */}
                 {placedStickers.map((ps, i) => (
-                  isOverlayVisible(ps.startTime, ps.duration) ? (
                   <div
                     key={ps.stickerId}
                     className="absolute cursor-grab active:cursor-grabbing touch-none select-none"
@@ -3737,12 +2898,10 @@ export default function ClipRefinePage() {
                       }
                     </div>
                   </div>
-                  ) : null
                 ))}
 
                 {/* Draggable text overlays */}
                 {textOverlays.map((t) => (
-                  isOverlayVisible(t.startTime, t.duration) ? (
                   <div
                     key={t.id}
                     className="absolute cursor-grab active:cursor-grabbing touch-none select-none"
@@ -3786,7 +2945,6 @@ export default function ClipRefinePage() {
                       {t.text}
                     </div>
                   </div>
-                  ) : null
                 ))}
               </div>
             ) : (
@@ -3852,64 +3010,26 @@ export default function ClipRefinePage() {
           </div>{/* closes video preview div */}
           </div>{/* closes top row (flex-row) */}
 
-          {/* ── Twick timeline (desktop + mobile) ── */}
+          {/* ── Full-width playback controls ── */}
           <div className={cn(
-            "shrink-0 w-full",
-            isMobile ? "pb-safe" : ""
+            "shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a]",
+            isMobile ? "px-4 pb-3 pt-2" : "px-6 py-3"
           )}>
-            {activeSrc ? (
-              duration > 0 ? (
-              <ClipTimeline
-                clipId={clipId}
-                clipLabel={index}
-                src={activeSrc}
-                aspectRatio={aspectRatio}
-                duration={duration}
-                trimStart={trimStart}
-                trimEnd={effectiveTrimEnd}
-                speed={speed}
-                muted={muted}
-                isMobile={isMobile}
-                videoRef={videoRef}
-                onTrimChange={handleTimelineTrimChange}
-                onCurrentTimeChange={handleTimelineTimeChange}
-                onTimelineTimeChange={handleRawTimelineTimeChange}
-                onPlayingChange={handleTimelinePlayingChange}
-                onExportTracksChange={handleExportTracksChange}
-                onTimelineSerialize={handleTimelineSerialize}
-                draftTracks={draftTracks}
-                onToggleMute={() => setMuted(m => !m)}
-                onRegisterToggle={registerTimelineToggle}
-                overlayApiRef={overlayApiRef}
-                onOverlayTimingChange={handleOverlayTimingChange}
-                mediaApiRef={mediaApiRef}
-                captionApiRef={captionApiRef}
-                captionWordsRef={captionWordsRef}
-                onCaptionSegmentsChange={setCaptionSegments}
-                onResetAll={resetAll}
-                resetKey={timelineResetKey}
-              />
-              ) : (
-              <div className={cn(
-                "shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a]",
-                isMobile ? "px-4 pb-3 pt-2" : "px-6 py-3"
-              )}>
-                <div className="h-1 w-full rounded bg-white/10 animate-pulse" />
-                <div className="flex items-center gap-3 text-[11px] text-white/40">
-                  Loading timeline…
-                </div>
-              </div>
-              )
-            ) : (
-              <div className={cn(
-                "shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a]",
-                isMobile ? "px-4 pb-3 pt-2" : "px-6 py-3"
-              )}>
-                <div className="flex items-center gap-3 text-[11px] text-white/40">
-                  No video source for this clip
-                </div>
-              </div>
-            )}
+            <input
+              type="range" min={0} max={duration || 1} step={0.01} value={currentTime}
+              onChange={e => { const t = Number(e.target.value); setCurrentTime(t); if (videoRef.current) videoRef.current.currentTime = t; }}
+              className="w-full accent-white cursor-pointer h-1"
+            />
+            <div className="flex items-center gap-3">
+              <button onClick={togglePlay} className="h-8 w-8 flex items-center justify-center rounded-full bg-white text-black hover:bg-white/90 transition-colors">
+                {playing ? <Pause className="h-3.5 w-3.5 fill-black" /> : <Play className="h-3.5 w-3.5 fill-black ml-0.5" />}
+              </button>
+              <button onClick={() => setMuted(m => !m)} className="text-white hover:text-white/70 transition-colors">
+                {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </button>
+              <span className="text-[11px] font-mono text-white/70">{fmt(currentTime)} / {fmt(duration)}</span>
+              {speed !== 1 && <span className="text-[10px] font-semibold text-white/50 bg-white/8 px-1.5 py-0.5 rounded">{speed}×</span>}
+            </div>
           </div>
         </div>{/* closes outer flex-col (video area wrapper) */}
 
@@ -3930,7 +3050,7 @@ export default function ClipRefinePage() {
                       key={id}
                       onClick={() => { if (activeTab === id) setPanelOpen(false); else setActiveTab(id); }}
                       className={cn(
-                        "flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors border-b-2 cursor-pointer",
+                        "flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors border-b-2",
                         activeTab === id ? "border-white text-white" : "border-transparent text-white/70 hover:text-white"
                       )}
                     >
@@ -3957,7 +3077,6 @@ export default function ClipRefinePage() {
                     setExportPhase={setExportPhase}
                     setExportUrl={setExportUrl}
                     exportRequiresUpgrade={exportRequiresUpgrade}
-                    exportCreditCost={exportCreditCost}
                   />
                 </div>
               </>
@@ -3969,13 +3088,13 @@ export default function ClipRefinePage() {
                     key={id}
                     onClick={() => handleSidebarIconClick(id)}
                     title={label}
-                    className="w-full flex flex-col items-center gap-1 py-3 text-[9px] font-medium text-white hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                    className="w-full flex flex-col items-center gap-1 py-3 text-[9px] font-medium text-white hover:text-white hover:bg-white/5 transition-colors"
                   >
                     <Icon className="h-4.5 w-4.5" />
                     <span>{label}</span>
                   </button>
                 ))}
-                <div className="mt-auto w-full px-2 pb-3 flex flex-col items-center gap-1.5">
+                <div className="mt-auto w-full px-2 pb-3 flex flex-col items-center gap-1">
                   {/* Circular export/download / upgrade button */}
                   {exportRequiresUpgrade && !exportReadyToDownload && exportPhase !== "exporting" ? (
                     <>
@@ -3991,17 +3110,45 @@ export default function ClipRefinePage() {
                       </span>
                     </>
                   ) : (
-                    <ExportClipButton
-                      exportPhase={exportPhase === "error" ? "idle" : exportPhase}
-                      exportProgress={exportProgress}
-                      exportReadyToDownload={exportReadyToDownload}
-                      onExport={handleExport}
-                      onCancel={handleCancelExport}
-                      onDownload={handlePrimaryExportAction}
-                      size="circle"
-                      creditCost={exportCreditCost}
-                    />
-                  )}
+                    <>
+                  <div className="relative h-11 w-11">
+                    {/* Progress ring (visible while exporting) */}
+                    {exportPhase === "exporting" && (
+                      <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
+                        <circle cx="22" cy="22" r="19" fill="none" stroke="white" strokeOpacity="0.12" strokeWidth="3" />
+                        <circle
+                          cx="22" cy="22" r="19" fill="none" stroke="white" strokeWidth="3"
+                          strokeDasharray={`${2 * Math.PI * 19}`}
+                          strokeDashoffset={`${2 * Math.PI * 19 * (1 - exportProgress / 100)}`}
+                          strokeLinecap="round"
+                          className="transition-all duration-500"
+                        />
+                      </svg>
+                    )}
+                    <button
+                      onClick={handlePrimaryExportAction}
+                      disabled={exportPhase === "exporting"}
+                      title={exportReadyToDownload ? "Download" : exportPhase === "exporting" ? `${exportProgress}%` : "Export clip"}
+                      className={cn(
+                        "absolute inset-0 flex items-center justify-center rounded-full transition-all duration-150",
+                        exportReadyToDownload
+                          ? "bg-green-500 hover:bg-green-400 active:bg-green-600 text-white cursor-pointer"
+                          : exportPhase === "exporting"
+                            ? "bg-white/8 text-white/50 cursor-not-allowed"
+                            : "bg-white hover:bg-white/85 active:bg-white/70 text-black cursor-pointer"
+                      )}
+                    >
+                      {exportPhase === "exporting"
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : exportReadyToDownload
+                          ? <Download className="h-4 w-4" />
+                          : <Download className="h-4 w-4" />
+                      }
+                    </button>
+                  </div>
+                  <span className="text-[9px] font-medium text-white/60">
+                    {exportReadyToDownload ? "Download" : exportPhase === "exporting" ? `${exportProgress}%` : "Export"}
+                  </span>
                   {exportReadyToDownload && exportUrl && (
                     <button
                       onClick={handleExport}
@@ -4010,6 +3157,8 @@ export default function ClipRefinePage() {
                       Export again
                     </button>
                   )}
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -4017,6 +3166,103 @@ export default function ClipRefinePage() {
         )}
       </main>
 
+      {/* ── MOBILE ONLY — outside <main> ── */}
+
+      {/* Dimmed backdrop */}
+      {isMobile && mobileDrawerOpen && (
+        <button
+          type="button"
+          aria-label="Close panel"
+          className="fixed inset-0 z-[45] bg-black/50"
+          onClick={closeDrawer}
+        />
+      )}
+
+      {/* Bottom drawer */}
+      {isMobile && drawerMounted && (
+        <div
+          className={cn(
+            "fixed left-0 right-0 z-[55] flex flex-col",
+            "bg-[#111] rounded-t-[20px] border-t border-white/10 shadow-[0_-12px_48px_rgba(0,0,0,0.8)]",
+            "transition-transform duration-300 ease-out",
+            !mobileDrawerOpen && "pointer-events-none"
+          )}
+          style={{
+            bottom: MOBILE_DRAWER_BOTTOM,
+            maxHeight: "min(60vh, calc(100vh - 16rem))",
+            transform: mobileDrawerOpen
+              ? "translateY(0)"
+              : `translateY(calc(100% + ${MOBILE_DRAWER_BOTTOM}))`,
+          }}
+        >
+          {/* Drag handle pill */}
+          <div className="flex justify-center pt-3 pb-0 shrink-0">
+            <div className="h-[3px] w-9 rounded-full bg-white/25" />
+          </div>
+
+          {/* Header: title + close */}
+          <div className="flex items-center justify-between px-4 pt-2 pb-2 shrink-0">
+            <p className="text-[13px] font-semibold text-white">{activeTabLabel}</p>
+            <button
+              onClick={closeDrawer}
+              className="h-7 w-7 flex items-center justify-center rounded-full bg-white/8 text-white/40 hover:text-white transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {/* Scrollable edit content */}
+          <div className="flex-1 overflow-y-auto px-4 pb-4 no-scrollbar min-h-0">
+            <EditPanelContent {...editPanelProps} styleGridMaxHeight={200} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Mobile bottom strip (tab icons + export button) ── */}
+      {isMobile && <div
+        className="fixed left-0 right-0 z-50 bg-[#0a0a0a]"
+        style={{ bottom: MOBILE_STRIP_BOTTOM }}
+      >
+        {/* Tab row */}
+        <div className="flex items-stretch border-b border-white/6">
+          {TABS.map(({ id, icon: Icon, label }) => (
+            <button
+              key={id}
+              onClick={() => handleMobileTab(id)}
+              className={cn(
+                "flex-1 flex flex-col items-center justify-center gap-0.5 h-11 text-[9px] font-medium transition-all",
+                activeTab === id && mobileDrawerOpen
+                  ? "text-white bg-white/8"
+                  : "text-white/40 active:bg-white/5"
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Export — compact, no helper text */}
+        <div className="px-4 py-2">
+          <ExportSection
+            exportPhase={exportPhase}
+            exportProgress={exportProgress}
+            exportUrl={exportUrl}
+            exportError={exportError}
+            handleExport={handleExport}
+            handleCancelExport={handleCancelExport}
+            handlePrimaryExportAction={handlePrimaryExportAction}
+            exportReadyToDownload={exportReadyToDownload}
+            downloadMode={downloadMode}
+            onDownloadEdit={handleDownloadEdit}
+            onResetAll={resetAll}
+            setExportPhase={setExportPhase}
+            setExportUrl={setExportUrl}
+            exportRequiresUpgrade={exportRequiresUpgrade}
+            compact
+          />
+        </div>
+      </div>}
     </div>
   );
 }

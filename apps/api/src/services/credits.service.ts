@@ -6,39 +6,11 @@ import { Plan } from "../model/plan.model.js";
 // Cost per minute of source video for AI clipping — matches plan.creditCostPerMin
 export const CREDITS_PER_MINUTE = 2;
 
-// Base cost per video export (feature add-ons are computed via computeExportCost)
-export const CREDITS_PER_EXPORT      = 2;
-export const CREDITS_PER_EXPORT_BASE = 2;
-export const CREDITS_PER_EXPORT_MAX  = 6;
+// Flat cost per video export
+export const CREDITS_PER_EXPORT = 2;
 
 // User must have at least this many credits to start a job (1 min worth)
 export const MIN_CREDITS_TO_START = CREDITS_PER_MINUTE;
-
-// ── Export cost calculation ───────────────────────────────────────────────────
-
-export interface ExportCostPayload {
-  captionStyle: string;
-  stickers: { stickerId: string }[];
-  tracks: { items: { type: string }[] }[];
-}
-
-/**
- * Compute the credit cost for an export.
- *
- * Base: 2 credits
- * +1 if captions are enabled (captionStyle !== "none")
- * +1 if stickers are placed
- * +1 if more than 1 video item exists across all tracks (multi-clip)
- * Maximum: 6 credits
- */
-export function computeExportCost(p: ExportCostPayload): number {
-  let cost = CREDITS_PER_EXPORT_BASE;
-  if (p.captionStyle && p.captionStyle !== "none") cost += 1;
-  if (p.stickers.length > 0) cost += 1;
-  const videoItems = p.tracks.flatMap(t => t.items.filter(i => i.type === "video"));
-  if (videoItems.length > 1) cost += 1;
-  return Math.min(cost, CREDITS_PER_EXPORT_MAX);
-}
 
 export type PlanName = "free" | "core" | "growth" | "scale";
 
@@ -313,15 +285,14 @@ export async function deductJobCredits(
 
 /**
  * Atomically deduct credits for a video export.
- * Cost is determined by computeExportCost() (base 2 + feature add-ons, max 6).
+ * Flat cost: CREDITS_PER_EXPORT (default 1).
  * Drains subscriptionCredits first, then topupCredits.
  */
 export async function deductExportCredits(
   userId: string,
-  exportId: string,
-  cost = CREDITS_PER_EXPORT_BASE,
+  exportId: string
 ): Promise<{ deducted: number; balanceAfter: number }> {
-  const totalCost = cost;
+  const totalCost = CREDITS_PER_EXPORT;
 
   const session = await mongoose.startSession();
   try {

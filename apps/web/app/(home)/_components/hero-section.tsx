@@ -6,7 +6,7 @@ import { useAuth } from "@clerk/nextjs";
 import { Link2, Upload, Scissors, Zap, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
-import { URL_PLACEHOLDERS, validateVideoUrl } from "@/lib/url-placeholders";
+import { URL_PLACEHOLDERS } from "@/lib/url-placeholders";
 import HeroVideoDemo from "./hero-video-demo";
 
 const BADGES = [
@@ -17,7 +17,6 @@ const BADGES = [
 
 export default function HeroSection() {
   const [url, setUrl] = useState("");
-  const [urlError, setUrlError] = useState<string | null>(null);
   const { isSignedIn } = useAuth();
   const router = useRouter();
 
@@ -32,17 +31,6 @@ export default function HeroSection() {
   const goToDashboard = (e?: React.FormEvent) => {
     e?.preventDefault();
     const trimmed = url.trim();
-
-    // If a URL was entered, validate it before proceeding
-    if (trimmed) {
-      const validation = validateVideoUrl(trimmed);
-      if (!validation.valid) {
-        setUrlError(validation.error ?? "Please enter a valid video URL.");
-        return;
-      }
-      setUrlError(null);
-    }
-
     const destination = trimmed
       ? `/dashboard?url=${encodeURIComponent(trimmed)}`
       : "/dashboard";
@@ -109,10 +97,10 @@ export default function HeroSection() {
         {/* Input + CTA */}
         <div className="flex w-full max-w-2xl flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
           {/* URL input — full width on mobile */}
-          <div className={cn(
+          <div
+            className={cn(
               "flex min-h-[48px] h-12 w-full min-w-0 flex-1 items-center gap-2.5 rounded-2xl border px-3.5 sm:px-4 transition-all duration-200",
               "border-white/12 bg-white/[0.07] focus-within:border-white/30 focus-within:bg-white/10",
-              urlError && "border-red-500/40",
             )}
           >
             <Link2 className="h-4 w-4 shrink-0 text-white/45" />
@@ -121,15 +109,12 @@ export default function HeroSection() {
                 inline
                 placeholders={URL_PLACEHOLDERS}
                 value={url}
-                onValueChange={v => { setUrl(v); if (urlError) setUrlError(null); }}
+                onValueChange={setUrl}
                 onSubmit={handleInputSubmit}
                 hideSubmitButton
               />
             </div>
           </div>
-          {urlError && (
-            <p className="w-full text-[12px] text-red-400/90 px-1 -mt-1">{urlError}</p>
-          )}
 
           {/* Buttons — below input on mobile, beside on desktop */}
           <div className="flex w-full sm:w-auto items-center gap-2 sm:gap-3">

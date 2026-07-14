@@ -7,7 +7,7 @@ import { useApiFetch } from "@/lib/apiFetch";
 import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
-import { URL_PLACEHOLDERS, validateVideoUrl } from "@/lib/url-placeholders";
+import { URL_PLACEHOLDERS } from "@/lib/url-placeholders";
 import posthog from "posthog-js";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -229,16 +229,9 @@ function DashboardInner() {
     const trimmed = url.trim();
     if (!trimmed) return;
     setError(null);
-
-    // Validate platform before hitting the API
-    const validation = validateVideoUrl(trimmed);
-    if (!validation.valid) {
-      setError(validation.error ?? "Please enter a valid video URL.");
-      return;
-    }
-
     setLoading(true);
     try {
+      new URL(trimmed);
       const meta = await fetchVideoMeta(trimmed, apiFetch);
       setVideo(meta);
       setVideoMode("thumbnail");

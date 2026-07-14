@@ -8,18 +8,14 @@
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 
 export interface TextOverlay {
-  id:        string;
-  text:      string;
-  x:         number;
-  y:         number;
-  fontSize:  number;
-  color:     string;
-  bold:      boolean;
-  italic:    boolean;
-  /** Timeline start time in seconds. Undefined = show for entire video. */
-  startTime?: number | undefined;
-  /** Duration in seconds. Undefined = show for entire video. */
-  duration?:  number | undefined;
+  id:       string;
+  text:     string;
+  x:        number;
+  y:        number;
+  fontSize: number;
+  color:    string;
+  bold:     boolean;
+  italic:   boolean;
 }
 
 // Matches a single Unicode emoji (including ZWJ sequences, flag pairs, etc.)
