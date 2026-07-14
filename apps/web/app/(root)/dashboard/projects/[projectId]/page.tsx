@@ -51,6 +51,14 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
     setPlaying(true);
   }, [idx]);
 
+  // Release video on unmount
+  useEffect(() => {
+    return () => {
+      const v = videoRef.current;
+      if (v) { v.pause(); v.removeAttribute("src"); v.load(); }
+    };
+  }, []);
+
   const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
@@ -216,6 +224,14 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
     else         { v.pause(); v.currentTime = 0; }
   }, [hovered]);
 
+  // Release video resources on unmount
+  useEffect(() => {
+    return () => {
+      const v = videoRef.current;
+      if (v) { v.pause(); v.removeAttribute("src"); v.load(); }
+    };
+  }, []);
+
   return (
     <div
       className="flex flex-col gap-2"
@@ -236,7 +252,7 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
             muted={muted}
             loop
             playsInline
-            preload="metadata"
+            preload="none"
             onLoadedData={() => setLoaded(true)}
             className="absolute inset-0 w-full h-full object-contain"
           />

@@ -30,6 +30,15 @@ export interface OverlayParams {
   fontSize?:    number; // logical font size from the editor (default 28)
   posOffset?:   number; // vertical offset in % of height (- = up, + = down)
   hOffset?:     number; // horizontal offset in % of width (- = left, + = right)
+  /** When set, each frame picks style/position/words from the active time segment. */
+  segments?: Array<{
+    style: string;
+    start: number;
+    end: number;
+    posX: number;
+    posY: number;
+    words: CaptionWord[];
+  }>;
   outputPath:   string; // destination .mov file
 }
 
@@ -47,16 +56,20 @@ export interface OverlayParams {
  */
 export async function renderCaptionToFile(params: OverlayParams): Promise<void> {
   ensureFontsRegistered();
-  const { words, width, height, durationSecs, outputPath } = params;
+  const { words, width, height, durationSecs, outputPath, segments } = params;
   const fontSize    = params.fontSize ?? DEFAULT_FONT_SIZE;
   const posOffset   = params.posOffset ?? 0;
   const hOffset     = params.hOffset ?? 0;
   const style       = (params.style as CaptionStyle) ?? "bold-center";
-  const isMotion    = MOTION_STYLES.has(style as CaptionStyle);
+  const useSegments = Array.isArray(segments) && segments.length > 0;
+  const isMotion    = useSegments
+    ? segments!.some(s => MOTION_STYLES.has(s.style as CaptionStyle))
+    : MOTION_STYLES.has(style as CaptionStyle);
   const totalFrames = Math.ceil(durationSecs * FPS);
 
   logger.info("Caption overlay render started", {
-    style, width, height, durationSecs, totalFrames, wordCount: words.length, fontSize,
+    style, width, height, durationSecs, totalFrames,
+    wordCount: words.length, fontSize, segmentCount: segments?.length ?? 0,
   });
 
   const ffmpeg = spawn("ffmpeg", [
@@ -84,20 +97,45 @@ export async function renderCaptionToFile(params: OverlayParams): Promise<void> 
   const ctx         = canvas.getContext("2d", { alpha: true } as any);
   const bounceStart: Record<string, number> = {};
 
-  let lastActiveStart: number | null | undefined = undefined;
+  let lastActiveKey: string | null | undefined = undefined;
   let lastPng: Buffer | null = null;
 
   for (let f = 0; f < totalFrames; f++) {
     const timeMs  = (f / FPS) * 1000;
     const timeSec = f / FPS;
-    const active  = words.find(w => timeSec >= w.start && timeSec < w.end);
-    const needsRender = isMotion || active?.start !== lastActiveStart;
+
+    let frameWords = words;
+    let frameStyle = style as CaptionStyle;
+    let framePosY = posOffset;
+    let framePosX = hOffset;
+
+    if (useSegments) {
+      const seg = segments!.find(s => timeSec >= s.start - 0.001 && timeSec < s.end + 0.001);
+      if (!seg) {
+        frameWords = [];
+        frameStyle = "none" as CaptionStyle;
+      } else {
+        frameWords = seg.words;
+        frameStyle = seg.style as CaptionStyle;
+        framePosX = seg.posX;
+        framePosY = seg.posY;
+      }
+    }
+
+    const active  = frameWords.find(w => timeSec >= w.start && timeSec < w.end);
+    const activeKey = `${frameStyle}:${framePosX}:${framePosY}:${active?.start ?? "none"}`;
+    const needsRender = isMotion || activeKey !== lastActiveKey;
 
     if (needsRender) {
       ctx.clearRect(0, 0, width, height);
-      renderCaptionFrame(ctx, width, height, words, style as CaptionStyle, timeMs, fontSize, bounceStart, posOffset, hOffset);
-      lastPng         = canvas.toBuffer("image/png");
-      lastActiveStart = active?.start ?? null;
+      if (frameStyle !== "none" && frameWords.length > 0) {
+        renderCaptionFrame(
+          ctx, width, height, frameWords, frameStyle, timeMs, fontSize,
+          bounceStart, framePosY, framePosX,
+        );
+      }
+      lastPng     = canvas.toBuffer("image/png");
+      lastActiveKey = activeKey;
     }
 
     if (lastPng) {

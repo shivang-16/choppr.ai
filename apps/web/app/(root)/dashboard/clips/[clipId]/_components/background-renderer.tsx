@@ -14,6 +14,10 @@ export interface PlacedSticker {
   x:     number;           // 0-1 normalized
   y:     number;           // 0-1 normalized
   scale: number;           // 0.3 - 2.0
+  /** Timeline start (seconds). Controls when sticker appears in preview. */
+  startTime?: number;
+  /** How long the sticker stays visible (seconds). */
+  duration?: number;
 }
 
 // Legacy emoji sticker types (kept so nothing breaks if old stickers exist)
