@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useLivePlayerContext } from "@twick/live-player";
 import { useTimelineContext } from "@twick/timeline";
 
 /**
@@ -9,7 +8,6 @@ import { useTimelineContext } from "@twick/timeline";
  * (Clipchamp / CapCut style), synced to Twick's native seek playhead position.
  */
 export function TimelinePlayheadBridge() {
-  const { currentTime } = useLivePlayerContext();
   const { changeLog } = useTimelineContext();
   const lineRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -90,7 +88,7 @@ export function TimelinePlayheadBridge() {
       lineRef.current?.remove();
       lineRef.current = null;
     };
-  }, [changeLog, currentTime]);
+  }, [changeLog]);
 
   return null;
 }

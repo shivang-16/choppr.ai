@@ -781,8 +781,8 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
           && (item.id === originalClipId || (!originalClipId && videoItems.length === 1));
         if (applySegs) {
           for (const seg of captionSegments) {
-            const adjStart = seg.start / spd + offset;
-            const adjEnd   = seg.end / spd + offset;
+            const adjStart = (seg.start - trimIn) / spd + offset;
+            const adjEnd   = (seg.end   - trimIn) / spd + offset;
             if (adjEnd <= offset || adjStart >= offset + outputDur) continue;
             const segWords = (seg.words?.length ? seg.words : words)
               .map(w => {

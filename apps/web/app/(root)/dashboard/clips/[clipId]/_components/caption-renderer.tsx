@@ -303,12 +303,18 @@ export default function CaptionRenderer({
     : wordsHaveDevanagari(resolvedWords);
 
   useEffect(() => {
-    if (resolvedStyle === "none") return;
     const canvas = canvasRef.current;
-    const video  = videoRef.current;
-    if (!canvas || !video) return;
+    if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    if (resolvedStyle === "none") {
+      // Clear any previously drawn caption when there's nothing to show
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+    const video  = videoRef.current;
+    if (!video) return;
 
     const baseCfg = CFG[resolvedStyle];
     // When rendering Devanagari script, override the font to Noto Sans Devanagari

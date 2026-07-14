@@ -769,3 +769,18 @@ body.choppr-dragging-timeline-asset .clip-timeline-shell .clip-timeline-section 
 .clip-timeline-shell[data-trimming-end="1"] .twick-track-element-selected {
   max-width: var(--choppr-trim-max-width) !important;
 }
+
+/* ── Shutter/crop trim feel ────────────────────────────────────────────────
+   Thumbnails use a fixed slot width so trimming reveals/hides frames like
+   a sliding shutter rather than compressing/squishing the filmstrip.
+   The strip keeps Twick's inset:0 + overflow:hidden — no bleeding outside
+   the clip block. Clipping is clean via the strip's own overflow:hidden.
+*/
+.clip-timeline-shell .twick-media-strip-thumb {
+  flex: 0 0 68px !important;
+  width: 68px !important;
+  min-width: 68px !important;
+  max-width: 68px !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}

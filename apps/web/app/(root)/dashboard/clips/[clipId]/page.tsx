@@ -36,10 +36,6 @@ const FREE_EXPORT_MAX_SECS = 5 * 60;
 const SPEED_MIN = 0.25;
 const SPEED_MAX = 4;
 
-/** Mobile bottom drawer sits above the bottom tab strip. */
-const MOBILE_STRIP_BOTTOM = "0px";
-const MOBILE_DRAWER_BOTTOM = "calc(3.25rem + 64px)";
-
 /** Trimmed source length before speed. */
 function getTrimmedExportSecs(trimStart: number, trimEnd: number, duration: number): number {
   if (!(duration > 0)) return 0;
@@ -138,9 +134,9 @@ function useIsMobile() {
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const TABS = [
   { id: "captions",    icon: Captions,   label: "Captions" },
+  { id: "upload",      icon: Upload,     label: "Upload" },
   { id: "text",        icon: Type,       label: "Text" },
   { id: "thumbnail",   icon: ImageIcon,  label: "Watermark" },
-  { id: "upload",      icon: Upload,     label: "Upload" },
   { id: "stickers",    icon: Layers,     label: "Stickers" },
   { id: "speed",       icon: Gauge,      label: "Speed" },
   { id: "enhance",     icon: Sparkles,   label: "Enhance" },
@@ -1101,7 +1097,7 @@ function EditPanelContent({
                           onAddCaptionSegment(s.id);
                         }}
                         className={cn(
-                          "relative rounded-xl border transition-all overflow-hidden",
+                          "relative rounded-xl border transition-all overflow-hidden cursor-pointer",
                           captionSegments.some(seg => seg.style === s.id)
                             ? "border-white/50 ring-1 ring-white/20"
                             : "border-white/8 bg-white/3 hover:border-white/20"
@@ -1481,6 +1477,67 @@ function EditPanelContent({
   );
 }
 
+/**
+ * Water-fill SVG layer.
+ * direction="horizontal" (default) — fills left→right; wave on the right edge scrolls vertically.
+ * direction="vertical"             — rises bottom→top; wave on the top edge scrolls horizontally.
+ * The wave animates continuously even when progress is fixed.
+ */
+function WaterFill({ progress, direction = "horizontal" }: { progress: number; direction?: "horizontal" | "vertical" }) {
+  const p = Math.max(0, Math.min(100, progress));
+
+  if (direction === "vertical") {
+    // Water rises from bottom; start at ~5% so first fill is visible
+    const fillHeight = Math.max(5, p);
+    return (
+      <span
+        className="absolute inset-x-0 bottom-0 pointer-events-none overflow-hidden transition-[height] duration-500 ease-out"
+        style={{ height: `${fillHeight}%` }}
+        aria-hidden
+      >
+        <span className="absolute inset-0 bg-white" />
+        {/* Horizontal wave scrolls left continuously */}
+        <svg
+          className="absolute -top-[10px] left-0 w-[200%] animate-[chopprWaterScroll_2.2s_linear_infinite]"
+          style={{ height: 20 }}
+          viewBox="0 0 400 20"
+          preserveAspectRatio="none"
+          aria-hidden
+        >
+          <path
+            d="M0 10 C25 0, 50 20, 75 10 C100 0, 125 20, 150 10 C175 0, 200 20, 225 10 C250 0, 275 20, 300 10 C325 0, 350 20, 375 10 C400 0, 400 20, 400 20 L0 20 Z"
+            fill="white"
+          />
+        </svg>
+      </span>
+    );
+  }
+
+  // Horizontal: fills left→right; wave on the right edge scrolls vertically
+  const fillWidth = Math.max(3, p);
+  return (
+    <span
+      className="absolute inset-y-0 left-0 pointer-events-none overflow-hidden transition-[width] duration-300 ease-out"
+      style={{ width: `${fillWidth}%` }}
+      aria-hidden
+    >
+      <span className="absolute inset-0 bg-white" />
+      {/* Vertical wave on right edge — tall SVG, scrolls upward */}
+      <svg
+        className="absolute top-0 right-0 h-[200%] w-4 animate-[chopprWaterScrollV_1.6s_linear_infinite]"
+        viewBox="0 0 16 200"
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        <path
+          d="M8 0 C13 12, 3 24, 8 36 C13 48, 3 60, 8 72 C13 84, 3 96, 8 108 C13 120, 3 132, 8 144 C13 156, 3 168, 8 180 C13 192, 8 200, 8 200 L0 200 L0 0 Z"
+          fill="white"
+        />
+      </svg>
+    </span>
+  );
+}
+
 function ExportClipButton({
   exportPhase,
   exportProgress,
@@ -1497,12 +1554,50 @@ function ExportClipButton({
   onExport: () => void;
   onCancel: () => void;
   onDownload: () => void;
-  size?: "default" | "compact";
+  size?: "default" | "compact" | "circle";
   className?: string;
 }) {
   const exporting = exportPhase === "exporting";
   const progress = Math.max(0, Math.min(100, exportProgress));
 
+  const handleClick = () => {
+    if (exporting) { onCancel(); return; }
+    if (exportReadyToDownload) { onDownload(); return; }
+    if (exportPhase === "no_credits") { window.location.href = "/pricing"; return; }
+    onExport();
+  };
+
+  /* ── Circle variant (collapsed sidebar) ── */
+  if (size === "circle") {
+    const icon = exporting
+      ? <X className="h-4 w-4 relative z-10" />
+      : exportReadyToDownload
+        ? <Download className="h-4 w-4 relative z-10" />
+        : <Upload className="h-4 w-4 relative z-10" />;
+    const title = exporting ? "Cancel export" : exportReadyToDownload ? "Download" : "Export clip";
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        title={title}
+        aria-label={title}
+        className={cn(
+          "relative h-11 w-11 flex items-center justify-center rounded-full overflow-hidden transition-all active:scale-[0.94] cursor-pointer",
+          exporting
+            ? "bg-[#1a1a2e] border border-white/20 text-white"
+            : "bg-white text-black hover:bg-white/85",
+          className,
+        )}
+      >
+        {exporting && <WaterFill progress={progress} direction="vertical" />}
+        <span className={cn("relative z-10", exporting && "mix-blend-difference text-white")}>
+          {icon}
+        </span>
+      </button>
+    );
+  }
+
+  /* ── Default / compact variant ── */
   const label = exporting
     ? "Cancel"
     : exportReadyToDownload
@@ -1511,33 +1606,17 @@ function ExportClipButton({
         ? "Get credits"
         : "Export clip";
 
-  const handleClick = () => {
-    if (exporting) {
-      onCancel();
-      return;
-    }
-    if (exportReadyToDownload) {
-      onDownload();
-      return;
-    }
-    if (exportPhase === "no_credits") {
-      window.location.href = "/pricing";
-      return;
-    }
-    onExport();
-  };
-
   return (
     <button
       type="button"
       onClick={handleClick}
       className={cn(
-        "relative overflow-hidden font-semibold transition-all active:scale-[0.98]",
+        "relative overflow-hidden font-semibold transition-all active:scale-[0.98] cursor-pointer",
         size === "compact"
           ? "rounded-xl px-3 py-1.5 text-[11px] min-w-[5.5rem]"
           : "w-full rounded-2xl py-3 text-[14px]",
         exporting
-          ? "bg-white/10 border border-white/20 text-white"
+          ? "bg-[#0d0d1a] border border-white/20 text-white"
           : exportReadyToDownload
             ? "bg-white text-black hover:bg-white/90"
             : "bg-white text-black hover:bg-white/90",
@@ -1545,26 +1624,7 @@ function ExportClipButton({
       )}
       aria-label={label}
     >
-      {exporting && (
-        <span
-          className="absolute inset-y-0 left-0 pointer-events-none transition-[width] duration-300 ease-out"
-          style={{ width: `${Math.max(progress, 3)}%` }}
-          aria-hidden
-        >
-          <span className="absolute inset-0 bg-white" />
-          <svg
-            className="absolute top-0 right-0 h-[200%] w-3.5 animate-[chopprExportWave_1.1s_linear_infinite]"
-            viewBox="0 0 14 200"
-            preserveAspectRatio="none"
-            aria-hidden
-          >
-            <path
-              d="M7 0 C11 10, 3 20, 7 30 C11 40, 3 50, 7 60 C11 70, 3 80, 7 90 C11 100, 3 110, 7 120 C11 130, 3 140, 7 150 C11 160, 3 170, 7 180 C11 190, 7 200, 7 200 L0 200 L0 0 Z"
-              fill="white"
-            />
-          </svg>
-        </span>
-      )}
+      {exporting && <WaterFill progress={progress} />}
       <span
         className={cn(
           "relative z-10 inline-flex items-center justify-center gap-1.5",
@@ -1622,8 +1682,8 @@ function ExportSection({
 
   return (
     <div className={cn("flex flex-col gap-2", compact && "gap-1.5")}>
-      {(exportPhase === "idle" || (exportPhase === "done" && !exportReadyToDownload)) && (
-        exportRequiresUpgrade ? (
+      {(exportPhase === "idle" || exportPhase === "exporting" || (exportPhase === "done" && !exportReadyToDownload)) && (
+        exportRequiresUpgrade && exportPhase !== "exporting" ? (
           <div className="flex flex-col gap-1.5">
             <Link
               href="/dashboard/billing"
@@ -1639,38 +1699,23 @@ function ExportSection({
             )}
           </div>
         ) : (
-          <ExportClipButton
-            exportPhase={exportPhase}
-            exportProgress={exportProgress}
-            exportReadyToDownload={exportReadyToDownload}
-            onExport={handleExport}
-            onCancel={handleCancelExport}
-            onDownload={handlePrimaryExportAction}
-            size={compact ? "compact" : "default"}
-          />
+          <>
+            <ExportClipButton
+              exportPhase={exportPhase}
+              exportProgress={exportProgress}
+              exportReadyToDownload={exportReadyToDownload}
+              onExport={handleExport}
+              onCancel={handleCancelExport}
+              onDownload={handlePrimaryExportAction}
+              size={compact ? "compact" : "default"}
+            />
+            {exportPhase === "exporting" && (
+              <p className="text-[10px] text-white/25 text-center">
+                Times out after {EXPORT_TIMEOUT_MINUTES} minutes if stuck.
+              </p>
+            )}
+          </>
         )
-      )}
-
-      {exportPhase === "exporting" && (
-        <>
-          <div className="flex items-center justify-between text-[11px] text-white/40 mb-1">
-            <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Rendering…</span>
-            <span>{exportProgress}%</span>
-          </div>
-          <div className="h-1.5 w-full rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-white transition-all duration-500" style={{ width: `${exportProgress}%` }} />
-          </div>
-          <button
-            type="button"
-            onClick={handleCancelExport}
-            className="mt-1 w-full rounded-xl border border-white/15 py-2 text-[12px] font-medium text-white/55 hover:text-white/80 hover:border-white/25 transition-colors"
-          >
-            Cancel export
-          </button>
-          <p className="text-[10px] text-white/25 text-center">
-            Times out after {EXPORT_TIMEOUT_MINUTES} minutes if stuck.
-          </p>
-        </>
       )}
 
       {exportReadyToDownload && exportUrl && (
@@ -1725,7 +1770,7 @@ function ExportSection({
           >
             Get more credits →
           </a>
-          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
+          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center cursor-pointer">
             Cancel
           </button>
         </>
@@ -1748,7 +1793,7 @@ function ExportSection({
             <Sparkles className="h-4 w-4" />
             Upgrade to Pro
           </Link>
-          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center">
+          <button onClick={() => setExportPhase("idle")} className="text-[11px] text-white/25 hover:text-white/50 transition-colors text-center cursor-pointer">
             Cancel
           </button>
         </>
@@ -1956,6 +2001,7 @@ export default function ClipRefinePage() {
   const { saveDraft } = useClipDraftAutosave(clipId ?? "");
   const draftRestoredRef = useRef(false);
   const [draftTracks, setDraftTracks] = useState<unknown[] | null>(null);
+  const [timelineResetKey, setTimelineResetKey] = useState(0);
 
   // Restore draft on mount (once)
   useEffect(() => {
@@ -2530,6 +2576,7 @@ export default function ClipRefinePage() {
     setPlacedStickers([]);
     setTextOverlays([]);
     setBackgroundFill("blur");
+    setCaptionSegments([]);
     // Restore the original (untranslated) captions
     apiFetch(`${API_URL}/api/clips/${clipId}`)
       .then(r => (r.ok ? r.json() : null))
@@ -2555,9 +2602,12 @@ export default function ClipRefinePage() {
 
   // Reset every edit setting AND go back to the original video
   const resetAll = useCallback(() => {
+    clearClipDraft(clipId);
+    setDraftTracks(null);
     setActiveEditId(null);
+    setTimelineResetKey(k => k + 1);
     applyDefaults();
-  }, [applyDefaults]);
+  }, [applyDefaults, clipId]);
 
   // Sync speed
   useEffect(() => {
@@ -2900,7 +2950,7 @@ export default function ClipRefinePage() {
       type="button"
       onClick={() => handleMobileTab(id)}
       className={cn(
-        "flex flex-col items-center justify-center gap-0.5 w-11 py-1.5 rounded-xl border backdrop-blur-sm transition-all",
+        "flex flex-col items-center justify-center gap-0.5 w-11 py-1.5 rounded-xl border backdrop-blur-sm transition-all cursor-pointer",
         activeTab === id && mobileDrawerOpen
           ? "border-white/25 bg-white/15 text-white"
           : "border-white/10 bg-black/55 text-white/55 active:bg-white/10 active:text-white",
@@ -2951,7 +3001,11 @@ export default function ClipRefinePage() {
           50%  { background-position: 100% 50%; }
           100% { background-position: 0% 50%; }
         }
-        @keyframes chopprExportWave {
+        @keyframes chopprWaterScroll {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-50%); }
+        }
+        @keyframes chopprWaterScrollV {
           from { transform: translateY(0); }
           to   { transform: translateY(-50%); }
         }
@@ -3099,19 +3153,19 @@ export default function ClipRefinePage() {
             <div ref={arDropdownRef} className="relative">
             <button
               onClick={() => setArDropdownOpen(o => !o)}
-              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1 backdrop-blur-sm hover:border-white/20 transition-colors"
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 backdrop-blur-sm hover:border-white/20 transition-colors"
             >
               {aspectRatio === "9:16" && (
-                <svg viewBox="0 0 10 18" className="h-3 w-1.5 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="8" height="16" rx="1.5" /></svg>
+                <svg viewBox="0 0 10 18" className="h-3.5 w-2 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="8" height="16" rx="1.5" /></svg>
               )}
               {aspectRatio === "1:1" && (
-                <svg viewBox="0 0 14 14" className="h-2.5 w-2.5 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="12" height="12" rx="1.5" /></svg>
+                <svg viewBox="0 0 14 14" className="h-3 w-3 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="12" height="12" rx="1.5" /></svg>
               )}
               {aspectRatio === "16:9" && (
-                <svg viewBox="0 0 18 11" className="h-1.5 w-3 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="16" height="9" rx="1.5" /></svg>
+                <svg viewBox="0 0 18 11" className="h-2 w-3.5 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="16" height="9" rx="1.5" /></svg>
               )}
-              <span className="text-[10px] font-semibold text-white/70">{aspectRatio}</span>
-              <svg viewBox="0 0 10 6" className="h-2 w-2 text-white/30 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 1l4 4 4-4" /></svg>
+              <span className="text-[11px] font-semibold text-white/70">{aspectRatio}</span>
+              <svg viewBox="0 0 10 6" className="h-2 w-2.5 text-white/30 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 1l4 4 4-4" /></svg>
             </button>
 
             {arDropdownOpen && (
@@ -3694,6 +3748,8 @@ export default function ClipRefinePage() {
                 captionApiRef={captionApiRef}
                 captionWordsRef={captionWordsRef}
                 onCaptionSegmentsChange={setCaptionSegments}
+                onResetAll={resetAll}
+                resetKey={timelineResetKey}
               />
               ) : (
               <div className={cn(
@@ -3736,7 +3792,7 @@ export default function ClipRefinePage() {
                       key={id}
                       onClick={() => { if (activeTab === id) setPanelOpen(false); else setActiveTab(id); }}
                       className={cn(
-                        "flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors border-b-2",
+                        "flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors border-b-2 cursor-pointer",
                         activeTab === id ? "border-white text-white" : "border-transparent text-white/70 hover:text-white"
                       )}
                     >
@@ -3774,7 +3830,7 @@ export default function ClipRefinePage() {
                     key={id}
                     onClick={() => handleSidebarIconClick(id)}
                     title={label}
-                    className="w-full flex flex-col items-center gap-1 py-3 text-[9px] font-medium text-white hover:text-white hover:bg-white/5 transition-colors"
+                    className="w-full flex flex-col items-center gap-1 py-3 text-[9px] font-medium text-white hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
                   >
                     <Icon className="h-4.5 w-4.5" />
                     <span>{label}</span>
@@ -3803,8 +3859,7 @@ export default function ClipRefinePage() {
                       onExport={handleExport}
                       onCancel={handleCancelExport}
                       onDownload={handlePrimaryExportAction}
-                      size="compact"
-                      className="w-full min-w-0"
+                      size="circle"
                     />
                   )}
                   {exportReadyToDownload && exportUrl && (
@@ -3822,103 +3877,6 @@ export default function ClipRefinePage() {
         )}
       </main>
 
-      {/* ── MOBILE ONLY — outside <main> ── */}
-
-      {/* Dimmed backdrop */}
-      {isMobile && mobileDrawerOpen && (
-        <button
-          type="button"
-          aria-label="Close panel"
-          className="fixed inset-0 z-[45] bg-black/50"
-          onClick={closeDrawer}
-        />
-      )}
-
-      {/* Bottom drawer */}
-      {isMobile && drawerMounted && (
-        <div
-          className={cn(
-            "fixed left-0 right-0 z-[55] flex flex-col",
-            "bg-[#111] rounded-t-[20px] border-t border-white/10 shadow-[0_-12px_48px_rgba(0,0,0,0.8)]",
-            "transition-transform duration-300 ease-out",
-            !mobileDrawerOpen && "pointer-events-none"
-          )}
-          style={{
-            bottom: MOBILE_DRAWER_BOTTOM,
-            maxHeight: "min(60vh, calc(100vh - 16rem))",
-            transform: mobileDrawerOpen
-              ? "translateY(0)"
-              : `translateY(calc(100% + ${MOBILE_DRAWER_BOTTOM}))`,
-          }}
-        >
-          {/* Drag handle pill */}
-          <div className="flex justify-center pt-3 pb-0 shrink-0">
-            <div className="h-[3px] w-9 rounded-full bg-white/25" />
-          </div>
-
-          {/* Header: title + close */}
-          <div className="flex items-center justify-between px-4 pt-2 pb-2 shrink-0">
-            <p className="text-[13px] font-semibold text-white">{activeTabLabel}</p>
-            <button
-              onClick={closeDrawer}
-              className="h-7 w-7 flex items-center justify-center rounded-full bg-white/8 text-white/40 hover:text-white transition-colors"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* Scrollable edit content */}
-          <div className="flex-1 overflow-y-auto px-4 pb-4 no-scrollbar min-h-0">
-            <EditPanelContent {...editPanelProps} styleGridMaxHeight={200} />
-          </div>
-        </div>
-      )}
-
-      {/* ── Mobile bottom strip (tab icons + export button) ── */}
-      {isMobile && <div
-        className="fixed left-0 right-0 z-50 bg-[#0a0a0a]"
-        style={{ bottom: MOBILE_STRIP_BOTTOM }}
-      >
-        {/* Tab row */}
-        <div className="flex items-stretch border-b border-white/6">
-          {TABS.map(({ id, icon: Icon, label }) => (
-            <button
-              key={id}
-              onClick={() => handleMobileTab(id)}
-              className={cn(
-                "flex-1 flex flex-col items-center justify-center gap-0.5 h-11 text-[9px] font-medium transition-all",
-                activeTab === id && mobileDrawerOpen
-                  ? "text-white bg-white/8"
-                  : "text-white/40 active:bg-white/5"
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Export — compact, no helper text */}
-        <div className="px-4 py-2">
-          <ExportSection
-            exportPhase={exportPhase}
-            exportProgress={exportProgress}
-            exportUrl={exportUrl}
-            exportError={exportError}
-            handleExport={handleExport}
-            handleCancelExport={handleCancelExport}
-            handlePrimaryExportAction={handlePrimaryExportAction}
-            exportReadyToDownload={exportReadyToDownload}
-            downloadMode={downloadMode}
-            onDownloadEdit={handleDownloadEdit}
-            onResetAll={resetAll}
-            setExportPhase={setExportPhase}
-            setExportUrl={setExportUrl}
-            exportRequiresUpgrade={exportRequiresUpgrade}
-            compact
-          />
-        </div>
-      </div>}
     </div>
   );
 }

@@ -164,6 +164,8 @@ export interface ClipTimelineProps {
   captionApiRef?: MutableRefObject<CaptionTrackApi | null>;
   captionWordsRef?: MutableRefObject<import("./caption-renderer").CaptionWord[]>;
   onCaptionSegmentsChange?: (segs: CaptionSegment[]) => void;
+  onResetAll?: () => void;
+  resetKey?: number;
 }
 
 function ClipTimelineBridge({
@@ -182,6 +184,7 @@ function ClipTimelineBridge({
   onExportTracksChange,
   onTimelineSerialize,
   draftTracks,
+  userSeekRef,
 }: Pick<
   ClipTimelineProps,
   | "clipId"
@@ -199,7 +202,7 @@ function ClipTimelineBridge({
   | "onExportTracksChange"
   | "onTimelineSerialize"
   | "draftTracks"
->) {
+> & { userSeekRef: MutableRefObject<number | null> }) {
   const { changeLog, editor } = useTimelineContext();
   const {
     seekTime,
@@ -500,11 +503,12 @@ function ClipTimelineBridge({
                 window.setTimeout(done, 800);
               });
             }
+            if (playerStateRef.current !== PLAYER_STATE.PLAYING) return;
             if (video.paused) {
               await video.play();
             }
           } catch {
-            setPlayerState(PLAYER_STATE.PAUSED);
+            /* AbortError from rapid toggle — ignore */
           }
         };
         void playWhenReady();
@@ -512,7 +516,7 @@ function ClipTimelineBridge({
         video.pause();
       }
     },
-    [muted, setPlayerState, speed, videoRef],
+    [muted, speed, videoRef],
   );
 
   const applyVideoRef = useRef(applyVideoToElement);
@@ -531,10 +535,6 @@ function ClipTimelineBridge({
   const reportTimeRef = useRef(reportTime);
   reportTimeRef.current = reportTime;
 
-  const lastSeekHandledRef = useRef<{ seek: number; state: string }>({
-    seek: -1,
-    state: "",
-  });
   const seekGestureRef = useRef(false);
 
   // Freeze the play clock while the user is interacting with the seek track
@@ -546,10 +546,7 @@ function ClipTimelineBridge({
     };
     const onUp = () => {
       if (!seekGestureRef.current) return;
-      // Keep frozen briefly so onSeek can commit before the clock resumes
-      window.setTimeout(() => {
-        seekGestureRef.current = false;
-      }, 0);
+      seekGestureRef.current = false;
     };
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("pointerup", onUp, true);
@@ -581,21 +578,53 @@ function ClipTimelineBridge({
     const videos0 = listVideoElements(editor);
     const resolved0 = resolvePlaybackAt(videos0, startAt, true);
     startAt = resolved0.time;
-    let active0 = resolved0.active;
 
     timelineClockRef.current = startAt;
+    // Clear any pending user seek from before this play session started
+    userSeekRef.current = null;
     if (resolved0.active !== activeVideoAt(videos0, currentTimeRef.current)) {
       setCurrentTime(startAt);
       setSeekTime(startAt);
     }
 
-    if (active0) void applyVideoRef.current(active0, startAt, true);
+    // Apply video ONCE at the start of playback
+    if (resolved0.active) void applyVideoRef.current(resolved0.active, startAt, true);
     else videoRef.current?.pause();
-    reportTimeRef.current(startAt, active0);
+    reportTimeRef.current(startAt, resolved0.active);
+
+    // Track which element is currently driving native playback
+    let lastActiveId = resolved0.active?.getId() ?? null;
 
     const tick = (ts: number) => {
       if (playerStateRef.current !== PLAYER_STATE.PLAYING) return;
-      if (switchingSrcRef.current || seekGestureRef.current) {
+
+      // If user is dragging the seek handle, freeze the clock but keep RAF alive
+      if (seekGestureRef.current) {
+        lastFrameTsRef.current = ts;
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      // If the user seeked during playback (handleSeek set userSeekRef), jump there
+      const userSeek = userSeekRef.current;
+      if (userSeek !== null) {
+        userSeekRef.current = null;
+        lastFrameTsRef.current = ts;
+        const videos = listVideoElements(editor);
+        const resolved = resolvePlaybackAt(videos, userSeek, true);
+        const jumpTo = resolved.time;
+        timelineClockRef.current = jumpTo;
+        setCurrentTime(jumpTo);
+        setSeekTime(jumpTo);
+        lastActiveId = resolved.active?.getId() ?? null;
+        if (resolved.active) void applyVideoRef.current(resolved.active, jumpTo, true);
+        else videoRef.current?.pause();
+        reportTimeRef.current(jumpTo, resolved.active);
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      if (switchingSrcRef.current) {
         lastFrameTsRef.current = ts;
         rafRef.current = requestAnimationFrame(tick);
         return;
@@ -627,15 +656,19 @@ function ClipTimelineBridge({
       }
 
       timelineClockRef.current = next;
-      // Only advance currentTime during playback — seekTime is reserved for user gestures
-      // so timeline clicks aren't immediately overwritten by the next clock tick.
       setCurrentTime(next);
 
       const active = resolved.active;
-      if (active) void applyVideoRef.current(active, next, true);
-      else videoRef.current?.pause();
-      reportTimeRef.current(next, active);
+      const activeId = active?.getId() ?? null;
 
+      // Only call applyVideoToElement when switching between clips
+      if (activeId !== lastActiveId) {
+        lastActiveId = activeId;
+        if (active) void applyVideoRef.current(active, next, true);
+        else videoRef.current?.pause();
+      }
+
+      reportTimeRef.current(next, active);
       rafRef.current = requestAnimationFrame(tick);
     };
 
@@ -648,52 +681,21 @@ function ClipTimelineBridge({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerState]);
 
-  // Scrub / seek: works while paused AND while playing (jump playhead mid-playback)
+  // Scrub while paused (+ re-sync when timeline clips are seeded or edited)
   useEffect(() => {
+    if (playerState === PLAYER_STATE.PLAYING) return;
     if (!initializedRef.current) return;
 
-    const playing = playerState === PLAYER_STATE.PLAYING;
-    const seekChanged =
-      Math.abs(seekTime - lastSeekHandledRef.current.seek) > 0.001;
-    const stateChanged = playerState !== lastSeekHandledRef.current.state;
-
-    // While playing, only react to an explicit user seek — not changeLog-only re-runs
-    // which would snap the playhead back to a stale seekTime.
-    if (playing && !seekChanged && !stateChanged) return;
-
-    lastSeekHandledRef.current = { seek: seekTime, state: playerState };
-
     const t = Math.max(0, seekTimeRef.current);
+    timelineClockRef.current = t;
     const videos = listVideoElements(editor);
-    const resolved = resolvePlaybackAt(videos, t, playing);
-    const seekTo = resolved.time;
+    const resolved = resolvePlaybackAt(videos, t, false);
+    const previewTime = resolved.time;
     const active = resolved.active;
-
-    timelineClockRef.current = seekTo;
-    if (playing) lastFrameTsRef.current = null;
-
-    if (Math.abs(seekTo - t) > 0.02) {
-      lastSeekHandledRef.current.seek = seekTo;
-      setSeekTime(seekTo);
-      setCurrentTime(seekTo);
-    } else if (playing) {
-      setCurrentTime(seekTo);
-    }
-
-    if (active) void applyVideoToElement(active, seekTo, playing);
+    if (active) void applyVideoToElement(active, previewTime, false);
     else videoRef.current?.pause();
-    reportTime(seekTo, active);
-  }, [
-    seekTime,
-    playerState,
-    editor,
-    applyVideoToElement,
-    reportTime,
-    videoRef,
-    changeLog,
-    setSeekTime,
-    setCurrentTime,
-  ]);
+    reportTime(previewTime, active);
+  }, [seekTime, playerState, editor, applyVideoToElement, reportTime, videoRef, changeLog]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -753,6 +755,72 @@ function useMountTimelineToolbarZoom(enabled: boolean) {
   }, [enabled]);
 }
 
+/** Inject a reset-to-original button into the Twick edit-controls toolbar row. */
+function useMountResetButton(onResetAll: (() => void) | undefined) {
+  useEffect(() => {
+    if (!onResetAll) return;
+
+    let btn: HTMLButtonElement | null = null;
+
+    const attach = () => {
+      const editEl = document.querySelector(
+        ".clip-timeline-shell .clip-timeline-player-controls .edit-controls",
+      ) as HTMLElement | null;
+      if (!editEl) return;
+
+      // Already injected
+      if (editEl.querySelector(".choppr-reset-btn")) return;
+
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "choppr-reset-btn";
+      btn.title = "Reset to original";
+      btn.setAttribute("aria-label", "Reset to original");
+      btn.style.cssText = [
+        "display:inline-flex",
+        "align-items:center",
+        "justify-content:center",
+        "width:28px",
+        "height:28px",
+        "border-radius:6px",
+        "border:none",
+        "background:transparent",
+        "color:rgba(255,255,255,0.45)",
+        "cursor:pointer",
+        "flex-shrink:0",
+        "transition:color 0.15s",
+        "padding:0",
+      ].join(";");
+      btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`;
+      btn.addEventListener("mouseenter", () => { if (btn) btn.style.color = "rgba(255,255,255,0.85)"; });
+      btn.addEventListener("mouseleave", () => { if (btn) btn.style.color = "rgba(255,255,255,0.45)"; });
+      btn.addEventListener("click", () => {
+        if (window.confirm("Reset all edits and restore the original clip?")) {
+          onResetAll();
+        }
+      });
+
+      editEl.appendChild(btn);
+    };
+
+    attach();
+    const t = window.setTimeout(attach, 0);
+
+    const controls = document.querySelector(".clip-timeline-shell .clip-timeline-player-controls") as HTMLElement | null;
+    const observer = typeof MutationObserver !== "undefined" && controls
+      ? new MutationObserver(attach)
+      : null;
+    if (controls && observer) observer.observe(controls, { childList: true, subtree: true });
+
+    return () => {
+      window.clearTimeout(t);
+      observer?.disconnect();
+      btn?.remove();
+      btn = null;
+    };
+  }, [onResetAll]);
+}
+
 function ClipTimelineControls({
   zoomConfig,
   trackZoom,
@@ -762,6 +830,8 @@ function ClipTimelineControls({
   protectedClipId,
   onToggleMute,
   onRegisterToggle,
+  userSeekRef,
+  onResetAll,
   isMobile = false,
 }: {
   zoomConfig: TimelineZoomConfig;
@@ -772,6 +842,8 @@ function ClipTimelineControls({
   protectedClipId: string;
   onToggleMute: () => void;
   onRegisterToggle?: (toggle: (() => void) | null) => void;
+  userSeekRef: MutableRefObject<number | null>;
+  onResetAll?: () => void;
   isMobile?: boolean;
 }) {
   const {
@@ -795,7 +867,13 @@ function ClipTimelineControls({
   } = useTimelineContext();
   const { deleteItem, splitElement, handleUndo, handleRedo } = useTimelineControl();
 
+  const playerStateRef = useRef(playerState);
+  playerStateRef.current = playerState;
+  const currentTimeRef = useRef(currentTime);
+  currentTimeRef.current = currentTime;
+
   useMountTimelineToolbarZoom(!isMobile);
+  useMountResetButton(onResetAll);
 
   // Actual content length (last clip end) — not the padded totalDuration used for drag space
   const contentDuration = useMemo(() => {
@@ -806,14 +884,15 @@ function ClipTimelineControls({
   const displayCurrent = Math.min(currentTime, contentDuration);
 
   const togglePlayback = useCallback(() => {
-    if (playerState === PLAYER_STATE.PLAYING) {
+    if (playerStateRef.current === PLAYER_STATE.PLAYING) {
       setPlayerState(PLAYER_STATE.PAUSED);
       return;
     }
-    setSeekTime(displayCurrent);
+    const now = Math.min(currentTimeRef.current, contentDuration);
+    setSeekTime(now);
     setTimelineAction(TIMELINE_ACTION.UPDATE_PLAYER_DATA, present);
     setPlayerState(PLAYER_STATE.PLAYING);
-  }, [playerState, displayCurrent, present, setPlayerState, setSeekTime, setTimelineAction]);
+  }, [contentDuration, present, setPlayerState, setSeekTime, setTimelineAction]);
 
   useEffect(() => {
     onRegisterToggle?.(togglePlayback);
@@ -824,10 +903,12 @@ function ClipTimelineControls({
     (time: number) => {
       // Seek within content only (ignore empty pad)
       const clamped = Math.max(0, Math.min(contentDuration, time));
+      // Signal the play clock to jump here on next tick (during playback)
+      userSeekRef.current = clamped;
       setCurrentTime(clamped);
       setSeekTime(clamped);
     },
-    [setCurrentTime, setSeekTime, contentDuration],
+    [setCurrentTime, setSeekTime, contentDuration, userSeekRef],
   );
 
   const handleDelete = useCallback(() => {
@@ -941,6 +1022,8 @@ function ClipTimelineInner(props: ClipTimelineProps) {
   const zoomConfig = props.isMobile ? MOBILE_ZOOM : DESKTOP_ZOOM;
   const [trackZoom, setTrackZoom] = useState(zoomConfig.default);
   const [externalDragging, setExternalDragging] = useState(false);
+  // Shared ref: handleSeek (in Controls) writes here; playback tick (in Bridge) reads and clears it.
+  const userSeekRef = useRef<number | null>(null);
 
   useEffect(() => {
     const onStart = () => setExternalDragging(true);
@@ -977,6 +1060,7 @@ function ClipTimelineInner(props: ClipTimelineProps) {
         onExportTracksChange={props.onExportTracksChange}
         onTimelineSerialize={props.onTimelineSerialize}
         draftTracks={props.draftTracks}
+        userSeekRef={userSeekRef}
       />
       {props.overlayApiRef && (
         <TimelineOverlayBridge
@@ -1005,6 +1089,8 @@ function ClipTimelineInner(props: ClipTimelineProps) {
           protectedClipId={props.clipId}
           onToggleMute={props.onToggleMute}
           onRegisterToggle={props.onRegisterToggle}
+          userSeekRef={userSeekRef}
+          onResetAll={props.onResetAll}
           isMobile={props.isMobile}
         />
       </div>
@@ -1023,7 +1109,7 @@ export default function ClipTimeline(props: ClipTimelineProps) {
   return (
     <LivePlayerProvider>
       <TimelineProvider
-        key={`${props.clipId}-${props.src}`}
+        key={`${props.clipId}-${props.src}-${props.resetKey ?? 0}`}
         contextId={`clip-timeline-${props.clipId}`}
         resolution={resolution}
         initialData={{ tracks: [], version: 0 }}
