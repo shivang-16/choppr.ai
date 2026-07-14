@@ -74,12 +74,20 @@ function clampAll(editor: TimelineEditor): boolean {
   return any;
 }
 
-async function ensureMediaMeta(editor: TimelineEditor) {
+async function ensureMediaMeta(editor: TimelineEditor, failedSrc: Set<string>) {
   const tasks: Promise<void>[] = [];
   for (const track of editor.getTimelineData()?.tracks ?? []) {
     for (const el of track.getElements()) {
       if (el instanceof VideoElement && !(el.getMediaDuration() > 0)) {
-        tasks.push(el.updateVideoMeta(false).then(() => undefined).catch(() => undefined));
+        const src = el.getSrc?.() ?? "";
+        if (src && failedSrc.has(src)) continue;
+        tasks.push(
+          el.updateVideoMeta(false)
+            .then(() => undefined)
+            .catch(() => {
+              if (src) failedSrc.add(src);
+            }),
+        );
       } else if (el instanceof AudioElement && !(el.getMediaDuration() > 0)) {
         tasks.push(el.updateAudioMeta().then(() => undefined).catch(() => undefined));
       }
@@ -96,6 +104,7 @@ export function TimelineMediaLengthClamp() {
   const { editor, changeLog, selectedItem, totalDuration } = useTimelineContext();
   const clampingRef = useRef(false);
   const trimSideRef = useRef<"start" | "end" | null>(null);
+  const failedMetaSrcRef = useRef<Set<string>>(new Set());
 
   const runClamp = () => {
     if (clampingRef.current) return;
@@ -113,7 +122,7 @@ export function TimelineMediaLengthClamp() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      await ensureMediaMeta(editor);
+      await ensureMediaMeta(editor, failedMetaSrcRef.current);
       if (cancelled || clampingRef.current) return;
       runClamp();
     })();
@@ -171,7 +180,7 @@ export function TimelineMediaLengthClamp() {
       )
         ? "start"
         : "end";
-      void ensureMediaMeta(editor).then(applyLiveLimit);
+      void ensureMediaMeta(editor, failedMetaSrcRef.current).then(applyLiveLimit);
     };
 
     const onMove = () => {
@@ -185,7 +194,7 @@ export function TimelineMediaLengthClamp() {
       // After Twick commits the drag, clamp any overshoot past source length
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          void ensureMediaMeta(editor).then(runClamp);
+          void ensureMediaMeta(editor, failedMetaSrcRef.current).then(runClamp);
         });
       });
     };

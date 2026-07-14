@@ -59,6 +59,7 @@ import {
   type CaptionTrackApi,
   type CaptionSegment,
 } from "./timeline-caption-bridge";
+import { disposeOffscreenExtractors } from "@/lib/media-cleanup";
 
 import "@twick/video-editor/dist/video-editor.css";
 import "./clip-timeline.css";
@@ -206,7 +207,7 @@ function ClipTimelineBridge({
   | "onTimelineSerialize"
   | "draftTracks"
 > & { userSeekRef: MutableRefObject<number | null> }) {
-  const { changeLog, editor } = useTimelineContext();
+  const { changeLog, editor, totalDuration } = useTimelineContext();
   const {
     seekTime,
     currentTime,
@@ -245,10 +246,11 @@ function ClipTimelineBridge({
     const end = contentEndSec(editor);
     if (end <= 0) return;
     const desired = end + TIMELINE_PAD_SEC;
-    const ctx = editor.getContext();
-    // Always refresh pad after edits — don't compare against stale totalDuration
-    ctx.setTotalDuration(desired);
-  }, [editor]);
+    // Only update when the pad actually changes — setTotalDuration on every
+    // changeLog tick would thrash React and re-trigger filmstrip extraction.
+    if (Math.abs(totalDuration - desired) < 0.05) return;
+    editor.getContext().setTotalDuration(desired);
+  }, [editor, totalDuration]);
 
   // Seed primary clip on first load / source change
   useEffect(() => {
@@ -257,7 +259,14 @@ function ClipTimelineBridge({
     let cancelled = false;
 
     const rebuild = async () => {
-      if (lastSrcRef.current === src && initializedRef.current) return;
+      // Already seeded successfully — only bail if the main clip is still present
+      if (lastSrcRef.current === src && initializedRef.current) {
+        if (findPrimaryVideoElement(editor, clipId) || listVideoElements(editor).length > 0) {
+          return;
+        }
+        // Timeline was emptied somehow — allow a full reseed
+        initializedRef.current = false;
+      }
 
       syncingRef.current = true;
       try {
@@ -273,24 +282,32 @@ function ClipTimelineBridge({
         // --- Restore from draft if available ---
         if (draftTracks && Array.isArray(draftTracks) && draftTracks.length > 0 && !initializedRef.current) {
           for (const track of existing) editor.removeTrack(track);
+          let restoredOk = false;
           try {
             editor.loadProject({ tracks: draftTracks as any[], version: 0 });
+            editor.refresh();
+            // Reject empty / corrupt drafts that have tracks but no video clips
+            restoredOk = listVideoElements(editor).length > 0;
           } catch (e) {
             console.warn("[ClipTimeline] failed to restore draft, seeding fresh", e);
+            restoredOk = false;
           }
-          editor.refresh();
-          lastSrcRef.current = src;
-          initializedRef.current = true;
-          ensurePadding();
-          syncingRef.current = false;
-          return;
+          if (restoredOk) {
+            lastSrcRef.current = src;
+            initializedRef.current = true;
+            ensurePadding();
+            syncingRef.current = false;
+            return;
+          }
+          // Fall through and seed a fresh main clip
+          console.warn("[ClipTimeline] draft had no video clips — seeding main clip");
         }
 
         // Preserve Text / Stickers tracks across main-clip reseed
-        const overlayTracks = existing.filter(
+        const overlayTracks = (editor.getTimelineData()?.tracks ?? []).filter(
           t => t.getName() === "Text" || t.getName() === "Stickers",
         );
-        for (const track of existing) {
+        for (const track of editor.getTimelineData()?.tracks ?? []) {
           if (track.getName() === "Text" || track.getName() === "Stickers") continue;
           editor.removeTrack(track);
         }
@@ -299,11 +316,22 @@ function ClipTimelineBridge({
         const track = editor.addTrack("Video 1", TRACK_TYPES.ELEMENT);
         const element = new VideoElement(timelineSrc, resolution);
         element.setId(clipId);
-        await element.updateVideoMeta();
+
+        // Meta is nice-to-have for filmstrips — never block seeding on it.
+        // (getVideoMeta can fail under WebMediaPlayer pressure / CORS.)
+        try {
+          await element.updateVideoMeta();
+        } catch (metaErr) {
+          console.warn("[ClipTimeline] updateVideoMeta failed, using prop duration", metaErr);
+          element.setMediaDuration(Math.max(duration, len));
+        }
+        if (cancelled) return;
+
         element.setName("Main clip");
         element.setStart(0).setEnd(len).setStartAt(trimStart);
         element.setPlaybackRate(speed);
         await editor.addElementToTrack(track, element);
+        if (cancelled) return;
 
         // Keep overlay tracks above video
         if (overlayTracks.length) {
@@ -349,9 +377,11 @@ function ClipTimelineBridge({
         }
       } catch (err) {
         console.error("[ClipTimeline] failed to seed main clip", err);
-        // Still mark initialized so UI isn't stuck forever; user can refresh
-        initializedRef.current = true;
-        lastSrcRef.current = src;
+        // Do NOT mark initialized — allows a later retry when deps change / remount
+        if (!cancelled) {
+          initializedRef.current = false;
+          lastSrcRef.current = "";
+        }
       } finally {
         syncingRef.current = false;
       }
@@ -414,6 +444,8 @@ function ClipTimelineBridge({
   // Push full timeline to parent for export + keep drag padding
   useEffect(() => {
     if (!initializedRef.current) return;
+    // Never persist an empty timeline — that locks users into a blank draft on refresh
+    if (listVideoElements(editor).length === 0) return;
     ensurePadding();
     if (onExportTracksChange) {
       onExportTracksChange(buildExportTracksFromEditor(editor));
@@ -598,6 +630,8 @@ function ClipTimelineBridge({
 
     // Track which element is currently driving native playback
     let lastActiveId = resolved0.active?.getId() ?? null;
+    let lastUiTs = 0;
+    const UI_INTERVAL_MS = 50; // ~20fps React updates — enough for playhead, avoids max-update-depth
 
     const tick = (ts: number) => {
       if (playerStateRef.current !== PLAYER_STATE.PLAYING) return;
@@ -614,6 +648,7 @@ function ClipTimelineBridge({
         timelineClockRef.current = jumpTo;
         setCurrentTime(jumpTo);
         setSeekTime(jumpTo);
+        lastUiTs = ts;
         lastActiveId = resolved.active?.getId() ?? null;
         if (resolved.active) void applyVideoRef.current(resolved.active, jumpTo, true);
         else videoRef.current?.pause();
@@ -661,7 +696,6 @@ function ClipTimelineBridge({
       }
 
       timelineClockRef.current = next;
-      setCurrentTime(next);
 
       const active = resolved.active;
       const activeId = active?.getId() ?? null;
@@ -673,7 +707,14 @@ function ClipTimelineBridge({
         else videoRef.current?.pause();
       }
 
-      reportTimeRef.current(next, active);
+      // Throttle React state updates — setCurrentTime every rAF floods the tree and
+      // was producing "Maximum update depth exceeded" + WebMediaPlayer recreate storms.
+      if (ts - lastUiTs >= UI_INTERVAL_MS) {
+        lastUiTs = ts;
+        setCurrentTime(next);
+        reportTimeRef.current(next, active);
+      }
+
       rafRef.current = requestAnimationFrame(tick);
     };
 
@@ -1054,11 +1095,11 @@ function ClipTimelineInner(props: ClipTimelineProps) {
     };
   }, []);
 
-  // Cleanup orphaned offscreen <video> elements on unmount to prevent Chrome's
-  // WebMediaPlayer limit from being hit across HMR / route transitions.
+  // On unmount only: release Twick filmstrip extractors so Chrome frees WebMediaPlayer slots.
+  // Never flush on mount — that races with Twick creating extractors and causes recreate storms.
   useEffect(() => {
     return () => {
-      document.querySelectorAll('video[style*="left: -9999px"]').forEach(v => v.remove());
+      disposeOffscreenExtractors();
     };
   }, []);
 

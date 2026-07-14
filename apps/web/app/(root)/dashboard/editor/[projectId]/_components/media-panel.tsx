@@ -100,15 +100,11 @@ export default function MediaPanel({ clips, activeClipId, onClipClick }: Props) 
                   {/* Thumbnail via video poster frame */}
                   <div className="relative aspect-video w-full bg-[#1e1e1e] overflow-hidden">
                     <video
-                      src={clip.s3Url}
+                      src={`${clip.s3Url}#t=1`}
                       preload="metadata"
                       muted
                       playsInline
                       className="w-full h-full object-cover pointer-events-none"
-                      onLoadedData={(e) => {
-                        // Seek to 1s to get a meaningful frame
-                        (e.target as HTMLVideoElement).currentTime = 1;
-                      }}
                     />
                     {/* Duration badge */}
                     <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 py-0.5 text-[8px] font-mono text-white/70">

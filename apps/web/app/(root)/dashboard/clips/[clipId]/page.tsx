@@ -2722,6 +2722,18 @@ export default function ClipRefinePage() {
     // Duration is refreshed from onLoadedMetadata / API when available.
   }, [activeSrc]);
 
+  // Release the main video's resources on unmount to free a WebMediaPlayer slot
+  useEffect(() => {
+    return () => {
+      const video = videoRef.current;
+      if (video) {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      }
+    };
+  }, []);
+
   // Load MediaPipe segmentation lazily when user picks an overlay
   useEffect(() => {
     if (placedStickers.length === 0 || segmenterRef.current) return;
@@ -3566,6 +3578,7 @@ export default function ClipRefinePage() {
                   <video
                     key={activeSrc}
                     ref={videoRef}
+                    data-keep="1"
                     // crossOrigin only when stickers need canvas segmentation — otherwise S3 CORS can block playback
                     crossOrigin={placedStickers.length > 0 ? "anonymous" : undefined}
                     muted={muted}

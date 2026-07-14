@@ -348,9 +348,10 @@ function DashboardInner() {
       const durationSecs = await new Promise<number>((resolve) => {
         const tmp = document.createElement("video");
         tmp.preload = "metadata";
-        tmp.src = URL.createObjectURL(file);
-        tmp.onloadedmetadata = () => { URL.revokeObjectURL(tmp.src); resolve(tmp.duration || 0); };
-        tmp.onerror = () => resolve(0);
+        const objUrl = URL.createObjectURL(file);
+        tmp.src = objUrl;
+        tmp.onloadedmetadata = () => { URL.revokeObjectURL(objUrl); tmp.removeAttribute("src"); tmp.load(); resolve(tmp.duration || 0); };
+        tmp.onerror = () => { URL.revokeObjectURL(objUrl); tmp.removeAttribute("src"); tmp.load(); resolve(0); };
       });
       const dur = durationSecs > 0 ? `${Math.floor(durationSecs / 60)}:${String(Math.floor(durationSecs % 60)).padStart(2, "0")}` : "0:00";
       setVideo({ url: `[Uploaded] ${file.name}`, thumbnail: "", title: file.name, duration: dur, durationSecs });

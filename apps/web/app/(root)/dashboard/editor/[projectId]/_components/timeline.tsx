@@ -1,8 +1,97 @@
 "use client";
 
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useState, useEffect, memo } from "react";
 import { Scissors, ZoomIn, ZoomOut, Sparkles, SkipForward, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+/**
+ * Extracts frames from a single shared video element and renders them as
+ * canvas snapshots. This avoids creating N video elements per clip item.
+ */
+const VideoThumbnailStrip = memo(function VideoThumbnailStrip({
+  src,
+  duration,
+  zoom,
+}: {
+  src: string;
+  duration: number;
+  zoom: number;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const extractedRef = useRef(false);
+
+  const thumbCount = Math.min(Math.ceil(duration * zoom / 48), 20);
+
+  useEffect(() => {
+    if (extractedRef.current) return;
+    extractedRef.current = true;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    video.crossOrigin = "anonymous";
+    video.src = src;
+
+    let frameIdx = 0;
+    let disposed = false;
+
+    const extractNext = () => {
+      if (disposed || frameIdx >= thumbCount) {
+        // Done — release the video element
+        video.removeAttribute("src");
+        video.load();
+        return;
+      }
+      const seekTo = (frameIdx / Math.max(1, thumbCount)) * duration;
+      video.currentTime = Math.min(seekTo, duration - 0.1);
+    };
+
+    video.addEventListener("seeked", () => {
+      if (disposed) return;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 48;
+        canvas.height = 64;
+        canvas.className = "h-full w-12 object-cover shrink-0 border-r border-black/20 pointer-events-none";
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, 48, 64);
+        }
+        container.appendChild(canvas);
+      } catch { /* CORS or other draw errors — skip frame */ }
+      frameIdx++;
+      extractNext();
+    });
+
+    video.addEventListener("loadeddata", () => {
+      if (!disposed) extractNext();
+    }, { once: true });
+
+    video.addEventListener("error", () => {
+      // If video can't load, just show gradient background
+      video.removeAttribute("src");
+      video.load();
+    }, { once: true });
+
+    return () => {
+      disposed = true;
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [src, duration, thumbCount]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="absolute inset-0 flex overflow-hidden opacity-70"
+    />
+  );
+});
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -513,25 +602,13 @@ export default function Timeline({
                         item.type === "text"  && "bg-gradient-to-r from-[#3a3a1e] via-[#4f4f26] to-[#3a3a1e]",
                       )} />
 
-                      {/* Video thumbnail strip — uses video elements to show actual frames */}
+                      {/* Video thumbnail strip — uses a single video for frame extraction */}
                       {item.type === "video" && item.src && (
-                        <div className="absolute inset-0 flex overflow-hidden opacity-70">
-                          {Array.from({ length: Math.min(Math.ceil(item.duration * zoom / 48), 30) }).map((_, i) => (
-                            <video
-                              key={i}
-                              src={item.src}
-                              muted
-                              preload="metadata"
-                              playsInline
-                              className="h-full w-12 object-cover shrink-0 border-r border-black/20 pointer-events-none"
-                              onLoadedData={(e) => {
-                                const v = e.target as HTMLVideoElement;
-                                const seekTo = (i / Math.max(1, Math.ceil(item.duration * zoom / 48))) * item.duration;
-                                v.currentTime = Math.min(seekTo, item.duration - 0.1);
-                              }}
-                            />
-                          ))}
-                        </div>
+                        <VideoThumbnailStrip
+                          src={item.src}
+                          duration={item.duration}
+                          zoom={zoom}
+                        />
                       )}
 
                       {/* Audio waveform visualization */}

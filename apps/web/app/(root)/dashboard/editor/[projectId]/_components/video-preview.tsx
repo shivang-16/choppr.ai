@@ -97,6 +97,14 @@ const VideoPreview = forwardRef<VideoPreviewHandle, Props>(function VideoPreview
     getDuration: () => videoRef.current?.duration ?? 0,
   }));
 
+  // Release WebMediaPlayer slot on unmount
+  useEffect(() => {
+    return () => {
+      const v = videoRef.current;
+      if (v) { v.pause(); v.removeAttribute("src"); v.load(); }
+    };
+  }, []);
+
   // Sync play/pause
   useEffect(() => {
     const v = videoRef.current;

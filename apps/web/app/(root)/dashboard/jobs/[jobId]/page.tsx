@@ -48,6 +48,18 @@ function ClipCard({ clip }: { clip: any }) {
     }
   }, [hovered]);
 
+  // Release video resources on unmount
+  useEffect(() => {
+    return () => {
+      const v = videoRef.current;
+      if (v) {
+        v.pause();
+        v.removeAttribute("src");
+        v.load();
+      }
+    };
+  }, []);
+
   return (
     <div
       className="group relative aspect-[9/16] rounded-2xl overflow-hidden border border-white/10 bg-[#111] hover:border-white/25 transition-all duration-200 cursor-pointer"
@@ -61,7 +73,7 @@ function ClipCard({ clip }: { clip: any }) {
         muted={muted}
         loop
         playsInline
-        preload="metadata"
+        preload="none"
         onLoadedData={() => setLoaded(true)}
         className="absolute inset-0 w-full h-full object-cover"
       />

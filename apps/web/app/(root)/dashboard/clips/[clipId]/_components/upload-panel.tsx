@@ -165,7 +165,7 @@ function MediaThumb({
   if (assetType === "video" && url) {
     return (
       <video
-        src={url}
+        src={`${url}#t=0.5`}
         muted
         playsInline
         preload="metadata"
