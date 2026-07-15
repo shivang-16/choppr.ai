@@ -66,17 +66,27 @@ export async function createSubscriptionCheckout(opts: {
   billingInterval: BillingInterval;
   successUrl: string;
   cancelUrl: string;
+  /** Plan price in INR paise (1 INR = 100 paise). When provided, overrides the
+   *  ₹15,000 mandate floor so the customer's bank sees the actual charge amount.
+   *  A 20% buffer is added to cover GST / rounding on future renewals. */
+  planPriceInrPaise?: number;
 }): Promise<{ checkoutUrl: string; sessionId: string }> {
   const client = getDodoClient();
 
+  // Add 50% buffer so GST / rounding never pushes a renewal above the mandate.
+  // Falls back to Dodo system default (₹15,000) when no INR price is configured.
+  const mandateOverride =
+    opts.planPriceInrPaise && opts.planPriceInrPaise > 0
+      ? Math.ceil(opts.planPriceInrPaise * 1.5)
+      : undefined;
+
   const session = await client.checkoutSessions.create({
     product_cart: [{ product_id: opts.productId, quantity: 1 }],
-    // Pass our internal metadata via return URL so the success page knows
-    // which plan was purchased — webhook is the authoritative source though
     return_url: opts.successUrl,
     customer: {
       email: opts.userEmail,
     },
+    ...(mandateOverride != null ? { mandate_min_amount_inr_paise: mandateOverride } : {}),
     metadata: {
       userId:          opts.userId,
       planId:          opts.planId,

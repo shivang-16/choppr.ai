@@ -45,8 +45,8 @@ const planSchema = new Schema<IPlan>(
     popular:              { type: Boolean, default: false },
     active:               { type: Boolean, default: true },
     order:                { type: Number, default: 0 },
-    dodoProductIdMonthly: { type: String },
-    dodoProductIdYearly:  { type: String },
+    dodoProductIdMonthly:   { type: String },
+    dodoProductIdYearly:    { type: String },
   },
   { timestamps: true }
 );

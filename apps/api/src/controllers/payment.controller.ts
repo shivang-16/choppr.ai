@@ -64,12 +64,23 @@ export async function createCheckout(req: Request, res: Response, next: NextFunc
 
     const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
 
+    // Derive INR paise from the plan's USD-cent price for the mandate override.
+    // Formula: usdCents × INR_PER_DOLLAR = INR paise  (cents/100 * rate * 100 cancel out).
+    // Using a conservative rate (₹90/$) so exchange-rate swings never push a
+    // renewal above the mandate ceiling. dodo.service adds another 20% on top.
+    const USD_TO_INR_RATE = 90; // INR per USD (conservative; update if INR weakens significantly)
+    const planPriceUsdCents =
+      billingInterval === "yearly" ? plan.yearlyPrice : plan.monthlyPrice;
+    const planPriceInrPaise =
+      planPriceUsdCents > 0 ? planPriceUsdCents * USD_TO_INR_RATE : undefined;
+
     const { checkoutUrl, sessionId } = await createSubscriptionCheckout({
       userId:          user._id,
       userEmail:       user.email,
       productId,
       planId,
       billingInterval,
+      ...(planPriceInrPaise ? { planPriceInrPaise } : {}),
       successUrl: `${frontendUrl}/dashboard?success=1&plan=${planId}`,
       cancelUrl:  `${frontendUrl}/dashboard/billing?cancelled=1`,
     });
