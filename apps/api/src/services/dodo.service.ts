@@ -73,11 +73,11 @@ export async function createSubscriptionCheckout(opts: {
 }): Promise<{ checkoutUrl: string; sessionId: string }> {
   const client = getDodoClient();
 
-  // Add 50% buffer so GST / rounding never pushes a renewal above the mandate.
+  // Add 70% buffer so GST / rounding never pushes a renewal above the mandate.
   // Falls back to Dodo system default (₹15,000) when no INR price is configured.
   const mandateOverride =
     opts.planPriceInrPaise && opts.planPriceInrPaise > 0
-      ? Math.ceil(opts.planPriceInrPaise * 1.5)
+      ? Math.ceil(opts.planPriceInrPaise * 1.7)
       : undefined;
 
   const session = await client.checkoutSessions.create({
