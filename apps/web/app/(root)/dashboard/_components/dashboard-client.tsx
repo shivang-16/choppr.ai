@@ -163,8 +163,47 @@ function DashboardInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const apiFetch = useApiFetch();
-  const paymentSuccess = searchParams.get("success") === "1";
+  const didRedirectFromCheckout = searchParams.get("success") === "1";
   const paidPlan = searchParams.get("plan");
+
+  // Don't show the banner just because the URL has ?success=1.
+  // Dodo redirects before the webhook fires, so the plan may not be active yet.
+  // Poll /api/plans/me until the plan matches what was purchased (max ~15s).
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentPending, setPaymentPending] = useState(didRedirectFromCheckout);
+
+  useEffect(() => {
+    if (!didRedirectFromCheckout || !paidPlan) return;
+
+    let attempts = 0;
+    const MAX_ATTEMPTS = 10;
+    const INTERVAL_MS = 1500;
+
+    const poll = setInterval(async () => {
+      attempts++;
+      try {
+        const r = await apiFetch(`${API_URL}/api/plans/me`);
+        if (!r.ok) return;
+        const d = await r.json();
+        const currentPlanId = d.currentPlanId ?? "free";
+        if (currentPlanId === paidPlan || currentPlanId !== "free") {
+          clearInterval(poll);
+          setPaymentPending(false);
+          setPaymentSuccess(true);
+          return;
+        }
+      } catch {
+        // ignore, keep polling
+      }
+      if (attempts >= MAX_ATTEMPTS) {
+        clearInterval(poll);
+        setPaymentPending(false);
+        // Webhook hasn't confirmed yet — leave banner hidden, user can refresh manually
+      }
+    }, INTERVAL_MS);
+
+    return () => clearInterval(poll);
+  }, []);
   const [inputUrl, setInputUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -479,7 +518,15 @@ function DashboardInner() {
   return (
     <div className="flex flex-col items-center w-full px-6 py-10">
 
-      {/* ── Payment success banner ── */}
+      {/* ── Payment banner ── */}
+      {paymentPending && (
+        <div className="w-full max-w-2xl mb-6 flex items-center gap-3 rounded-2xl border border-yellow-500/30 bg-yellow-500/10 px-5 py-4">
+          <div>
+            <p className="text-[13px] font-semibold text-yellow-300">Confirming your payment…</p>
+            <p className="text-[12px] text-yellow-400/70">Refresh the page if your plan has already been updated.</p>
+          </div>
+        </div>
+      )}
       {paymentSuccess && (
         <div className="w-full max-w-2xl mb-6 flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/10 px-5 py-4">
           <CheckCircle className="h-5 w-5 text-green-400 shrink-0" />
