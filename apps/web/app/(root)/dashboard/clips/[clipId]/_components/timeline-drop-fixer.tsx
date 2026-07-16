@@ -30,7 +30,7 @@ type DropTarget =
  * - Cross track: floating ghost follows cursor; dim placeholder stays on source track.
  */
 export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
-  const { editor, changeLog, selectedItem, totalDuration, setSelectedItem } =
+  const { editor, changeLog, selectedIds, totalDuration, setSelectedItem } =
     useTimelineContext();
   const pendingRef = useRef<PendingDrop | null>(null);
   const draggingRef = useRef(false);
@@ -43,6 +43,16 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
   /** Seconds from clip start → pointer, so the grab point stays under the cursor. */
   const grabOffsetSecRef = useRef<number | null>(null);
   const crossTrackDragRef = useRef(false);
+  /** Element under pointer on mousedown — used for drag (selection updates after click). */
+  const dragElementIdRef = useRef<string | null>(null);
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
+  const setSelectedItemRef = useRef(setSelectedItem);
+  setSelectedItemRef.current = setSelectedItem;
+  const totalDurationRef = useRef(totalDuration);
+  totalDurationRef.current = totalDuration;
+  const trackZoomRef = useRef(trackZoom);
+  trackZoomRef.current = trackZoom;
 
   useEffect(() => {
     let sameTrackRaf: number | null = null;
@@ -91,6 +101,7 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
       document.body.classList.remove("clip-timeline-dragging-clip", "clip-timeline-dragging-cross-track");
       document.querySelector(".clip-timeline-shell")?.classList.remove("is-dragging");
       crossTrackDragRef.current = false;
+      dragElementIdRef.current = null;
     };
 
     const clearCrossTrackDragVisuals = (dragging: HTMLElement | null) => {
@@ -211,7 +222,7 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
         ".clip-timeline-shell .twick-track-element-dragging",
       ) as HTMLElement | null;
       if (dragging) {
-        const duration = Math.max(totalDuration || 0.1, 0.1);
+        const duration = Math.max(totalDurationRef.current || 0.1, 0.1);
         dragging.style.left = `${(placement.start / duration) * 100}%`;
         dragging.style.width = `${(span / duration) * 100}%`;
         dragging.style.transform = "none";
@@ -250,7 +261,9 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
 
         if (prev && resolveDropTrackIndex(prev.clientY)) {
           window.setTimeout(() => {
-            void applyPointerPlacement(editor, prev, setSelectedItem).finally(releaseDropLockLater);
+            void applyPointerPlacement(editor, prev, setSelectedItemRef.current).finally(
+              releaseDropLockLater,
+            );
             migrateVideoTracksToElement(editor);
           }, 0);
         } else {
@@ -281,23 +294,25 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
         shell.classList.add("is-dragging");
       }
 
-      const id =
-        selectedItem && typeof (selectedItem as TrackElement).getId === "function"
-          ? (selectedItem as TrackElement).getId()
-          : null;
+      const id = dragElementIdRef.current;
       if (!id) return;
 
       const el = findElement(editor, id);
       if (!el) return;
 
       const tracks = editor.getTimelineData()?.tracks ?? [];
-      const duration = Math.max(totalDuration || 0.1, 0.1);
-      const pointerTime = computeTimeFromClientX(pt.clientX, duration, trackZoom);
+      const duration = Math.max(totalDurationRef.current || 0.1, 0.1);
+      const pointerTime = computeTimeFromClientX(pt.clientX, duration, trackZoomRef.current);
       const span = Math.max(0.1, el.getEnd() - el.getStart());
 
       // Capture grab offset once (where on the clip the user clicked)
       if (grabOffsetSecRef.current == null) {
-        const fromDom = measureGrabOffsetSec(dragging, pt.clientX, duration, trackZoom);
+        const fromDom = measureGrabOffsetSec(
+          dragging,
+          pt.clientX,
+          duration,
+          trackZoomRef.current,
+        );
         grabOffsetSecRef.current =
           fromDom != null ? fromDom : Math.max(0, pointerTime - el.getStart());
       }
@@ -408,8 +423,8 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
         return;
       }
 
-      const duration = Math.max(totalDuration || 0.1, 0.1);
-      const pointerTime = computeTimeFromClientX(pt.clientX, duration, trackZoom);
+      const duration = Math.max(totalDurationRef.current || 0.1, 0.1);
+      const pointerTime = computeTimeFromClientX(pt.clientX, duration, trackZoomRef.current);
       const intendedStart =
         grabSec != null ? Math.max(0, pointerTime - grabSec) : prev.intendedStart;
       const pending: PendingDrop = {
@@ -443,7 +458,7 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
           dropEl.setStart(placement.start);
           dropEl.setEnd(placement.start + pending.span);
           editor.refresh();
-          setSelectedItem(dropEl);
+          setSelectedItemRef.current(dropEl);
           pending.intendedStart = placement.start;
         }
         releaseDropLockLater();
@@ -451,7 +466,7 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
       }
 
       window.setTimeout(() => {
-        void applyPointerPlacement(editor, pending, setSelectedItem).finally(() => {
+        void applyPointerPlacement(editor, pending, setSelectedItemRef.current).finally(() => {
           finishDrag();
           releaseDropLockLater();
         });
@@ -475,10 +490,18 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
 
       // Remember where on the clip the user grabbed (before any jump)
       const clipEl = target.closest(".twick-track-element") as HTMLElement | null;
-      if (!clipEl || clipEl.closest(".clip-timeline-drag-ghost")) return;
+      if (!clipEl || clipEl.closest(".clip-timeline-drag-ghost")) {
+        dragElementIdRef.current = null;
+        return;
+      }
 
-      const duration = Math.max(totalDuration || 0.1, 0.1);
-      const offsetSec = measureGrabOffsetSec(clipEl, e.clientX, duration, trackZoom);
+      const duration = Math.max(totalDurationRef.current || 0.1, 0.1);
+      const offsetSec = measureGrabOffsetSec(
+        clipEl,
+        e.clientX,
+        duration,
+        trackZoomRef.current,
+      );
       if (offsetSec != null) grabOffsetSecRef.current = offsetSec;
 
       const rect = clipEl.getBoundingClientRect();
@@ -486,6 +509,17 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
         x: e.clientX - rect.left,
         y: e.clientY - rect.top,
       };
+
+      // Twick only selects on click (after mouseup). Drag starts earlier, so without
+      // this the previously selected clip stays selected and both move.
+      const grabbed = resolveElementFromClipDom(clipEl, editor, duration);
+      if (!grabbed) return;
+
+      const grabbedId = grabbed.getId();
+      dragElementIdRef.current = grabbedId;
+      if (!selectedIdsRef.current.has(grabbedId)) {
+        setSelectedItemRef.current(grabbed);
+      }
     };
 
     window.addEventListener("pointerdown", onPointerDownCapture, true);
@@ -506,7 +540,7 @@ export function TimelineDropFixer({ trackZoom }: { trackZoom: number }) {
       window.removeEventListener("pointercancel", onUp, true);
       finishDrag();
     };
-  }, [editor, selectedItem, totalDuration, trackZoom, setSelectedItem]);
+  }, [editor]);
 
   useEffect(() => {
     migrateVideoTracksToElement(editor);
@@ -607,6 +641,56 @@ function findElement(editor: TimelineEditor, id: string): TrackElement | null {
     }
   }
   return null;
+}
+
+/** Map a timeline clip DOM node back to its TrackElement (no data-id on Twick nodes). */
+function resolveElementFromClipDom(
+  clipEl: HTMLElement,
+  editor: TimelineEditor,
+  duration: number,
+): TrackElement | null {
+  const tracks = editor.getTimelineData()?.tracks ?? [];
+  const tracksRoot = getTracksRoot();
+  if (!tracksRoot) return null;
+
+  const row = clipEl.closest(".twick-timeline-container")?.parentElement;
+  if (!(row instanceof HTMLElement)) return null;
+
+  const trackIndex = getTrackRowElements(tracksRoot).indexOf(row);
+  const track = tracks[trackIndex];
+  if (!track) return null;
+
+  const sorted = [...track.getElements()].sort((a, b) => {
+    const byStart = a.getStart() - b.getStart();
+    if (byStart !== 0) return byStart;
+    const byEnd = a.getEnd() - b.getEnd();
+    if (byEnd !== 0) return byEnd;
+    return a.getId().localeCompare(b.getId());
+  });
+
+  const siblings = [...(clipEl.parentElement?.children ?? [])].filter(
+    (c): c is HTMLElement =>
+      c instanceof HTMLElement && c.classList.contains("twick-track-element"),
+  );
+  const siblingIdx = siblings.indexOf(clipEl);
+  if (siblingIdx >= 0 && sorted[siblingIdx]) {
+    return sorted[siblingIdx] as TrackElement;
+  }
+
+  // Fallback: match by left % → start time
+  const leftStr = clipEl.style.left;
+  if (!leftStr.endsWith("%")) return null;
+  const startSec = (parseFloat(leftStr) / 100) * Math.max(duration, 0.1);
+  let best: TrackElement | null = null;
+  let bestDist = Infinity;
+  for (const el of sorted) {
+    const dist = Math.abs(el.getStart() - startSec);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = el as TrackElement;
+    }
+  }
+  return best;
 }
 
 function resolveDropTrackIndex(clientY: number): DropTarget | null {

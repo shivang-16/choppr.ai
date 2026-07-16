@@ -364,7 +364,9 @@ interface EditPanelProps {
   hideTranscript?: boolean;
   captionStyle: CaptionStyle;
   setCaptionStyle: (s: CaptionStyle) => void;
-  onAddCaptionSegment: (style: CaptionStyle) => void;
+  onAddCaptionSegment: (style: CaptionStyle, mode?: "add" | "replace") => void;
+  /** Desktop only: ask Replace vs Add when timeline already has captions. */
+  askCaptionApplyMode?: boolean;
   captionSegments: CaptionSegment[];
   captionWords: CaptionWord[];
   onCaptionWordsChange: (words: CaptionWord[]) => void;
@@ -1075,7 +1077,7 @@ function RemoveBgButton({
 }
 
 function EditPanelContent({
-  activeTab, hideTranscript = false, captionStyle, setCaptionStyle, onAddCaptionSegment, captionSegments, captionWords, onCaptionWordsChange, captionFontSize, setCaptionFontSize,
+  activeTab, hideTranscript = false, captionStyle, setCaptionStyle, onAddCaptionSegment, askCaptionApplyMode = false, captionSegments, captionWords, onCaptionWordsChange, captionFontSize, setCaptionFontSize,
   captionPosY, setCaptionPosY, captionPosX, setCaptionPosX, onResetCaptionPos,
   captionLang, activeLang, translating, handleTranslate,
   speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
@@ -1089,6 +1091,23 @@ function EditPanelContent({
   thumbnailOverlay, setThumbnailOverlay,
 }: EditPanelProps) {
   const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
+  const [captionApplyMenu, setCaptionApplyMenu] = useState<CaptionStyle | null>(null);
+  const captionApplyMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!captionApplyMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (captionApplyMenuRef.current?.contains(e.target as Node)) return;
+      setCaptionApplyMenu(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [captionApplyMenu]);
+
+  useEffect(() => {
+    if (activeTab !== "captions") setCaptionApplyMenu(null);
+  }, [activeTab]);
+
   return (
     <>
       {activeTab === "captions" && (
@@ -1106,36 +1125,85 @@ function EditPanelContent({
                 <div key={group.category}>
                   <p className="text-[9px] font-semibold text-white/30 uppercase tracking-widest mb-1.5">{group.category}</p>
                   <div className="grid grid-cols-2 gap-2">
-                    {group.styles.map(s => (
-                      <button
-                        key={s.id}
-                        onClick={() => {
-                          setCaptionStyle(s.id);
-                          onAddCaptionSegment(s.id);
-                        }}
-                        className={cn(
-                          "relative rounded-xl border transition-all overflow-hidden cursor-pointer",
-                          captionSegments.some(seg => seg.style === s.id)
-                            ? "border-white/50 ring-1 ring-white/20"
-                            : "border-white/8 bg-white/3 hover:border-white/20"
-                        )}
-                      >
-                        {/* Preview area */}
-                        <div className="h-14 w-full bg-[#111] flex items-center justify-center overflow-hidden">
-                          {s.renderPreview ? s.renderPreview() : (
-                            s.preview
-                              ? <span className={cn("leading-none text-center block px-1", s.previewClass)}>{s.preview}</span>
-                              : <span className="text-white/20 text-[11px]">⊘</span>
+                    {group.styles.map(s => {
+                      const onTimeline = captionSegments.some(seg => seg.style === s.id);
+                      const menuOpen = captionApplyMenu === s.id;
+                      return (
+                        <div
+                          key={s.id}
+                          ref={menuOpen ? captionApplyMenuRef : undefined}
+                          className={cn(
+                            "relative rounded-xl border transition-all overflow-hidden",
+                            onTimeline || menuOpen
+                              ? "border-white/50 ring-1 ring-white/20"
+                              : "border-white/8 bg-white/3 hover:border-white/20",
+                          )}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onTimeline) {
+                                setCaptionStyle(s.id);
+                                onAddCaptionSegment(s.id);
+                                setCaptionApplyMenu(null);
+                                return;
+                              }
+                              if (askCaptionApplyMode && captionSegments.length > 0) {
+                                setCaptionApplyMenu(menuOpen ? null : s.id);
+                                return;
+                              }
+                              setCaptionStyle(s.id);
+                              onAddCaptionSegment(s.id, "add");
+                              setCaptionApplyMenu(null);
+                            }}
+                            className="relative w-full cursor-pointer text-left"
+                          >
+                            {/* Preview area */}
+                            <div className="h-14 w-full bg-[#111] flex items-center justify-center overflow-hidden">
+                              {s.renderPreview ? s.renderPreview() : (
+                                s.preview
+                                  ? <span className={cn("leading-none text-center block px-1", s.previewClass)}>{s.preview}</span>
+                                  : <span className="text-white/20 text-[11px]">⊘</span>
+                              )}
+                            </div>
+                            {/* Label */}
+                            <div className="px-2 py-1 flex items-center justify-between bg-[#181818]">
+                              <span className="text-[9px] font-semibold text-white/60 truncate leading-tight">{s.label}</span>
+                              {captionStyle === s.id && <Check className="h-2.5 w-2.5 text-white/70 shrink-0 ml-1" />}
+                              {onTimeline && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shrink-0 ml-1" />}
+                            </div>
+                          </button>
+
+                          {menuOpen && (
+                            <div className="absolute inset-0 z-20 flex flex-col bg-[#0d0d0d]/96 backdrop-blur-[2px]">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCaptionStyle(s.id);
+                                  onAddCaptionSegment(s.id, "replace");
+                                  setCaptionApplyMenu(null);
+                                }}
+                                className="flex-1 px-2 text-[10px] font-semibold text-white/85 hover:bg-white/10 transition-colors"
+                              >
+                                Replace
+                              </button>
+                              <div className="h-px bg-white/10 shrink-0" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCaptionStyle(s.id);
+                                  onAddCaptionSegment(s.id, "add");
+                                  setCaptionApplyMenu(null);
+                                }}
+                                className="flex-1 px-2 text-[10px] font-semibold text-white/85 hover:bg-white/10 transition-colors"
+                              >
+                                Add to timeline
+                              </button>
+                            </div>
                           )}
                         </div>
-                        {/* Label */}
-                        <div className="px-2 py-1 flex items-center justify-between bg-[#181818]">
-                          <span className="text-[9px] font-semibold text-white/60 truncate leading-tight">{s.label}</span>
-                          {captionStyle === s.id && <Check className="h-2.5 w-2.5 text-white/70 shrink-0 ml-1" />}
-                          {captionSegments.some(seg => seg.style === s.id) && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shrink-0 ml-1" />}
-                        </div>
-                      </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -3006,7 +3074,10 @@ export default function ClipRefinePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textOverlays.map(t => `${t.id}:${t.text}:${t.color}:${t.fontSize}:${t.bold}:${t.italic}`).join("|")]);
 
-  const handleAddCaptionSegment = useCallback((style: CaptionStyle) => {
+  const handleAddCaptionSegment = useCallback((
+    style: CaptionStyle,
+    mode: "add" | "replace" = "add",
+  ) => {
     const effectiveDur = (trimEnd > 0 ? trimEnd : duration) - trimStart;
     if (effectiveDur <= 0 || !captionApiRef.current) return;
 
@@ -3014,6 +3085,11 @@ export default function ClipRefinePage() {
     const existing = captionSegments.find(seg => seg.style === style);
     if (existing) {
       captionApiRef.current.removeSegment(existing.id);
+      return;
+    }
+
+    if (mode === "replace") {
+      captionApiRef.current.resetSegments([style], captionWordsRef.current, effectiveDur);
       return;
     }
 
@@ -3068,6 +3144,7 @@ export default function ClipRefinePage() {
   const editPanelProps: EditPanelProps = {
     activeTab, captionStyle, setCaptionStyle,
     onAddCaptionSegment: handleAddCaptionSegment,
+    askCaptionApplyMode: !isMobile,
     captionSegments,
     captionWords,
     onCaptionWordsChange: setCaptionWords,
