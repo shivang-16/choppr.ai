@@ -3,6 +3,10 @@
  * Each user gets one primary segment (highest priority match).
  */
 
+import type { SalesSegmentId } from "./segment-meta";
+
+export type { SalesSegmentId };
+
 export type UserMetricsRow = {
   userId: string;
   firstName?: string;
@@ -31,17 +35,6 @@ export type UserMetricsRow = {
   topupCount?: number;
   topupCredits?: number;
 };
-
-export type SalesSegmentId =
-  | "stuck_failures"
-  | "upgrade_ready"
-  | "low_credits"
-  | "no_export"
-  | "churn_risk"
-  | "never_started"
-  | "new_hot"
-  | "paid_champion"
-  | "topup_upsell";
 
 export type SalesLead = UserMetricsRow & {
   segment: SalesSegmentId;
@@ -189,51 +182,39 @@ export function assignSegment(u: UserMetricsRow): SalesSegmentId | null {
   return null;
 }
 
+export function toSalesLead(u: UserMetricsRow): SalesLead | null {
+  const segment = assignSegment(u);
+  if (!segment) return null;
+  const meta = SEGMENT_META[segment];
+  return {
+    ...u,
+    segment,
+    priority: meta.priority,
+    label: meta.label,
+    reason: reasonFor(segment, u),
+    suggestedMessage: messageFor(segment, u),
+  };
+}
+
 export function buildSalesLeads(users: UserMetricsRow[]): {
   summary: Record<SalesSegmentId, number>;
   leads: SalesLead[];
-  bySegment: Record<SalesSegmentId, SalesLead[]>;
 } {
   const summary = Object.fromEntries(
     (Object.keys(SEGMENT_META) as SalesSegmentId[]).map((k) => [k, 0])
   ) as Record<SalesSegmentId, number>;
 
-  const bySegment = Object.fromEntries(
-    (Object.keys(SEGMENT_META) as SalesSegmentId[]).map((k) => [k, [] as SalesLead[]])
-  ) as Record<SalesSegmentId, SalesLead[]>;
-
   const leads: SalesLead[] = [];
 
   for (const u of users) {
-    const segment = assignSegment(u);
-    if (!segment) continue;
-
-    const meta = SEGMENT_META[segment];
-    const lead: SalesLead = {
-      ...u,
-      segment,
-      priority: meta.priority,
-      label: meta.label,
-      reason: reasonFor(segment, u),
-      suggestedMessage: messageFor(segment, u),
-    };
-
-    summary[segment] += 1;
-    bySegment[segment].push(lead);
+    const lead = toSalesLead(u);
+    if (!lead) continue;
+    summary[lead.segment] += 1;
     leads.push(lead);
   }
 
   leads.sort((a, b) => a.priority - b.priority || b.visitCount - a.visitCount);
-
-  for (const key of Object.keys(bySegment) as SalesSegmentId[]) {
-    bySegment[key].sort((a, b) => b.visitCount - a.visitCount);
-  }
-
-  return { summary, leads, bySegment };
+  return { summary, leads };
 }
 
-export const SEGMENT_ORDER = (
-  Object.entries(SEGMENT_META) as [SalesSegmentId, { label: string; priority: number }][]
-)
-  .sort((a, b) => a[1].priority - b[1].priority)
-  .map(([id, meta]) => ({ id, label: meta.label, priority: meta.priority }));
+export { SEGMENT_ORDER } from "./segment-meta";

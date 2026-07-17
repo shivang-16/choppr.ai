@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { requireMetricsAuth } from "@/lib/auth";
 import { connectDB } from "@/lib/db";

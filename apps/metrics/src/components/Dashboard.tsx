@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { clearAuth, metricsFetch } from "@/lib/api";
-import { SEGMENT_ORDER, type SalesSegmentId } from "@/lib/sales";
+import { SEGMENT_ORDER, type SalesSegmentId } from "@/lib/segment-meta";
 
 type Overview = {
   generatedAt: string;
@@ -60,14 +60,11 @@ type UserRow = {
   topupCount?: number;
 };
 
-type UsersPayload = {
-  totalUsers: number;
-  leaderboards: {
-    topByProjects: UserRow[];
-    topByClips: UserRow[];
-    topByExports: UserRow[];
-    recentlyActive: UserRow[];
-  };
+type Leaderboards = {
+  topByProjects: UserRow[];
+  topByClips: UserRow[];
+  topByExports: UserRow[];
+  recentlyActive: UserRow[];
 };
 
 type SalesLead = UserRow & {
@@ -80,10 +77,61 @@ type SalesLead = UserRow & {
 
 type SalesPayload = {
   totalLeads: number;
+  filteredTotal: number;
   summary: Record<SalesSegmentId, number>;
+  page: number;
+  limit: number;
+  totalPages: number;
+  segment: SalesSegmentId | "all";
   leads: SalesLead[];
-  bySegment: Record<SalesSegmentId, SalesLead[]>;
 };
+
+type SnapshotPayload = {
+  overview: Overview;
+  totalUsers: number;
+  leaderboards: Leaderboards;
+  sales: SalesPayload;
+};
+
+function Pager({
+  page,
+  totalPages,
+  total,
+  onChange,
+  disabled,
+}: {
+  page: number;
+  totalPages: number;
+  total: number;
+  onChange: (page: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+      <p className="text-[12px] text-white/40">
+        Page {page} of {totalPages} · {total} total
+      </p>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={disabled || page <= 1}
+          onClick={() => onChange(page - 1)}
+          className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/60 disabled:opacity-40 hover:bg-white/10"
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          disabled={disabled || page >= totalPages}
+          onClick={() => onChange(page + 1)}
+          className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/60 disabled:opacity-40 hover:bg-white/10"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type Tab =
   | "overview"
@@ -229,12 +277,18 @@ function UserTable({
   );
 }
 
-function SalesPanel({ sales }: { sales: SalesPayload }) {
-  const [segment, setSegment] = useState<SalesSegmentId | "all">("all");
+function SalesPanel({
+  sales,
+  onPageChange,
+  onSegmentChange,
+  paging,
+}: {
+  sales: SalesPayload;
+  onPageChange: (page: number) => void;
+  onSegmentChange: (segment: SalesSegmentId | "all") => void;
+  paging: boolean;
+}) {
   const [copied, setCopied] = useState<string | null>(null);
-
-  const rows =
-    segment === "all" ? sales.leads : (sales.bySegment[segment] ?? []);
 
   async function copyMsg(id: string, text: string) {
     try {
@@ -250,7 +304,7 @@ function SalesPanel({ sales }: { sales: SalesPayload }) {
     <div className="space-y-6">
       <p className="max-w-2xl text-sm text-white/45">
         Who to message and what to say — based on usage. One primary segment per
-        user (highest priority).
+        user. Paginated (25 per page).
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -258,9 +312,11 @@ function SalesPanel({ sales }: { sales: SalesPayload }) {
           <button
             key={s.id}
             type="button"
-            onClick={() => setSegment(segment === s.id ? "all" : s.id)}
+            onClick={() =>
+              onSegmentChange(sales.segment === s.id ? "all" : s.id)
+            }
             className={`rounded-2xl border p-4 text-left transition ${
-              segment === s.id
+              sales.segment === s.id
                 ? "border-white/20 bg-white/10"
                 : "border-white/8 bg-[#141414] hover:bg-white/[0.04]"
             }`}
@@ -276,9 +332,9 @@ function SalesPanel({ sales }: { sales: SalesPayload }) {
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => setSegment("all")}
+          onClick={() => onSegmentChange("all")}
           className={`rounded-full border px-3 py-1.5 text-[12px] ${
-            segment === "all"
+            sales.segment === "all"
               ? "border-white/20 bg-white text-black"
               : "border-white/10 bg-white/5 text-white/55"
           }`}
@@ -289,9 +345,9 @@ function SalesPanel({ sales }: { sales: SalesPayload }) {
           <button
             key={s.id}
             type="button"
-            onClick={() => setSegment(s.id)}
+            onClick={() => onSegmentChange(s.id)}
             className={`rounded-full border px-3 py-1.5 text-[12px] ${
-              segment === s.id
+              sales.segment === s.id
                 ? "border-white/20 bg-white text-black"
                 : "border-white/10 bg-white/5 text-white/55"
             }`}
@@ -302,7 +358,10 @@ function SalesPanel({ sales }: { sales: SalesPayload }) {
       </div>
 
       <div className="space-y-3">
-        {rows.map((lead) => (
+        {paging && (
+          <p className="text-[12px] text-white/40">Loading page…</p>
+        )}
+        {sales.leads.map((lead) => (
           <div
             key={`${lead.segment}-${lead.userId}`}
             className="rounded-2xl border border-white/8 bg-[#141414] p-4"
@@ -340,7 +399,9 @@ function SalesPanel({ sales }: { sales: SalesPayload }) {
                 </p>
                 <button
                   type="button"
-                  onClick={() => copyMsg(lead.userId + lead.segment, lead.suggestedMessage)}
+                  onClick={() =>
+                    copyMsg(lead.userId + lead.segment, lead.suggestedMessage)
+                  }
                   className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/60 hover:bg-white/10 hover:text-white"
                 >
                   {copied === lead.userId + lead.segment ? "Copied" : "Copy"}
@@ -352,10 +413,18 @@ function SalesPanel({ sales }: { sales: SalesPayload }) {
             </div>
           </div>
         ))}
-        {rows.length === 0 && (
+        {sales.leads.length === 0 && !paging && (
           <p className="py-10 text-center text-white/40">No leads in this segment</p>
         )}
       </div>
+
+      <Pager
+        page={sales.page}
+        totalPages={sales.totalPages}
+        total={sales.filteredTotal}
+        onChange={onPageChange}
+        disabled={paging}
+      />
     </div>
   );
 }
@@ -363,23 +432,20 @@ function SalesPanel({ sales }: { sales: SalesPayload }) {
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("overview");
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [users, setUsers] = useState<UsersPayload | null>(null);
+  const [leaderboards, setLeaderboards] = useState<Leaderboards | null>(null);
   const [sales, setSales] = useState<SalesPayload | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [salesPaging, setSalesPaging] = useState(false);
 
   async function load() {
     setLoading(true);
     setError("");
     try {
-      const [ov, us, sa] = await Promise.all([
-        metricsFetch<Overview>("/overview"),
-        metricsFetch<UsersPayload>("/users"),
-        metricsFetch<SalesPayload>("/sales"),
-      ]);
-      setOverview(ov);
-      setUsers(us);
-      setSales(sa);
+      const snap = await metricsFetch<SnapshotPayload>("/snapshot?fresh=1");
+      setOverview(snap.overview);
+      setLeaderboards(snap.leaderboards);
+      setSales(snap.sales);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
       if (err instanceof Error && err.message === "Unauthorized") {
@@ -388,6 +454,28 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadSalesPage(
+    page: number,
+    segment: SalesSegmentId | "all" = sales?.segment ?? "all"
+  ) {
+    setSalesPaging(true);
+    setError("");
+    try {
+      const data = await metricsFetch<SalesPayload>(
+        `/sales?page=${page}&limit=25&segment=${segment}`
+      );
+      setSales(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load sales");
+      if (err instanceof Error && err.message === "Unauthorized") {
+        clearAuth();
+        onLogout();
+      }
+    } finally {
+      setSalesPaging(false);
     }
   }
 
@@ -566,26 +654,42 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           )}
 
-          {tab === "sales" && sales && <SalesPanel sales={sales} />}
+          {tab === "sales" && sales && (
+            <SalesPanel
+              sales={sales}
+              paging={salesPaging}
+              onPageChange={(page) => loadSalesPage(page)}
+              onSegmentChange={(segment) => loadSalesPage(1, segment)}
+            />
+          )}
 
-          {tab === "active" && users && (
+          {tab === "active" && leaderboards && (
             <div>
               <p className="mb-3 text-sm text-white/45">
-                Last visited = max(last project created, last export). Visits ≈
-                projects + exports.
+                Top 50 recently active. Last visited = max(last project, last
+                export).
               </p>
-              <UserTable rows={users.leaderboards.recentlyActive} mode="active" />
+              <UserTable rows={leaderboards.recentlyActive} mode="active" />
             </div>
           )}
 
-          {tab === "projects" && users && (
-            <UserTable rows={users.leaderboards.topByProjects} mode="projects" />
+          {tab === "projects" && leaderboards && (
+            <div>
+              <p className="mb-3 text-sm text-white/45">Top 50 by project count</p>
+              <UserTable rows={leaderboards.topByProjects} mode="projects" />
+            </div>
           )}
-          {tab === "clips" && users && (
-            <UserTable rows={users.leaderboards.topByClips} mode="clips" />
+          {tab === "clips" && leaderboards && (
+            <div>
+              <p className="mb-3 text-sm text-white/45">Top 50 by clip count</p>
+              <UserTable rows={leaderboards.topByClips} mode="clips" />
+            </div>
           )}
-          {tab === "exports" && users && (
-            <UserTable rows={users.leaderboards.topByExports} mode="exports" />
+          {tab === "exports" && leaderboards && (
+            <div>
+              <p className="mb-3 text-sm text-white/45">Top 50 by exports done</p>
+              <UserTable rows={leaderboards.topByExports} mode="exports" />
+            </div>
           )}
         </>
       )}
