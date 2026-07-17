@@ -188,6 +188,104 @@ function StatusChips({ map }: { map: Record<string, number> }) {
   );
 }
 
+type SortKey =
+  | "user"
+  | "email"
+  | "plan"
+  | "lastVisited"
+  | "visits"
+  | "projects"
+  | "clips"
+  | "exports"
+  | "credits";
+
+type SortDir = "asc" | "desc";
+
+function SortHeader({
+  label,
+  col,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  col: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (col: SortKey) => void;
+}) {
+  const active = sortKey === col;
+  return (
+    <th className="px-4 py-3 font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        className={`inline-flex items-center gap-1.5 uppercase tracking-wider transition ${
+          active ? "text-white" : "text-white/40 hover:text-white/70"
+        }`}
+      >
+        {label}
+        <span className="font-mono text-[10px] leading-none" aria-hidden>
+          {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+function compareUsers(a: UserRow, b: UserRow, key: SortKey, dir: SortDir) {
+  const mul = dir === "asc" ? 1 : -1;
+  const name = (u: UserRow) =>
+    `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim().toLowerCase();
+  const email = (u: UserRow) => (u.email || u.username || "").toLowerCase();
+
+  let av: string | number = 0;
+  let bv: string | number = 0;
+
+  switch (key) {
+    case "user":
+      av = name(a);
+      bv = name(b);
+      break;
+    case "email":
+      av = email(a);
+      bv = email(b);
+      break;
+    case "plan":
+      av = `${a.plan} ${a.subscriptionStatus}`.toLowerCase();
+      bv = `${b.plan} ${b.subscriptionStatus}`.toLowerCase();
+      break;
+    case "lastVisited":
+      av = a.lastVisitedAt ? new Date(a.lastVisitedAt).getTime() : 0;
+      bv = b.lastVisitedAt ? new Date(b.lastVisitedAt).getTime() : 0;
+      break;
+    case "visits":
+      av = a.visitCount;
+      bv = b.visitCount;
+      break;
+    case "projects":
+      av = a.projectCount;
+      bv = b.projectCount;
+      break;
+    case "clips":
+      av = a.clipCount;
+      bv = b.clipCount;
+      break;
+    case "exports":
+      av = a.exportDoneCount;
+      bv = b.exportDoneCount;
+      break;
+    case "credits":
+      av = a.lifetimeSpent;
+      bv = b.lifetimeSpent;
+      break;
+  }
+
+  if (av < bv) return -1 * mul;
+  if (av > bv) return 1 * mul;
+  return 0;
+}
+
 function UserTable({
   rows,
   mode,
@@ -195,78 +293,160 @@ function UserTable({
   rows: UserRow[];
   mode: "active" | "projects" | "clips" | "exports";
 }) {
+  const defaultKey: SortKey =
+    mode === "active"
+      ? "lastVisited"
+      : mode === "clips"
+        ? "clips"
+        : mode === "exports"
+          ? "exports"
+          : "projects";
+
+  const [sortKey, setSortKey] = useState<SortKey>(defaultKey);
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
+
+  function onSort(col: SortKey) {
+    if (sortKey === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(col);
+      setSortDir("desc");
+    }
+  }
+
+  async function copyEmail(email: string) {
+    if (!email) return;
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopiedEmail(email);
+      setTimeout(() => setCopiedEmail(null), 1500);
+    } catch {
+      // ignore
+    }
+  }
+
+  const sorted = [...rows].sort((a, b) => compareUsers(a, b, sortKey, sortDir));
+  const colCount = mode === "active" ? 9 : 7;
+
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/8">
       <table className="text-sm">
         <thead>
-          <tr className="border-b border-white/8 bg-[#111] text-left text-[12px] tracking-wider text-white/40 uppercase">
-            <th className="px-4 py-3 font-medium">User</th>
-            <th className="px-4 py-3 font-medium">Plan</th>
+          <tr className="border-b border-white/8 bg-[#111] text-left text-[12px]">
+            <SortHeader label="User" col="user" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortHeader label="Plan" col="plan" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             {mode === "active" && (
               <>
-                <th className="px-4 py-3 font-medium">Last visited</th>
-                <th className="px-4 py-3 font-medium">Visits</th>
+                <SortHeader
+                  label="Last visited"
+                  col="lastVisited"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSort}
+                />
+                <SortHeader
+                  label="Visits"
+                  col="visits"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSort}
+                />
               </>
             )}
-            <th className="px-4 py-3 font-medium">Projects</th>
-            <th className="px-4 py-3 font-medium">Status</th>
-            <th className="px-4 py-3 font-medium">Clips</th>
-            <th className="px-4 py-3 font-medium">Exports</th>
-            <th className="px-4 py-3 font-medium">Credits spent</th>
+            <SortHeader
+              label="Projects"
+              col="projects"
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={onSort}
+            />
+            <SortHeader
+              label="Email"
+              col="email"
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={onSort}
+            />
+            <SortHeader label="Clips" col="clips" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortHeader
+              label="Exports"
+              col="exports"
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={onSort}
+            />
+            <SortHeader
+              label="Credits spent"
+              col="credits"
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={onSort}
+            />
           </tr>
         </thead>
         <tbody>
-          {rows.map((u) => (
-            <tr
-              key={u.userId}
-              className="border-b border-white/[0.04] hover:bg-white/[0.03]"
-            >
-              <td className="px-4 py-3">
-                <div className="font-medium text-white">
-                  {u.firstName} {u.lastName}
-                </div>
-                <div className="text-[12px] text-white/40">{u.email || u.username}</div>
-              </td>
-              <td className="px-4 py-3 capitalize text-white/50">
-                {u.plan}
-                <span className="ml-1 text-[10px] text-white/30">
-                  ({u.subscriptionStatus})
-                </span>
-              </td>
-              {mode === "active" && (
-                <>
-                  <td className="px-4 py-3 font-mono text-[12px] whitespace-nowrap text-white/45">
-                    {fmtDate(u.lastVisitedAt)}
-                  </td>
-                  <td className="px-4 py-3 font-mono font-medium text-white tabular-nums">
-                    {u.visitCount}
-                  </td>
-                </>
-              )}
-              <td className="px-4 py-3 font-mono font-medium text-white tabular-nums">
-                {u.projectCount}
-              </td>
-              <td className="px-4 py-3">
-                <span className="text-[12px] text-white/40">
-                  ✓{u.projectsByStatus.done} · …{u.projectsByStatus.processing} · ✕
-                  {u.projectsByStatus.failed}
-                </span>
-              </td>
-              <td className="px-4 py-3 font-mono text-white/80 tabular-nums">
-                {u.clipCount}
-              </td>
-              <td className="px-4 py-3 font-mono text-white/80 tabular-nums">
-                {u.exportDoneCount}
-                <span className="text-white/30">/{u.exportCount}</span>
-              </td>
-              <td className="px-4 py-3 font-mono text-white/40 tabular-nums">
-                {u.lifetimeSpent}
-              </td>
-            </tr>
-          ))}
-          {rows.length === 0 && (
+          {sorted.map((u) => {
+            const email = u.email || u.username || "";
+            return (
+              <tr
+                key={u.userId}
+                className="border-b border-white/[0.04] hover:bg-white/[0.03]"
+              >
+                <td className="px-4 py-3">
+                  <div className="font-medium text-white">
+                    {u.firstName} {u.lastName}
+                  </div>
+                </td>
+                <td className="px-4 py-3 capitalize text-white/50">
+                  {u.plan}
+                  <span className="ml-1 text-[10px] text-white/30">
+                    ({u.subscriptionStatus})
+                  </span>
+                </td>
+                {mode === "active" && (
+                  <>
+                    <td className="px-4 py-3 font-mono text-[12px] whitespace-nowrap text-white/45">
+                      {fmtDate(u.lastVisitedAt)}
+                    </td>
+                    <td className="px-4 py-3 font-mono font-medium text-white tabular-nums">
+                      {u.visitCount}
+                    </td>
+                  </>
+                )}
+                <td className="px-4 py-3 font-mono font-medium text-white tabular-nums">
+                  {u.projectCount}
+                </td>
+                <td className="px-4 py-3">
+                  {email ? (
+                    <button
+                      type="button"
+                      title="Click to copy"
+                      onClick={() => copyEmail(email)}
+                      className="max-w-[220px] truncate text-left text-[12px] text-white/60 underline-offset-2 hover:text-white hover:underline"
+                    >
+                      {copiedEmail === email ? "Copied!" : email}
+                    </button>
+                  ) : (
+                    <span className="text-[12px] text-white/30">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 font-mono text-white/80 tabular-nums">
+                  {u.clipCount}
+                </td>
+                <td className="px-4 py-3 font-mono text-white/80 tabular-nums">
+                  {u.exportDoneCount}
+                  <span className="text-white/30">/{u.exportCount}</span>
+                </td>
+                <td className="px-4 py-3 font-mono text-white/40 tabular-nums">
+                  {u.lifetimeSpent}
+                </td>
+              </tr>
+            );
+          })}
+          {sorted.length === 0 && (
             <tr>
-              <td colSpan={9} className="px-4 py-10 text-center text-white/40">
+              <td colSpan={colCount} className="px-4 py-10 text-center text-white/40">
                 No data yet
               </td>
             </tr>
