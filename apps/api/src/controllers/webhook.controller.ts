@@ -50,10 +50,46 @@ function verifyDodoSignature(
 // re-deliveries) AND "sub-event:<subscriptionId>:<eventType>" for subscription
 // lifecycle dedup (prevents duplicate grants when Dodo retries a failed payment
 // and fires a new subscription.active with a brand-new webhookId).
+//
+// Dodo fires BOTH subscription.active AND subscription.renewed on the first
+// successful charge. We share a per-billing-period grant key
+// ("sub-event:<id>:period-grant:YYYY-MM") so only one of those events grants
+// credits for that cycle. Later months get a new period key → renewal resets.
 
 async function isAlreadyProcessed(idempotencyKey: string): Promise<boolean> {
-  const existing = await CreditLedger.findOne({ note: idempotencyKey }).lean();
+  const existing = await CreditLedger.findOne({
+    $or: [{ note: idempotencyKey }, { idempotencyKey }],
+  }).lean();
   return !!existing;
+}
+
+/**
+ * Record a post-success marker (activeKey / renewedKey / webhook delivery).
+ * Credit-grant claims must NOT use this — they go through grant*Credits()
+ * inside the same Mongo transaction as the balance update.
+ */
+async function claimIdempotencyKey(
+  userId: string,
+  key: string,
+  balanceAfter = 0,
+): Promise<boolean> {
+  if (await isAlreadyProcessed(key)) return false;
+  try {
+    await CreditLedger.create({
+      userId,
+      amount: 0,
+      bucket: "subscription",
+      type: "grant_subscription",
+      balanceAfter,
+      note: key,
+      idempotencyKey: key,
+    });
+    return true;
+  } catch (err: any) {
+    // Duplicate key — another webhook already claimed this slot
+    if (err?.code === 11000) return false;
+    throw err;
+  }
 }
 
 /**
@@ -66,6 +102,56 @@ function subscriptionIdempotencyKey(subscriptionId: string | undefined, eventTyp
   return subscriptionId
     ? `sub-event:${subscriptionId}:${eventType}`
     : `webhook-event:${eventType}:${Date.now()}`; // fallback — should never happen
+}
+
+/** Calendar month used to scope one credit grant per billing cycle. */
+function billingPeriod(d = new Date()): string {
+  return d.toISOString().slice(0, 7); // "2026-07"
+}
+
+/**
+ * Shared across subscription.active + subscription.renewed for the same month.
+ * Whichever event arrives first claims this key and grants credits; the other skips.
+ */
+function periodGrantKey(subscriptionId: string | undefined, period: string): string {
+  return subscriptionIdempotencyKey(subscriptionId, `period-grant:${period}`);
+}
+
+/** Pre-fix marker shape — still treated as "already granted this cycle". */
+function legacyRenewedPeriodKey(subscriptionId: string | undefined, period: string): string {
+  return subscriptionIdempotencyKey(subscriptionId, `subscription.renewed:${period}`);
+}
+
+/**
+ * True if this subscription already received credits for the billing month —
+ * either via the new period-grant key or the legacy renewed:YYYY-MM marker.
+ */
+async function isPeriodAlreadyGranted(
+  subscriptionId: string | undefined,
+  period: string,
+): Promise<boolean> {
+  return (
+    (await isAlreadyProcessed(periodGrantKey(subscriptionId, period))) ||
+    (await isAlreadyProcessed(legacyRenewedPeriodKey(subscriptionId, period)))
+  );
+}
+
+async function recordWebhookMarker(userId: string, webhookId: string, balanceAfter: number) {
+  const key = `webhook:${webhookId}`;
+  try {
+    await CreditLedger.create({
+      userId,
+      amount: 0,
+      bucket: "subscription",
+      type: "grant_subscription",
+      balanceAfter,
+      note: key,
+      idempotencyKey: key,
+    });
+  } catch (err: any) {
+    if (err?.code === 11000) return; // already recorded
+    throw err;
+  }
 }
 
 // ── Plan mapping ─────────────────────────────────────────────────────────────
@@ -152,6 +238,9 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
   switch (eventType) {
 
     // ── Subscription becomes active (new sub or reactivation) ───────────────
+    // First purchase: ADD plan credits on top of leftover free credits.
+    // Dodo also sends subscription.renewed on the same first charge — that event
+    // must not reset. We claim period-grant:YYYY-MM so only one grant runs.
     case "subscription.active": {
       const sub            = event.data ?? event;
       const userId         = sub.metadata?.userId ?? sub.customer?.metadata?.userId;
@@ -163,16 +252,14 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
         break;
       }
 
-      // Subscription-level idempotency: skip if this subscription already had credits granted
-      const subKey = subscriptionIdempotencyKey(subscriptionId, eventType);
-      if (await isAlreadyProcessed(subKey)) {
+      const activeKey = subscriptionIdempotencyKey(subscriptionId, eventType);
+      if (await isAlreadyProcessed(activeKey)) {
         logger.info(`Duplicate subscription.active for sub ${subscriptionId} (user ${userId}) — skipping`);
-        // Still record the delivery-level webhook so re-delivery check works too
-        await CreditLedger.create({
-          userId, amount: 0, bucket: "subscription", type: "grant_subscription",
-          balanceAfter: (await UserCredits.findById(userId).lean())?.totalCredits ?? 0,
-          note: `webhook:${webhookId}`,
-        });
+        await recordWebhookMarker(
+          userId,
+          webhookId,
+          (await UserCredits.findById(userId).lean())?.totalCredits ?? 0,
+        );
         break;
       }
 
@@ -182,7 +269,26 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
         break;
       }
 
-      await grantSubscriptionCredits(userId, planId as any, "add");
+      const period    = billingPeriod();
+      const periodKey = periodGrantKey(subscriptionId, period);
+
+      // Claim + grant are one DB transaction (no orphan marker without credits).
+      let granted = false;
+      if (await isPeriodAlreadyGranted(subscriptionId, period)) {
+        logger.info(
+          `subscription.active: period ${period} already granted for sub ${subscriptionId} — skipping credit grant`
+        );
+      } else {
+        const result = await grantSubscriptionCredits(userId, planId as any, "add", {
+          idempotencyKey: periodKey,
+        });
+        granted = result.granted;
+        if (!granted) {
+          logger.info(
+            `subscription.active: period ${period} already granted for sub ${subscriptionId} — lost race`
+          );
+        }
+      }
 
       await User.updateOne(
         { _id: userId },
@@ -194,24 +300,23 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
         }
       );
 
-      // Mark processed with BOTH the subscription-level key and the delivery-level key
       const balance = (await UserCredits.findById(userId).lean())?.totalCredits ?? 0;
-      await CreditLedger.insertMany([
-        {
-          userId, amount: 0, bucket: "subscription", type: "grant_subscription",
-          balanceAfter: balance, note: subKey,
-        },
-        {
-          userId, amount: 0, bucket: "subscription", type: "grant_subscription",
-          balanceAfter: balance, note: `webhook:${webhookId}`,
-        },
-      ]);
+      await claimIdempotencyKey(userId, activeKey, balance);
+      await recordWebhookMarker(userId, webhookId, balance);
 
-      logger.info(`subscription.active: granted ${planId} credits to user ${userId} (sub=${subscriptionId})`);
+      logger.info(
+        granted
+          ? `subscription.active: added ${planId} credits for user ${userId} (sub=${subscriptionId})`
+          : `subscription.active: status updated for user ${userId} (sub=${subscriptionId}, credits already granted)`
+      );
       break;
     }
 
     // ── Subscription renewed (recurring billing cycle) ──────────────────────
+    // Monthly renewals RESET subscription credits to the plan amount (top-ups stay).
+    // First paid cycle only (user still on free plan) uses ADD so leftover free
+    // credits are kept when renewed arrives before/without active. Once plan is
+    // paid, always RESET — never depend on the active marker existing.
     case "subscription.renewed": {
       const sub            = event.data ?? event;
       const userId         = sub.metadata?.userId ?? sub.customer?.metadata?.userId;
@@ -220,39 +325,49 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
 
       if (!userId || !productId) break;
 
-      // Each renewal cycle should be keyed on the subscription + a period marker
-      // so that retries within the same billing cycle are deduped but next month's
-      // renewal is still processed. Use the webhook timestamp's year-month as the period.
-      const period = new Date().toISOString().slice(0, 7); // "2026-07"
-      const subKey = subscriptionIdempotencyKey(subscriptionId, `${eventType}:${period}`);
-      if (await isAlreadyProcessed(subKey)) {
-        logger.info(`Duplicate subscription.renewed for sub ${subscriptionId} period ${period} — skipping`);
-        await CreditLedger.create({
-          userId, amount: 0, bucket: "subscription", type: "grant_subscription",
-          balanceAfter: (await UserCredits.findById(userId).lean())?.totalCredits ?? 0,
-          note: `webhook:${webhookId}`,
-        });
-        break;
-      }
+      const period     = billingPeriod();
+      const periodKey  = periodGrantKey(subscriptionId, period);
+      const renewedKey = legacyRenewedPeriodKey(subscriptionId, period);
 
       const planId = await planIdFromProductId(productId);
       if (!planId || planId === "free") break;
 
-      await grantSubscriptionCredits(userId, planId as any, "reset");
+      // Already granted this month? (new period-grant key OR legacy renewed:YYYY-MM)
+      if (await isPeriodAlreadyGranted(subscriptionId, period)) {
+        logger.info(
+          `subscription.renewed: skip credit grant for sub ${subscriptionId} period ${period} (already granted this cycle)`
+        );
+        const balance = (await UserCredits.findById(userId).lean())?.totalCredits ?? 0;
+        await claimIdempotencyKey(userId, renewedKey, balance);
+        await recordWebhookMarker(userId, webhookId, balance);
+        break;
+      }
+
+      // First paid cycle (still on free) → add. Any later renewal → always reset.
+      const existingCredits = await UserCredits.findById(userId).lean();
+      const mode = !existingCredits || existingCredits.plan === "free" ? "add" : "reset";
+
+      // Claim + grant in one transaction (shared with subscription.active for this month)
+      const { granted } = await grantSubscriptionCredits(userId, planId as any, mode, {
+        idempotencyKey: periodKey,
+      });
+      if (!granted) {
+        logger.info(
+          `subscription.renewed: skip credit grant for sub ${subscriptionId} period ${period} (lost race)`
+        );
+        const balance = (await UserCredits.findById(userId).lean())?.totalCredits ?? 0;
+        await claimIdempotencyKey(userId, renewedKey, balance);
+        await recordWebhookMarker(userId, webhookId, balance);
+        break;
+      }
 
       const balance = (await UserCredits.findById(userId).lean())?.totalCredits ?? 0;
-      await CreditLedger.insertMany([
-        {
-          userId, amount: 0, bucket: "subscription", type: "grant_subscription",
-          balanceAfter: balance, note: subKey,
-        },
-        {
-          userId, amount: 0, bucket: "subscription", type: "grant_subscription",
-          balanceAfter: balance, note: `webhook:${webhookId}`,
-        },
-      ]);
+      await claimIdempotencyKey(userId, renewedKey, balance);
+      await recordWebhookMarker(userId, webhookId, balance);
 
-      logger.info(`subscription.renewed: reset ${planId} credits for user ${userId} (sub=${subscriptionId})`);
+      logger.info(
+        `subscription.renewed: ${mode} ${planId} credits for user ${userId} (sub=${subscriptionId}, period=${period})`
+      );
       break;
     }
 
@@ -311,33 +426,36 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
       if (!userId || !productId) break;
 
       const subKey = subscriptionIdempotencyKey(subscriptionId, `${eventType}:${productId}`);
-      if (await isAlreadyProcessed(subKey)) {
-        logger.info(`Duplicate subscription.plan_changed for sub ${subscriptionId} → product ${productId} — skipping`);
-        await CreditLedger.create({
-          userId, amount: 0, bucket: "subscription", type: "grant_subscription",
-          balanceAfter: (await UserCredits.findById(userId).lean())?.totalCredits ?? 0,
-          note: `webhook:${webhookId}`,
-        });
-        break;
-      }
-
       const planId = await planIdFromProductId(productId);
       if (!planId || planId === "free") break;
 
-      await grantSubscriptionCredits(userId, planId as any, "reset");
+      if (await isAlreadyProcessed(subKey)) {
+        logger.info(`Duplicate subscription.plan_changed for sub ${subscriptionId} → product ${productId} — skipping`);
+        await recordWebhookMarker(
+          userId,
+          webhookId,
+          (await UserCredits.findById(userId).lean())?.totalCredits ?? 0,
+        );
+        break;
+      }
+
+      const { granted } = await grantSubscriptionCredits(userId, planId as any, "reset", {
+        idempotencyKey: subKey,
+      });
+      if (!granted) {
+        logger.info(`Duplicate subscription.plan_changed for sub ${subscriptionId} → product ${productId} — lost race`);
+        await recordWebhookMarker(
+          userId,
+          webhookId,
+          (await UserCredits.findById(userId).lean())?.totalCredits ?? 0,
+        );
+        break;
+      }
+
       await User.updateOne({ _id: userId }, { $set: { subscriptionStatus: "active" } });
 
       const balance = (await UserCredits.findById(userId).lean())?.totalCredits ?? 0;
-      await CreditLedger.insertMany([
-        {
-          userId, amount: 0, bucket: "subscription", type: "grant_subscription",
-          balanceAfter: balance, note: subKey,
-        },
-        {
-          userId, amount: 0, bucket: "subscription", type: "grant_subscription",
-          balanceAfter: balance, note: `webhook:${webhookId}`,
-        },
-      ]);
+      await recordWebhookMarker(userId, webhookId, balance);
 
       logger.info(`subscription.plan_changed: updated user ${userId} to plan ${planId} (sub=${subscriptionId})`);
       break;
@@ -360,19 +478,19 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
         }
 
         const { grantTopupCredits } = await import("../services/credits.service.js");
-        await grantTopupCredits(userId, Number(topupAmt), `Top-up via payment ${payment.payment_id}`);
+        const { granted } = await grantTopupCredits(
+          userId,
+          Number(topupAmt),
+          `Top-up via payment ${payment.payment_id}`,
+          { idempotencyKey: payKey },
+        );
+        if (!granted) {
+          logger.info(`Duplicate payment.succeeded for payment ${payment.payment_id} — lost race`);
+          break;
+        }
 
         const balance = (await UserCredits.findById(userId).lean())?.totalCredits ?? 0;
-        await CreditLedger.insertMany([
-          {
-            userId, amount: 0, bucket: "topup", type: "grant_topup",
-            balanceAfter: balance, note: payKey,
-          },
-          {
-            userId, amount: 0, bucket: "topup", type: "grant_topup",
-            balanceAfter: balance, note: `webhook:${webhookId}`,
-          },
-        ]);
+        await recordWebhookMarker(userId, webhookId, balance);
 
         logger.info(`payment.succeeded: granted ${topupAmt} topup credits to user ${userId}`);
       }

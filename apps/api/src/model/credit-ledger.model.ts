@@ -28,6 +28,8 @@ export interface ICreditLedger extends Document {
   jobId?: string;           // set for job_cost / refund_job_failed
   jobDurationMins?: number; // source video duration in minutes (for job rows)
   note?: string;            // human-readable description
+  /** Unique claim key for webhook/period dedup (sparse — only set on marker rows). */
+  idempotencyKey?: string;
   createdAt: Date;
 }
 
@@ -53,6 +55,7 @@ const creditLedgerSchema = new Schema<ICreditLedger>(
     jobId:           { type: String, index: true },
     jobDurationMins: { type: Number },
     note:            { type: String },
+    idempotencyKey:  { type: String },
   },
   {
     timestamps: { createdAt: true, updatedAt: false }, // ledger rows are immutable
@@ -62,6 +65,11 @@ const creditLedgerSchema = new Schema<ICreditLedger>(
 // Common query patterns
 creditLedgerSchema.index({ userId: 1, createdAt: -1 });  // user history feed
 creditLedgerSchema.index({ type: 1, createdAt: -1 });     // admin analytics
+// Atomic webhook/period claims — prevents double grants under concurrent delivery
+creditLedgerSchema.index(
+  { idempotencyKey: 1 },
+  { unique: true, sparse: true }
+);
 
 export const CreditLedger =
   (mongoose.models.CreditLedger as mongoose.Model<ICreditLedger>) ||

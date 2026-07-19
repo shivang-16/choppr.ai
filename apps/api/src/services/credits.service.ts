@@ -63,10 +63,45 @@ async function writeLedger(
   bucket: CreditBucket,
   type: LedgerType,
   balanceAfter: number,
-  extras: { jobId?: string; jobDurationMins?: number; note?: string } = {}
+  extras: { jobId?: string; jobDurationMins?: number; note?: string; idempotencyKey?: string } = {}
 ) {
   await CreditLedger.create(
     [{ userId, amount, bucket, type, balanceAfter, ...extras }],
+    { session }
+  );
+}
+
+function isDuplicateKeyError(err: unknown): boolean {
+  let e: unknown = err;
+  while (e && typeof e === "object") {
+    if ((e as { code?: number }).code === 11000) return true;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
+ * Insert the idempotency marker in the same transaction as the credit grant.
+ * If the process dies before commit, neither marker nor credits persist — retries work.
+ * If another webhook already claimed the key, unique index → duplicate key.
+ */
+async function claimIdempotencyInTxn(
+  session: mongoose.ClientSession,
+  userId: string,
+  key: string,
+  bucket: CreditBucket,
+  type: LedgerType,
+): Promise<void> {
+  await CreditLedger.create(
+    [{
+      userId,
+      amount: 0,
+      bucket,
+      type,
+      balanceAfter: 0,
+      note: key,
+      idempotencyKey: key,
+    }],
     { session }
   );
 }
@@ -133,8 +168,9 @@ export async function grantSignupCredits(userId: string): Promise<void> {
 export async function grantSubscriptionCredits(
   userId: string,
   planId: PlanName,
-  mode: "add" | "reset" = "reset"
-): Promise<void> {
+  mode: "add" | "reset" = "reset",
+  opts?: { idempotencyKey?: string }
+): Promise<{ granted: boolean }> {
   const plan   = await getPlanOrThrow(planId);
   const amount = plan.credits;
   const now    = new Date();
@@ -143,6 +179,13 @@ export async function grantSubscriptionCredits(
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
+      // Claim + grant are one atomic unit (no orphan marker without credits).
+      if (opts?.idempotencyKey) {
+        await claimIdempotencyInTxn(
+          session, userId, opts.idempotencyKey, "subscription", "grant_subscription"
+        );
+      }
+
       let doc: IUserCredits;
 
       if (mode === "add") {
@@ -168,6 +211,9 @@ export async function grantSubscriptionCredits(
         const existing = await UserCredits.findById(userId).session(session).lean() as IUserCredits | null;
         const oldSubCredits = existing?.subscriptionCredits ?? 0;
         const delta = amount - oldSubCredits; // topupCredits stays untouched
+        // Only count newly granted credits. Unused sub credits that expire on reset
+        // must not inflate lifetimeEarned (e.g. 300 left → reset to 500 → +200, not +500).
+        const earnedDelta = Math.max(0, delta);
 
         doc = await UserCredits.findOneAndUpdate(
           { _id: userId },
@@ -180,7 +226,7 @@ export async function grantSubscriptionCredits(
             },
             $inc: {
               totalCredits:   delta,
-              lifetimeEarned: amount,
+              lifetimeEarned: earnedDelta,
             },
           },
           { returnDocument: "after", upsert: true, session }
@@ -188,9 +234,17 @@ export async function grantSubscriptionCredits(
       }
 
       await writeLedger(session, userId, amount, "subscription", "grant_subscription", doc.totalCredits, {
-        note: `${plan.name} plan renewal — ${amount} credits`,
+        note: mode === "add"
+          ? `${plan.name} plan activation — ${amount} credits`
+          : `${plan.name} plan renewal — ${amount} credits`,
       });
     });
+    return { granted: true };
+  } catch (err) {
+    if (opts?.idempotencyKey && isDuplicateKeyError(err)) {
+      return { granted: false };
+    }
+    throw err;
   } finally {
     await session.endSession();
   }
@@ -198,15 +252,23 @@ export async function grantSubscriptionCredits(
 
 /**
  * Add one-time top-up credits after a purchase.
+ * Pass idempotencyKey from webhooks so claim + credit grant commit together.
  */
 export async function grantTopupCredits(
   userId: string,
   amount: number,
-  note?: string
-): Promise<void> {
+  note?: string,
+  opts?: { idempotencyKey?: string }
+): Promise<{ granted: boolean }> {
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
+      if (opts?.idempotencyKey) {
+        await claimIdempotencyInTxn(
+          session, userId, opts.idempotencyKey, "topup", "grant_topup"
+        );
+      }
+
       const doc = await UserCredits.findOneAndUpdate(
         { _id: userId },
         {
@@ -225,6 +287,12 @@ export async function grantTopupCredits(
         note: note ?? `Top-up — ${amount} credits`,
       });
     });
+    return { granted: true };
+  } catch (err) {
+    if (opts?.idempotencyKey && isDuplicateKeyError(err)) {
+      return { granted: false };
+    }
+    throw err;
   } finally {
     await session.endSession();
   }
