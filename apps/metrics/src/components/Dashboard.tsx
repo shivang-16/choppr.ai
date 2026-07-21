@@ -515,7 +515,9 @@ function PeoplePanel({
     return () => {
       cancelled = true;
     };
-  }, [debouncedQ, page, onAuthError]);
+    // onAuthError is stable enough for logout redirect; omit to avoid refetch loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQ, page]);
 
   return (
     <div className="space-y-4">
