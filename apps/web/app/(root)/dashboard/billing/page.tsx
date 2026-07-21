@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
 import { Check, Zap, Loader2, CheckCircle, XCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getOfferForPlan } from "@/lib/plan-offers";
+import { CouponBadge } from "@/components/coupon-badge";
 import posthog from "posthog-js";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -186,6 +188,13 @@ function BillingContent() {
             Clip smarter, not harder. No credit card required on free plan.
           </p>
 
+          {currentId === "free" && (
+            <div className="flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3.5 py-1.5 text-[12px] text-indigo-300/90">
+              <Sparkles className="h-3 w-3" />
+              <span>Limited time offer - up to <span className="font-semibold text-indigo-200">25% off</span> with checkout codes</span>
+            </div>
+          )}
+
           {/* Billing toggle — hidden until yearly plans are re-enabled */}
           {/* <div className="flex items-center gap-3 text-[13px]">
             <span className={cn("transition-colors", billing === "monthly" ? "text-white" : "text-white/35")}>Monthly</span>
@@ -283,6 +292,12 @@ function BillingContent() {
               const yearlyPrice   = formatPrice(plan.yearlyPrice);
               const current       = currentId === plan.slug;
               const isDowngrade   = plan.order < currentOrder;
+              const offer = getOfferForPlan(plan.slug);
+              const showOffer = !!offer && currentId === "free";
+              const discounted =
+                showOffer && price > 0
+                  ? Math.round(price * (1 - offer.discountPercent / 100) * 100) / 100
+                  : null;
 
               return (
                 <div
@@ -305,9 +320,12 @@ function BillingContent() {
 
                   {/* Name + desc */}
                   <div className="flex flex-col gap-2">
-                    <p className={cn("text-[16px] font-bold", plan.popular ? "text-white" : "text-white/80")}>
-                      {plan.name}
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={cn("text-[16px] font-bold", plan.popular ? "text-white" : "text-white/80")}>
+                        {plan.name}
+                      </p>
+                      {showOffer && <CouponBadge offer={offer} variant="chip" />}
+                    </div>
                     <p className="text-[12.5px] text-white/35 leading-relaxed">{plan.description}</p>
                   </div>
 
@@ -321,9 +339,18 @@ function BillingContent() {
                   ) : (
                     <div className="flex flex-col gap-1">
                       <div className="flex items-baseline gap-2">
-                        <span className="text-[38px] font-bold text-white leading-none">${price}</span>
+                        <span className="text-[38px] font-bold text-white leading-none">
+                          ${discounted ?? price}
+                        </span>
                         <span className="text-[14px] text-white/35 font-medium">/ month</span>
                       </div>
+                      {showOffer && discounted != null && offer && (
+                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-white/35">
+                          <span className="line-through">${price}</span>
+                          <span>·</span>
+                          <CouponBadge offer={offer} variant="inline" />
+                        </div>
+                      )}
                     </div>
                   )}
 

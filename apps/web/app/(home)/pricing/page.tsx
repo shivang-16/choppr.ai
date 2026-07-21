@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Check, Zap, Loader2 } from "lucide-react";
+import { Check, Zap, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Navbar from "../_components/navbar";
 import Footer from "../_components/footer";
+import { getOfferForPlan } from "@/lib/plan-offers";
+import { CouponBadge } from "@/components/coupon-badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -67,6 +69,11 @@ export default function PricingPage() {
             <p className="text-[15px] text-white/40 leading-relaxed max-w-md">
               Clip smarter, not harder. No credit card required on free plan.
             </p>
+
+            <div className="flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3.5 py-1.5 text-[12px] text-indigo-300/90">
+              <Sparkles className="h-3 w-3" />
+              <span>Limited time offer - up to <span className="font-semibold text-indigo-200">25% off</span> with checkout codes</span>
+            </div>
           </div>
 
           {loading && (
@@ -80,6 +87,11 @@ export default function PricingPage() {
             <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-3 gap-4">
               {paidPlans.map((plan) => {
                 const price = formatPrice(plan.monthlyPrice);
+                const offer = getOfferForPlan(plan.slug);
+                const discounted =
+                  offer && price > 0
+                    ? Math.round(price * (1 - offer.discountPercent / 100) * 100) / 100
+                    : null;
 
                 return (
                   <div
@@ -101,9 +113,12 @@ export default function PricingPage() {
                     )}
 
                     <div className="flex flex-col gap-2">
-                      <p className={cn("text-[16px] font-bold", plan.popular ? "text-white" : "text-white/80")}>
-                        {plan.name}
-                      </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={cn("text-[16px] font-bold", plan.popular ? "text-white" : "text-white/80")}>
+                          {plan.name}
+                        </p>
+                        {offer && <CouponBadge offer={offer} variant="chip" />}
+                      </div>
                       <p className="text-[12.5px] text-white/35 leading-relaxed">{plan.description}</p>
                     </div>
 
@@ -114,9 +129,20 @@ export default function PricingPage() {
                         <span className="text-[28px] font-bold text-white leading-none">Custom pricing</span>
                       </div>
                     ) : (
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-[38px] font-bold text-white leading-none">${price}</span>
-                        <span className="text-[14px] text-white/35 font-medium">/ month</span>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-[38px] font-bold text-white leading-none">
+                            ${discounted ?? price}
+                          </span>
+                          <span className="text-[14px] text-white/35 font-medium">/ month</span>
+                        </div>
+                        {offer && discounted != null && (
+                          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-white/35">
+                            <span className="line-through">${price}</span>
+                            <span>·</span>
+                            <CouponBadge offer={offer} variant="inline" />
+                          </div>
+                        )}
                       </div>
                     )}
 

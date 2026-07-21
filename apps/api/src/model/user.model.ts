@@ -1,5 +1,20 @@
 import mongoose, { Document, Schema } from "mongoose";
 
+export type PopupKey = "discount";
+
+export interface IPopupState {
+  /** User permanently dismissed / claimed the offer */
+  completed: boolean;
+  /** How many times they chose "Ask me later" */
+  seeCount: number;
+  /** Last time they saw the popup or deferred it */
+  lastSeenAt?: Date;
+}
+
+export interface IUserPopups {
+  discount?: IPopupState;
+}
+
 export interface IUser extends Document<string> {
   _id: string;
   firstName: string;
@@ -7,13 +22,23 @@ export interface IUser extends Document<string> {
   username: string;
   avatarUrl: string;
   email: string;
-  ssoProvider?: 'google' | 'email' | 'extension';
+  ssoProvider?: "google" | "email" | "extension";
   subscriptionStatus?: "active" | "inactive" | "cancelled" | "free";
   subscriptionStartDate?: Date;
   isOnboarded?: boolean;
+  popups?: IUserPopups;
   createdAt: Date;
   updatedAt: Date;
 }
+
+const popupStateSchema = new Schema<IPopupState>(
+  {
+    completed: { type: Boolean, default: false },
+    seeCount: { type: Number, default: 0 },
+    lastSeenAt: { type: Date },
+  },
+  { _id: false }
+);
 
 const userSchema = new Schema<IUser>(
   {
@@ -46,7 +71,7 @@ const userSchema = new Schema<IUser>(
     },
     ssoProvider: {
       type: String,
-      enum: ['google', 'email', 'extension'],
+      enum: ["google", "email", "extension"],
       required: false,
       index: true,
     },
@@ -61,6 +86,9 @@ const userSchema = new Schema<IUser>(
     },
     subscriptionStartDate: {
       type: Date,
+    },
+    popups: {
+      discount: { type: popupStateSchema, default: () => ({}) },
     },
   },
   {
