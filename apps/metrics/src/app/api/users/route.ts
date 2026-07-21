@@ -17,8 +17,9 @@ export async function GET(req: NextRequest) {
     const page = Number(sp.get("page") || 1);
     const limit = Number(sp.get("limit") || 25);
     const sort = (sp.get("sort") || "recent") as UsersSort;
+    const q = sp.get("q") || undefined;
 
-    const data = await getUsersMetrics({ page, limit, sort });
+    const data = await getUsersMetrics({ page, limit, sort, q });
     return NextResponse.json(data);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load users";

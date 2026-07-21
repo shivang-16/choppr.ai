@@ -453,34 +453,68 @@ export async function getOverview() {
 
 export type UsersSort = "recent" | "projects" | "clips" | "exports" | "signup";
 
+function escapeRegex(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Match name, email, username, or id. Supports "first last" as AND. */
+function userSearchFilter(q: string): Record<string, unknown> | null {
+  const trimmed = q.trim();
+  if (!trimmed) return null;
+
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  const rx = new RegExp(escapeRegex(trimmed), "i");
+  const or: Record<string, unknown>[] = [
+    { firstName: rx },
+    { lastName: rx },
+    { email: rx },
+    { username: rx },
+    { _id: rx },
+  ];
+
+  if (parts.length >= 2) {
+    or.push({
+      $and: [
+        { firstName: new RegExp(escapeRegex(parts[0]!), "i") },
+        { lastName: new RegExp(escapeRegex(parts.slice(1).join(" ")), "i") },
+      ],
+    });
+  }
+
+  return { $or: or };
+}
+
 export async function getUsersMetrics(opts?: {
   page?: number;
   limit?: number;
   sort?: UsersSort;
+  q?: string;
   maps?: ActivityMaps;
 }) {
   const page = clampPage(opts?.page ?? 1);
   const limit = clampLimit(opts?.limit ?? DEFAULT_PAGE_SIZE);
   const sort = opts?.sort ?? "recent";
+  const search = userSearchFilter(opts?.q ?? "");
   const maps = opts?.maps ?? (await getActivityMaps());
 
-  const [totalUsers, leaderboards] = await Promise.all([
-    User.countDocuments(),
-    buildLeaderboards(maps),
-  ]);
+  const totalUsers = await User.countDocuments();
 
-  // Paginated list: for activity sorts, rank from maps; for signup use DB skip/limit
+  // Paginated list: for activity sorts, rank from maps; for signup/search use DB skip/limit
   let pageRows: UserMetricsRow[] = [];
 
-  if (sort === "signup") {
-    const users = await User.find()
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .select(
-        "_id firstName lastName username email subscriptionStatus isOnboarded createdAt"
-      )
-      .lean();
+  if (search || sort === "signup") {
+    const filter = search ?? {};
+    const [matchedTotal, users] = await Promise.all([
+      User.countDocuments(filter),
+      User.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .select(
+          "_id firstName lastName username email subscriptionStatus isOnboarded createdAt"
+        )
+        .lean(),
+    ]);
     const ids = users.map((u) => u._id as string);
     const creditsMap = await loadCreditsMap(ids);
     pageRows = users.map((u) =>
@@ -490,63 +524,62 @@ export async function getUsersMetrics(opts?: {
         creditsMap.get(u._id as string)
       )
     );
-  } else {
-    let rankedIds: string[] = [];
-    if (sort === "projects") {
-      rankedIds = [...maps.projects.entries()]
-        .sort((a, b) => b[1].projectCount - a[1].projectCount)
-        .map(([id]) => id);
-    } else if (sort === "clips") {
-      rankedIds = [...maps.clips.entries()]
-        .sort((a, b) => b[1].clipCount - a[1].clipCount)
-        .map(([id]) => id);
-    } else if (sort === "exports") {
-      rankedIds = [...maps.exports.entries()]
-        .sort((a, b) => b[1].exportDoneCount - a[1].exportDoneCount)
-        .map(([id]) => id);
-    } else {
-      // recent — users with any visit signal
-      const visitScores = new Map<string, number>();
-      for (const [id, p] of maps.projects) {
-        if (p.lastProjectAt) visitScores.set(id, p.lastProjectAt.getTime());
-      }
-      for (const [id, e] of maps.exports) {
-        if (!e.lastExportAt) continue;
-        const t = e.lastExportAt.getTime();
-        if (t > (visitScores.get(id) ?? 0)) visitScores.set(id, t);
-      }
-      rankedIds = [...visitScores.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([id]) => id);
-    }
 
-    const totalRanked = rankedIds.length;
-    const slice = rankedIds.slice((page - 1) * limit, page * limit);
-    pageRows = await hydrateUsers(slice, maps);
-
-    const totalPages = Math.max(1, Math.ceil(totalRanked / limit));
+    const totalPages = Math.max(1, Math.ceil(matchedTotal / limit));
     return {
       totalUsers,
       page,
       limit,
       totalPages,
-      totalInView: totalRanked,
-      sort,
+      totalInView: matchedTotal,
+      sort: search ? ("signup" as const) : sort,
+      q: opts?.q?.trim() || undefined,
       users: pageRows,
-      leaderboards,
     };
   }
 
-  const totalPages = Math.max(1, Math.ceil(totalUsers / limit));
+  let rankedIds: string[] = [];
+  if (sort === "projects") {
+    rankedIds = [...maps.projects.entries()]
+      .sort((a, b) => b[1].projectCount - a[1].projectCount)
+      .map(([id]) => id);
+  } else if (sort === "clips") {
+    rankedIds = [...maps.clips.entries()]
+      .sort((a, b) => b[1].clipCount - a[1].clipCount)
+      .map(([id]) => id);
+  } else if (sort === "exports") {
+    rankedIds = [...maps.exports.entries()]
+      .sort((a, b) => b[1].exportDoneCount - a[1].exportDoneCount)
+      .map(([id]) => id);
+  } else {
+    // recent — users with any visit signal
+    const visitScores = new Map<string, number>();
+    for (const [id, p] of maps.projects) {
+      if (p.lastProjectAt) visitScores.set(id, p.lastProjectAt.getTime());
+    }
+    for (const [id, e] of maps.exports) {
+      if (!e.lastExportAt) continue;
+      const t = e.lastExportAt.getTime();
+      if (t > (visitScores.get(id) ?? 0)) visitScores.set(id, t);
+    }
+    rankedIds = [...visitScores.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => id);
+  }
+
+  const totalRanked = rankedIds.length;
+  const slice = rankedIds.slice((page - 1) * limit, page * limit);
+  pageRows = await hydrateUsers(slice, maps);
+
+  const totalPages = Math.max(1, Math.ceil(totalRanked / limit));
   return {
     totalUsers,
     page,
     limit,
     totalPages,
-    totalInView: totalUsers,
+    totalInView: totalRanked,
     sort,
     users: pageRows,
-    leaderboards,
   };
 }
 

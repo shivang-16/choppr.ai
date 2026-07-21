@@ -4,6 +4,17 @@ import { useEffect, useState } from "react";
 import { clearAuth, metricsFetch } from "@/lib/api";
 import { SEGMENT_ORDER, type SalesSegmentId } from "@/lib/segment-meta";
 
+type UsersPayload = {
+  totalUsers: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalInView: number;
+  sort: string;
+  q?: string;
+  users: UserRow[];
+};
+
 type Overview = {
   generatedAt: string;
   users: {
@@ -135,6 +146,7 @@ function Pager({
 
 type Tab =
   | "overview"
+  | "people"
   | "sales"
   | "active"
   | "projects"
@@ -457,6 +469,110 @@ function UserTable({
   );
 }
 
+function PeoplePanel({
+  onAuthError,
+}: {
+  onAuthError: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<UsersPayload | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(query.trim()), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPeople() {
+      setLoading(true);
+      setError("");
+      try {
+        const params = new URLSearchParams({
+          page: String(page),
+          limit: "25",
+          sort: "signup",
+        });
+        if (debouncedQ) params.set("q", debouncedQ);
+        const res = await metricsFetch<UsersPayload>(`/users?${params}`);
+        if (!cancelled) setData(res);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load people");
+        if (err instanceof Error && err.message === "Unauthorized") {
+          clearAuth();
+          onAuthError();
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    loadPeople();
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedQ, page, onAuthError]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-white/45">
+          Search anyone by name, email, or username.
+        </p>
+        <label className="relative block w-full sm:max-w-sm">
+          <span className="sr-only">Search people</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search people…"
+            autoComplete="off"
+            className="w-full rounded-2xl border border-white/10 bg-[#141414] px-4 py-2.5 text-sm text-white placeholder:text-white/30 outline-none focus:border-white/25"
+          />
+        </label>
+      </div>
+
+      {error && (
+        <p className="rounded-xl border border-white/12 bg-white/5 px-3 py-2 text-sm text-white/70">
+          {error}
+        </p>
+      )}
+
+      {loading && !data ? (
+        <p className="text-white/45">Searching…</p>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2 text-[12px] text-white/40">
+            <span>
+              {debouncedQ
+                ? `${data?.totalInView ?? 0} match${(data?.totalInView ?? 0) === 1 ? "" : "es"} for “${debouncedQ}”`
+                : `${data?.totalInView ?? 0} recent signups`}
+            </span>
+            {loading && <span>Updating…</span>}
+          </div>
+          <UserTable rows={data?.users ?? []} mode="active" />
+          {data && (
+            <Pager
+              page={data.page}
+              totalPages={data.totalPages}
+              total={data.totalInView}
+              onChange={setPage}
+              disabled={loading}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function SalesPanel({
   sales,
   onPageChange,
@@ -672,6 +788,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
+    { id: "people", label: "People" },
     { id: "sales", label: "Who to message" },
     { id: "active", label: "Recently active" },
     { id: "projects", label: "Top projects" },
@@ -832,6 +949,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 </section>
               )}
             </div>
+          )}
+
+          {tab === "people" && (
+            <PeoplePanel onAuthError={onLogout} />
           )}
 
           {tab === "sales" && sales && (
