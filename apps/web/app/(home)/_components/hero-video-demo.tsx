@@ -4,49 +4,147 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play } from "lucide-react";
 
-// ── 3 source videos, each with their own clip set ──
+const u = (id: string, w: number, h: number) =>
+  `https://images.unsplash.com/${id}?w=${w}&h=${h}&fit=crop&q=80`;
+
+const PLATFORMS = [
+  { platform: "YT", pColor: "#FF0000" },
+  { platform: "IG", pColor: "#E1306C" },
+  { platform: "LI", pColor: "#0A66C2" },
+  { platform: "TK", pColor: "#69C9D0" },
+  { platform: "FB", pColor: "#1877F2" },
+  { platform: "X",  pColor: "#e5e5e5" },
+] as const;
+
+const clipSet = (imgs: string[], scores: number[]) =>
+  PLATFORMS.map((p, i) => ({
+    id: i + 1,
+    score: scores[i]!,
+    platform: p.platform,
+    pColor: p.pColor,
+    img: imgs[i]!,
+  }));
+
+// ── 7 source videos, each with their own clip set (podcast + film) ──
 const SOURCES = [
   {
     id: 1,
-    img: "https://picsum.photos/seed/src1/800/450",
+    img: u("photo-1590602847861-f357a9332bbc", 800, 450),
     duration: "49:50",
     title: "Young & Profiting",
-    clips: [
-      { id: 1, score: 98, platform: "YT", pColor: "#FF0000", img: "https://picsum.photos/seed/s1c1/200/356" },
-      { id: 2, score: 99, platform: "IG", pColor: "#E1306C", img: "https://picsum.photos/seed/s1c2/200/356" },
-      { id: 3, score: 97, platform: "LI", pColor: "#0A66C2", img: "https://picsum.photos/seed/s1c3/200/356" },
-      { id: 4, score: 94, platform: "TK", pColor: "#69C9D0", img: "https://picsum.photos/seed/s1c4/200/356" },
-      { id: 5, score: 98, platform: "FB", pColor: "#1877F2", img: "https://picsum.photos/seed/s1c5/200/356" },
-      { id: 6, score: 97, platform: "X",  pColor: "#e5e5e5", img: "https://picsum.photos/seed/s1c6/200/356" },
-    ],
+    clips: clipSet(
+      [
+        u("photo-1511671782779-c97d3d27a1d4", 200, 356),
+        u("photo-1511379938547-c1f69419868d", 200, 356),
+        u("photo-1589903308904-1010c2294adc", 200, 356),
+        u("photo-1598488035139-bdbb2231ce04", 200, 356),
+        u("photo-1556761175-b413da4baf72", 200, 356),
+        u("photo-1598327105666-5b89351aff97", 200, 356),
+      ],
+      [98, 99, 97, 94, 98, 97],
+    ),
   },
   {
     id: 2,
-    img: "https://picsum.photos/seed/src2/800/450",
+    img: u("photo-1485846234645-a62644f84728", 800, 450),
     duration: "1:24:33",
     title: "Impact Theory",
-    clips: [
-      { id: 1, score: 96, platform: "YT", pColor: "#FF0000", img: "https://picsum.photos/seed/s2c1/200/356" },
-      { id: 2, score: 98, platform: "IG", pColor: "#E1306C", img: "https://picsum.photos/seed/s2c2/200/356" },
-      { id: 3, score: 95, platform: "LI", pColor: "#0A66C2", img: "https://picsum.photos/seed/s2c3/200/356" },
-      { id: 4, score: 99, platform: "TK", pColor: "#69C9D0", img: "https://picsum.photos/seed/s2c4/200/356" },
-      { id: 5, score: 93, platform: "FB", pColor: "#1877F2", img: "https://picsum.photos/seed/s2c5/200/356" },
-      { id: 6, score: 96, platform: "X",  pColor: "#e5e5e5", img: "https://picsum.photos/seed/s2c6/200/356" },
-    ],
+    clips: clipSet(
+      [
+        u("photo-1489599849927-2ee91cede3ba", 200, 356),
+        u("photo-1536440136628-849c177e76a1", 200, 356),
+        u("photo-1478720568477-152d9b164e26", 200, 356),
+        u("photo-1574267432553-4b4628081c31", 200, 356),
+        u("photo-1517604931442-7e0c8ed2963c", 200, 356),
+        u("photo-1598899134739-24c46f58b8c0", 200, 356),
+      ],
+      [96, 98, 95, 99, 93, 96],
+    ),
   },
   {
     id: 3,
-    img: "https://picsum.photos/seed/src3/800/450",
+    img: u("photo-1556761175-5973dc0f32e7", 800, 450),
     duration: "2:01:44",
     title: "Lex Fridman",
-    clips: [
-      { id: 1, score: 97, platform: "YT", pColor: "#FF0000", img: "https://picsum.photos/seed/s3c1/200/356" },
-      { id: 2, score: 95, platform: "IG", pColor: "#E1306C", img: "https://picsum.photos/seed/s3c2/200/356" },
-      { id: 3, score: 98, platform: "LI", pColor: "#0A66C2", img: "https://picsum.photos/seed/s3c3/200/356" },
-      { id: 4, score: 96, platform: "TK", pColor: "#69C9D0", img: "https://picsum.photos/seed/s3c4/200/356" },
-      { id: 5, score: 94, platform: "FB", pColor: "#1877F2", img: "https://picsum.photos/seed/s3c5/200/356" },
-      { id: 6, score: 99, platform: "X",  pColor: "#e5e5e5", img: "https://picsum.photos/seed/s3c6/200/356" },
-    ],
+    clips: clipSet(
+      [
+        u("photo-1507676184212-d03ab07a01bf", 200, 356),
+        u("photo-1557804506-669a67965ba0", 200, 356),
+        u("photo-1543269865-cbf427effbad", 200, 356),
+        u("photo-1522202176988-66273c2fd55f", 200, 356),
+        u("photo-1551836022-d5d88e9218df", 200, 356),
+        u("photo-1517245386807-bb43f82c33c4", 200, 356),
+      ],
+      [97, 95, 98, 96, 94, 99],
+    ),
+  },
+  {
+    id: 4,
+    img: u("photo-1470225620780-dba8ba36b745", 800, 450),
+    duration: "1:12:08",
+    title: "The Joe Rogan Experience",
+    clips: clipSet(
+      [
+        u("photo-1493225457124-a3eb161ffa5f", 200, 356),
+        u("photo-1611162616475-46b635cb6868", 200, 356),
+        u("photo-1600880292203-757bb62b4baf", 200, 356),
+        u("photo-1552664730-d307ca884978", 200, 356),
+        u("photo-1505373877841-8d25f7d46678", 200, 356),
+        u("photo-1508700115892-45ecd05ae2ad", 200, 356),
+      ],
+      [99, 97, 96, 98, 95, 94],
+    ),
+  },
+  {
+    id: 5,
+    img: u("photo-1492684223066-81342ee5ff30", 800, 450),
+    duration: "58:22",
+    title: "Cinema Stories",
+    clips: clipSet(
+      [
+        u("photo-1524985069026-dd778a71c7b4", 200, 356),
+        u("photo-1535016120720-40c646be5580", 200, 356),
+        u("photo-1574717024653-61fd2cf4d44d", 200, 356),
+        u("photo-1611162618071-b39a2ec055fb", 200, 356),
+        u("photo-1489599849927-2ee91cede3ba", 200, 356),
+        u("photo-1517604931442-7e0c8ed2963c", 200, 356),
+      ],
+      [95, 98, 97, 99, 96, 93],
+    ),
+  },
+  {
+    id: 6,
+    img: u("photo-1598488035139-bdbb2231ce04", 800, 450),
+    duration: "1:45:10",
+    title: "Huberman Lab",
+    clips: clipSet(
+      [
+        u("photo-1589903308904-1010c2294adc", 200, 356),
+        u("photo-1590602847861-f357a9332bbc", 200, 356),
+        u("photo-1511379938547-c1f69419868d", 200, 356),
+        u("photo-1511671782779-c97d3d27a1d4", 200, 356),
+        u("photo-1556761175-b413da4baf72", 200, 356),
+        u("photo-1598327105666-5b89351aff97", 200, 356),
+      ],
+      [98, 96, 99, 95, 97, 94],
+    ),
+  },
+  {
+    id: 7,
+    img: u("photo-1536440136628-849c177e76a1", 800, 450),
+    duration: "2:18:05",
+    title: "Behind the Frame",
+    clips: clipSet(
+      [
+        u("photo-1485846234645-a62644f84728", 200, 356),
+        u("photo-1478720568477-152d9b164e26", 200, 356),
+        u("photo-1574267432553-4b4628081c31", 200, 356),
+        u("photo-1598899134739-24c46f58b8c0", 200, 356),
+        u("photo-1492684223066-81342ee5ff30", 200, 356),
+        u("photo-1524985069026-dd778a71c7b4", 200, 356),
+      ],
+      [97, 99, 94, 98, 96, 95],
+    ),
   },
 ];
 
@@ -65,41 +163,53 @@ const FEATURE_TAGS = [
 
 // ── Timing (ms) ──
 const T = {
-  ENTER_DONE:   700,   // video reaches "above bar" position
-  HOLD_DONE:    1700,  // 1s hold above bar
-  DROP_DONE:    2200,  // video exits below
-  CLIPS_DONE:   2500,  // clips risen up
-  SHOW_DONE:    3500,  // clips visible
-  EXIT_DONE:    4100,  // clips slid right
-  LOOP:         4400,  // advance to next source
+  ENTER_DONE:   400,   // video reaches "above bar" position
+  HOLD_DONE:    750,   // quick click pulse
+  DROP_DONE:    1050,  // video exits below → clips rise
+  NEXT:         1600,  // next video enters while clips still on screen
+  CLIPS_CLEAR:  400,   // ms into next cycle before old clips fully clear
 };
 
-type Phase = "enter" | "hold" | "drop" | "clips" | "clips-exit";
+type Phase = "enter" | "hold" | "drop" | "clips";
 
 export default function HeroVideoDemo() {
-  const [srcIdx, setSrcIdx] = useState(0);
+  const [cycle, setCycle] = useState(0);
   const [phase, setPhase] = useState<Phase>("enter");
+  const [activeClipsIdx, setActiveClipsIdx] = useState<number | null>(null);
+  const [clipsExiting, setClipsExiting] = useState(false);
+
+  const srcIdx = cycle % SOURCES.length;
+  const src = SOURCES[srcIdx]!;
+  const clipsSrc = activeClipsIdx !== null ? SOURCES[activeClipsIdx]! : null;
 
   useEffect(() => {
+    setPhase("enter");
+
     const timeouts = [
-      setTimeout(() => setPhase("enter"),      0),
-      setTimeout(() => setPhase("hold"),        T.ENTER_DONE),
-      setTimeout(() => setPhase("drop"),        T.HOLD_DONE),
-      setTimeout(() => setPhase("clips"),       T.DROP_DONE),
-      setTimeout(() => setPhase("clips-exit"),  T.SHOW_DONE),
+      // Finish clearing previous clips shortly after this video enters
       setTimeout(() => {
-        setSrcIdx((i) => (i + 1) % SOURCES.length);
-      }, T.LOOP),
+        setActiveClipsIdx(null);
+        setClipsExiting(false);
+      }, T.CLIPS_CLEAR),
+
+      setTimeout(() => setPhase("hold"), T.ENTER_DONE),
+      setTimeout(() => setPhase("drop"), T.HOLD_DONE),
+      setTimeout(() => {
+        setActiveClipsIdx(srcIdx);
+        setClipsExiting(false);
+        setPhase("clips");
+      }, T.DROP_DONE),
+      // Next video comes in immediately — clips still visible, then exit
+      setTimeout(() => {
+        setClipsExiting(true);
+        setCycle((c) => c + 1);
+      }, T.NEXT),
     ];
     return () => timeouts.forEach(clearTimeout);
-  }, [srcIdx]);
+  }, [cycle, srcIdx]);
 
-  const src = SOURCES[srcIdx]!;
-
-  // Video should be visible until "drop" completes
   const videoVisible = phase === "enter" || phase === "hold" || phase === "drop";
-  // Clips visible during clips phases
-  const clipsVisible = phase === "clips" || phase === "clips-exit";
+  const clipsVisible = clipsSrc !== null;
 
   return (
     <div id="how-it-works" className="relative w-full max-w-4xl select-none">
@@ -109,20 +219,20 @@ export default function HeroVideoDemo() {
         <div className="relative h-[580px] overflow-hidden">
 
           {/* ── Source video (drops from top, passes bar, exits below) ── */}
-          <AnimatePresence mode="wait">
+          <AnimatePresence>
             {videoVisible && (
               <motion.div
-                key={`video-${srcIdx}`}
+                key={`video-${cycle}`}
                 className="absolute inset-x-0 flex justify-center px-8 z-10"
                 initial={{ y: -260, opacity: 0, scale: 0.94 }}
                 animate={
                   phase === "drop"
                     ? { y: 620, opacity: 0, scale: 0.9,
-                        transition: { duration: 0.55, ease: [0.55, 0, 1, 0.45] } }
+                        transition: { duration: 0.35, ease: [0.55, 0, 1, 0.45] } }
                     : { y: 30, opacity: 1, scale: 1,
-                        transition: { duration: 0.72, ease: [0.22, 1, 0.36, 1] } }
+                        transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] } }
                 }
-                exit={{ y: 500, opacity: 0, transition: { duration: 0.4 } }}
+                exit={{ opacity: 0, transition: { duration: 0.15 } }}
               >
                 <div className="relative w-full max-w-[420px] rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-black/70">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -154,53 +264,49 @@ export default function HeroVideoDemo() {
               </svg>
               <span className="flex-1 text-[13px] text-white/25 truncate">Drop a long video and …</span>
 
-              {/* Get clips button with finger click animation */}
+              {/* Get clips button — finger always visible, pulses on click */}
               <div className="relative">
                 <motion.div
                   className="rounded-full bg-white px-4 py-1.5 text-[12px] font-semibold text-black whitespace-nowrap"
                   animate={phase === "hold" ? { scale: [1, 0.92, 1] } : { scale: 1 }}
-                  transition={{ duration: 0.25, delay: 0.55, ease: "easeInOut" }}
+                  transition={{ duration: 0.18, ease: "easeInOut" }}
                 >
                   Get clips
                 </motion.div>
 
-                {/* Finger cursor */}
-                <AnimatePresence>
-                  {phase === "hold" && (
-                    <motion.div
-                      className="absolute -bottom-7 -right-3 pointer-events-none z-30"
-                      initial={{ y: 18, opacity: 0 }}
-                      animate={{ y: [18, 0, 4, 0], opacity: [0, 1, 1, 1] }}
-                      exit={{ opacity: 0, transition: { duration: 0.15 } }}
-                      transition={{ duration: 0.7, times: [0, 0.45, 0.7, 1], ease: "easeOut" }}
-                    >
-                      {/* Hand / pointer finger SVG */}
-                      <svg width="28" height="32" viewBox="0 0 28 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M10 14V5.5C10 4.12 11.12 3 12.5 3C13.88 3 15 4.12 15 5.5V14" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-                        <path d="M15 8.5C15 7.12 16.12 6 17.5 6C18.88 6 20 7.12 20 8.5V14" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-                        <path d="M20 10.5C20 9.12 21.12 8 22.5 8C23.88 8 25 9.12 25 10.5V19C25 24.52 20.52 29 15 29C9.48 29 5 24.52 5 19V14C5 12.62 6.12 11.5 7.5 11.5C8.88 11.5 10 12.62 10 14" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-                        <path d="M10 14C10 12.62 8.88 11.5 7.5 11.5C6.12 11.5 5 12.62 5 14V19" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-                      </svg>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                {/* Finger cursor — always on the button */}
+                <motion.div
+                  className="absolute -bottom-7 -right-3 pointer-events-none z-30"
+                  animate={
+                    phase === "hold"
+                      ? { y: [0, 3, 0], scale: [1, 0.94, 1] }
+                      : { y: 0, scale: 1 }
+                  }
+                  transition={{ duration: 0.18, ease: "easeInOut" }}
+                >
+                  <svg width="28" height="32" viewBox="0 0 28 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 14V5.5C10 4.12 11.12 3 12.5 3C13.88 3 15 4.12 15 5.5V14" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M15 8.5C15 7.12 16.12 6 17.5 6C18.88 6 20 7.12 20 8.5V14" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M20 10.5C20 9.12 21.12 8 22.5 8C23.88 8 25 9.12 25 10.5V19C25 24.52 20.52 29 15 29C9.48 29 5 24.52 5 19V14C5 12.62 6.12 11.5 7.5 11.5C8.88 11.5 10 12.62 10 14" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M10 14C10 12.62 8.88 11.5 7.5 11.5C6.12 11.5 5 12.62 5 14V19" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                </motion.div>
               </div>
             </div>
           </div>
 
-          {/* ── Clip cards — rise from below bar, slide right to exit ── */}
+          {/* ── Clip cards — stay while next video enters from above ── */}
           <AnimatePresence>
-            {clipsVisible && (
+            {clipsVisible && clipsSrc && (
               <motion.div
-                key={`clips-${srcIdx}`}
+                key={`clips-${activeClipsIdx}`}
                 className="absolute bottom-8 inset-x-0 flex items-end justify-center gap-2.5 px-4 z-10"
                 initial={{ opacity: 1 }}
                 exit={{ opacity: 0, transition: { duration: 0.2 } }}
               >
-                {src.clips.map((clip, i) => {
-                  // Distance from center (0-indexed, 6 cards → center between 2 and 3)
-                  const center = (src.clips.length - 1) / 2;
-                  const dist = i - center; // negative = left side, positive = right side
+                {clipsSrc.clips.map((clip, i) => {
+                  const center = (clipsSrc.clips.length - 1) / 2;
+                  const dist = i - center;
                   const distAbs = Math.abs(dist);
 
                   return (
@@ -208,23 +314,22 @@ export default function HeroVideoDemo() {
                     key={clip.id}
                     className="relative shrink-0 group cursor-pointer"
                     style={{ width: 110 }}
-                    // Start compressed toward center
                     initial={{ x: -dist * 120, opacity: 0, scale: 0.75 }}
                     animate={
-                      phase === "clips-exit"
+                      clipsExiting
                         ? {
                             x: 600,
                             opacity: 0,
                             scale: 0.85,
-                            transition: { delay: i * 0.045, duration: 0.45, ease: [0.55, 0, 1, 0.45] },
+                            transition: { delay: i * 0.03, duration: 0.3, ease: [0.55, 0, 1, 0.45] },
                           }
                         : {
                             x: 0,
                             opacity: 1,
                             scale: 1,
                             transition: {
-                              delay: distAbs * 0.07, // center first, edges last
-                              duration: 0.6,
+                              delay: distAbs * 0.045,
+                              duration: 0.4,
                               ease: [0.22, 1, 0.36, 1],
                             },
                           }
