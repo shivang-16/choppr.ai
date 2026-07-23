@@ -207,10 +207,11 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       ...(originalClipId ? { originalClipId } : {}),
     } as any);
 
-    logger.info("Export pipeline starting", {
-      exportId, projectId, userId, aspectRatio, backgroundFill, captionStyle,
-      trackCount: tracks.length, creditCost,
-    });
+    // [LOG_REDUCED]
+    // logger.info("Export pipeline starting", {
+    //   exportId, projectId, userId, aspectRatio, backgroundFill, captionStyle,
+    //   trackCount: tracks.length, creditCost,
+    // });
 
     // Fire-and-forget: run the pipeline in the background, return immediately
     runExportPipeline({

@@ -87,16 +87,17 @@ export const baseAuth = async (
   res: Response,
   next: NextFunction
 ) => {
-  logger.debug("baseAuth middleware started");
+  // [LOG_REDUCED] logger.debug("baseAuth middleware started");
   // 1. Try Clerk Authentication
   try {
     const authObj = getAuth(req);
     const { userId } = authObj;
-    logger.debug("Auth context extracted", {
-      userId,
-      sessionId: (authObj as any).sessionId ?? null,
-      hasToken: !!(req.headers.authorization),
-    });
+    // [LOG_REDUCED]
+    // logger.debug("Auth context extracted", {
+    //   userId,
+    //   sessionId: (authObj as any).sessionId ?? null,
+    //   hasToken: !!(req.headers.authorization),
+    // });
 
     if (userId) {
       // Check database first to avoid unnecessary Clerk API calls
@@ -181,10 +182,11 @@ export const baseAuth = async (
           logger.error(`Failed to grant signup credits to ${user!._id}: ${err}`);
         });
 
-        logger.info("Scheduling welcome email for new user", {
-          userId: user._id,
-          email: user.email,
-        });
+        // [LOG_REDUCED]
+        // logger.info("Scheduling welcome email for new user", {
+        //   userId: user._id,
+        //   email: user.email,
+        // });
 
         sendWelcomeEmail({
           to: user.email,
@@ -193,16 +195,17 @@ export const baseAuth = async (
           logger.error(`Failed to send welcome email to ${user!.email}: ${err}`);
         });
       } else {
-        logger.info(`User found in DB: ${user.username}`);
+        // [LOG_REDUCED] logger.info(`User found in DB: ${user.username}`);
       }
 
       req.user = user; // attach full user object for downstream handlers
       attachUserToRequestContext(req);
 
-      logger.info("User authenticated", {
-        username: user.username,
-        ssoProvider: user.ssoProvider,
-      });
+      // [LOG_REDUCED]
+      // logger.info("User authenticated", {
+      //   username: user.username,
+      //   ssoProvider: user.ssoProvider,
+      // });
       return next();
     }
   } catch (err) {

@@ -4,7 +4,7 @@ import { logger } from "../utils/logger.js";
 
 export const checkTeamMemberRole = (requiredRole: 'owner' | 'admin' | 'member' = 'admin') => {
   return async (req: Request, res: Response, next: NextFunction) => {
-    logger.debug(`checkTeamRole middleware execution started for role: ${requiredRole}`);
+    // [LOG_REDUCED] logger.debug(`checkTeamRole middleware execution started for role: ${requiredRole}`);
     
     try {
       // Ensure user is authenticated
@@ -43,7 +43,7 @@ export const checkTeamMemberRole = (requiredRole: 'owner' | 'admin' | 'member' =
         return res.status(403).json({ message: `Access denied: ${requiredRole} role or higher required` });
       }
 
-      logger.debug(`checkTeamRole: User ${req.user._id} has ${userRole} role in team ${teamId} - access granted`);
+      // [LOG_REDUCED] logger.debug(`checkTeamRole: User ${req.user._id} has ${userRole} role in team ${teamId} - access granted`);
       next();
     } catch (err) {
       logger.error(`checkTeamRole error: ${err}`);

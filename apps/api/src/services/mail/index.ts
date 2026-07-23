@@ -58,12 +58,13 @@ export const sendWelcomeEmail = async ({ to, firstName }: SendWelcomeEmailOption
   const appUrl = getAppUrl();
   const from = getFromEmail();
 
-  logger.info("Sending welcome email via Resend", {
-    to,
-    from,
-    subject: welcomeEmailSubject,
-    hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
-  });
+  // [LOG_REDUCED]
+  // logger.info("Sending welcome email via Resend", {
+  //   to,
+  //   from,
+  //   subject: welcomeEmailSubject,
+  //   hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
+  // });
 
   try {
     const { data, error } = await resend.emails.send({
@@ -83,11 +84,12 @@ export const sendWelcomeEmail = async ({ to, firstName }: SendWelcomeEmailOption
       return;
     }
 
-    logger.info("Email success: welcome email accepted by Resend", {
-      to,
-      from,
-      emailId: data?.id ?? null,
-    });
+    // [LOG_REDUCED]
+    // logger.info("Email success: welcome email accepted by Resend", {
+    //   to,
+    //   from,
+    //   emailId: data?.id ?? null,
+    // });
   } catch (error) {
     logger.error("Resend welcome email request failed", {
       to,

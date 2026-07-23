@@ -406,7 +406,7 @@ function buildAtempo(speed: number): string {
 /** Run an FFmpeg command and reject on non-zero exit. */
 function runFFmpeg(args: string[], tag = "ffmpeg", run?: ExportRun): Promise<void> {
   return new Promise((resolve, reject) => {
-    logger.debug(`[${tag}] Running: ffmpeg ${args.join(" ")}`);
+    // [LOG_REDUCED] logger.debug(`[${tag}] Running: ffmpeg ${args.join(" ")}`);
     const p = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
     if (run) run.processes.push(p);
     const errLines: string[] = [];
@@ -513,7 +513,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
   const existingDoc = await Export.findById(exportId).lean();
   if (!existingDoc || existingDoc.status === "cancelled") {
     unregisterExport(exportId);
-    logger.info(`[export:${exportId}] Skipping pipeline — already cancelled or missing`);
+    // [LOG_REDUCED] logger.info(`[export:${exportId}] Skipping pipeline — already cancelled or missing`);
     return;
   }
 
@@ -553,7 +553,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
       const src = item.src ?? "";
       if (!src || urlToLocal.has(src)) continue;
       const dest = join(tmpDir, `src_${dlIdx++}.mp4`);
-      logger.info(`[export:${exportId}] Downloading clip...`, { src: src.slice(-60) });
+      // [LOG_REDUCED] logger.info(`[export:${exportId}] Downloading clip...`, { src: src.slice(-60) });
       await downloadFile(src, dest);
       urlToLocal.set(src, dest);
     }
@@ -567,7 +567,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     const isAnimFill = backgroundFill.startsWith("anim-") && backgroundFill in ANIM_GRADIENTS;
     const bgImagePath = isAnimFill ? join(tmpDir, "bg_gradient.png") : null;
     if (isAnimFill && bgImagePath) {
-      logger.info(`[export:${exportId}] Generating animated background image...`);
+      // [LOG_REDUCED] logger.info(`[export:${exportId}] Generating animated background image...`);
       await generateAnimBgImage(backgroundFill, targetW, targetH, bgImagePath);
     }
 
@@ -685,7 +685,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     let finalOut = concatOut;
 
     if (stickers.length > 0) {
-      logger.info(`[export:${exportId}] Compositing ${stickers.length} sticker(s)...`);
+      // [LOG_REDUCED] logger.info(`[export:${exportId}] Compositing ${stickers.length} sticker(s)...`);
 
       // Download each sticker and overlay with FFmpeg (preserves animation for GIFs)
       for (let si = 0; si < stickers.length; si++) {
@@ -734,7 +734,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
         await updateExport(exportId, { progress: stickerPct });
       }
 
-      logger.info(`[export:${exportId}] Stickers composited`);
+      // [LOG_REDUCED] logger.info(`[export:${exportId}] Stickers composited`);
     }
 
     // ── 6. Caption overlay (on top of stickers) ──────────────────────────────
@@ -814,10 +814,10 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
       }
 
       const totalDuration = offset;
-      logger.info(`[export:${exportId}] Caption words: ${allWords.length}, segments: ${remappedSegments.length}, duration: ${totalDuration.toFixed(1)}s`);
+      // [LOG_REDUCED] logger.info(`[export:${exportId}] Caption words: ${allWords.length}, segments: ${remappedSegments.length}, duration: ${totalDuration.toFixed(1)}s`);
 
       if (allWords.length > 0 || remappedSegments.length > 0) {
-        logger.info(`[export:${exportId}] Rendering caption overlay (${remappedSegments.length ? "multi-segment" : captionStyle})...`);
+        // [LOG_REDUCED] logger.info(`[export:${exportId}] Rendering caption overlay (${remappedSegments.length ? "multi-segment" : captionStyle})...`);
 
         const overlayPath = join(tmpDir, "captions_overlay.mov");
         await renderCaptionToFile({
@@ -848,7 +848,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
         ], "caption-composite");
 
         finalOut = captionOut;
-        logger.info(`[export:${exportId}] Captions composited`);
+        // [LOG_REDUCED] logger.info(`[export:${exportId}] Captions composited`);
       }
     }
 
@@ -857,7 +857,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     // ── 7. Text overlays (rendered via canvas → PNG → FFmpeg overlay) ────────
     tick();
     if (textOverlays.length > 0) {
-      logger.info(`[export:${exportId}] Applying ${textOverlays.length} text overlay(s) with per-overlay timing...`);
+      // [LOG_REDUCED] logger.info(`[export:${exportId}] Applying ${textOverlays.length} text overlay(s) with per-overlay timing...`);
 
       // Separate timed overlays (have startTime+duration) from legacy always-on overlays
       const timedOverlays = textOverlays.filter(
@@ -917,7 +917,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
       }
 
       finalOut = textIn;
-      logger.info(`[export:${exportId}] Text overlays composited (${segments.length} segment(s))`);
+      // [LOG_REDUCED] logger.info(`[export:${exportId}] Text overlays composited (${segments.length} segment(s))`);
     }
 
     await updateExport(exportId, { progress: 92 });
@@ -925,7 +925,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     // ── 8. Thumbnail overlay ──────────────────────────────────────────────────
     tick();
     if (thumbnailOverlay) {
-      logger.info(`[export:${exportId}] Compositing thumbnail overlay (${thumbnailOverlay.styleId})...`);
+      // [LOG_REDUCED] logger.info(`[export:${exportId}] Compositing thumbnail overlay (${thumbnailOverlay.styleId})...`);
 
       const thumbFile = join(tmpDir, "thumbnail.png");
       try {
@@ -955,7 +955,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
         ], "thumbnail-overlay");
 
         finalOut = thumbOut;
-        logger.info(`[export:${exportId}] Thumbnail composited`);
+        // [LOG_REDUCED] logger.info(`[export:${exportId}] Thumbnail composited`);
       } catch (thumbErr: any) {
         logger.warn(`[export:${exportId}] Thumbnail overlay failed (skipping): ${thumbErr?.message}`);
       }
@@ -963,7 +963,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
 
     // ── 9. Upload to S3 ──────────────────────────────────────────────────────
     tick();
-    logger.info(`[export:${exportId}] Uploading to S3...`);
+    // [LOG_REDUCED] logger.info(`[export:${exportId}] Uploading to S3...`);
     const s3Key  = `exports/${exportId}/final.mp4`;
     const fileBuf = await fsp.readFile(finalOut);
 
@@ -1000,16 +1000,16 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
           createdAt:      now,
           updatedAt:      now,
         });
-        logger.info(`[export:${exportId}] Saved exported clip with originalClipId=${originalClipId}`);
+        // [LOG_REDUCED] logger.info(`[export:${exportId}] Saved exported clip with originalClipId=${originalClipId}`);
       }
     }
 
     await updateExport(exportId, { status: "done", progress: 100, s3Key, s3Url });
-    logger.info(`[export:${exportId}] Done → ${s3Url}`);
+    // [LOG_REDUCED] logger.info(`[export:${exportId}] Done → ${s3Url}`);
 
   } catch (err: any) {
     if (err instanceof ExportCancelledError) {
-      logger.info(`[export:${exportId}] Cancelled`, { error: err.message });
+      // [LOG_REDUCED] logger.info(`[export:${exportId}] Cancelled`, { error: err.message });
       await updateExport(exportId, { status: "cancelled", error: err.message });
       return;
     }

@@ -92,11 +92,12 @@ router.get("/", async (req: Request, res: Response) => {
   // Try locally first — keeps the agent free for heavy processing
   try {
     const meta = await fetchMetaLocal(url);
-    logger.info("Video metadata fetched locally", {
-      url,
-      durationSecs: meta.durationSecs,
-      title: meta.title,
-    });
+    // [LOG_REDUCED]
+    // logger.info("Video metadata fetched locally", {
+    //   url,
+    //   durationSecs: meta.durationSecs,
+    //   title: meta.title,
+    // });
     res.json(meta);
     return;
   } catch (localErr) {
@@ -110,10 +111,11 @@ router.get("/", async (req: Request, res: Response) => {
   // Agent fallback
   try {
     const data = await fetchMetaViaAgent(url);
-    logger.info("Video metadata fetched via agent fallback", {
-      url,
-      durationSecs: data.durationSecs ?? null,
-    });
+    // [LOG_REDUCED]
+    // logger.info("Video metadata fetched via agent fallback", {
+    //   url,
+    //   durationSecs: data.durationSecs ?? null,
+    // });
     res.json(data);
   } catch (e) {
     logger.error("video-meta: agent fallback also failed", {

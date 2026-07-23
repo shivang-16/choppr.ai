@@ -92,7 +92,7 @@ export async function presignAssetUpload(req: Request, res: Response, next: Next
       usage,
     });
 
-    logger.info("Asset presign issued", { userId, assetId, s3Key, mimeType, usage });
+    // [LOG_REDUCED] logger.info("Asset presign issued", { userId, assetId, s3Key, mimeType, usage });
 
     res.json({ uploadUrl, assetId, s3Key, s3Url, bucket: BUCKET, asset });
   } catch (err) {
@@ -142,7 +142,7 @@ export async function deleteUserAsset(req: Request, res: Response, next: NextFun
     await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: asset.s3Key }));
     await UserAsset.findByIdAndDelete(assetId);
 
-    logger.info("Asset deleted", { userId, assetId });
+    // [LOG_REDUCED] logger.info("Asset deleted", { userId, assetId });
     res.json({ ok: true });
   } catch (err) {
     next(err);

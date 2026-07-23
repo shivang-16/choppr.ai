@@ -97,7 +97,7 @@ export function ensureFontsRegistered(): void {
       return;
     }
     const count = GlobalFonts.loadFontsFromDir(FONTS_DIR);
-    logger.info(`Registered ${count} caption font(s) from ${FONTS_DIR}`);
+    // [LOG_REDUCED] logger.info(`Registered ${count} caption font(s) from ${FONTS_DIR}`);
   } catch (err: any) {
     logger.error("Caption font registration failed", { error: err?.message ?? String(err) });
   }

@@ -143,20 +143,21 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
   // 2. Push to SQS with all clip settings
     await enqueueJob({ jobId, userId, url: url ?? "", s3Key: s3Key ?? "", query, projectId, clipModel, genre, clipLength, maxClips, ...(language ? { language } : {}), ...(editFull ? { editFull: true } : {}) });
 
-    logger.info("Job created and enqueued", {
-      jobId,
-      projectId,
-      userId,
-      source: s3Key ? "upload" : "url",
-      url: url ?? null,
-      s3Key: s3Key ?? null,
-      clipModel,
-      genre,
-      clipLength,
-      aspectRatio,
-      backgroundFill,
-      maxClips,
-    });
+    // [LOG_REDUCED]
+    // logger.info("Job created and enqueued", {
+    //   jobId,
+    //   projectId,
+    //   userId,
+    //   source: s3Key ? "upload" : "url",
+    //   url: url ?? null,
+    //   s3Key: s3Key ?? null,
+    //   clipModel,
+    //   genre,
+    //   clipLength,
+    //   aspectRatio,
+    //   backgroundFill,
+    //   maxClips,
+    // });
 
     res.status(201).json({ jobId, projectId, status: "pending" });
   } catch (err) {

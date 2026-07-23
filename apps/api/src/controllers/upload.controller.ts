@@ -33,11 +33,12 @@ export async function presignUpload(req: Request, res: Response, next: NextFunct
 
     const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
 
-    logger.info("Upload presign issued", {
-      userId,
-      s3Key,
-      bucket: BUCKET,
-    });
+    // [LOG_REDUCED]
+    // logger.info("Upload presign issued", {
+    //   userId,
+    //   s3Key,
+    //   bucket: BUCKET,
+    // });
 
     res.json({ uploadUrl, s3Key, bucket: BUCKET });
   } catch (err) {

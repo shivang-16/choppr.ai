@@ -47,15 +47,15 @@ export const checkFeatureAccess = (
       // Attach result to request for downstream use
       req.featureCheck = result;
 
-      // Log the feature check
-      logger.debug(`Feature access check for ${featureType}`, {
-        userId: req.user?._id,
-        featureType,
-        allowed: result.allowed,
-        currentCount: result.currentCount,
-        maxAllowed: result.maxAllowed,
-        planName: result.planName
-      });
+      // [LOG_REDUCED] Log the feature check
+      // logger.debug(`Feature access check for ${featureType}`, {
+      //   userId: req.user?._id,
+      //   featureType,
+      //   allowed: result.allowed,
+      //   currentCount: result.currentCount,
+      //   maxAllowed: result.maxAllowed,
+      //   planName: result.planName
+      // });
 
       // If not allowed and not partial mode, return error
       if (!result.allowed && !options?.allowPartial) {
@@ -126,15 +126,15 @@ export const checkMultipleFeatures = (
       const allAllowed = deniedFeatures.length === 0;
       const someAllowed = allowedFeatures.length > 0;
 
-      // Log the checks
-      logger.debug(`Multiple feature access check`, {
-        userId: req.user?._id,
-        features,
-        allAllowed,
-        someAllowed,
-        allowedCount: allowedFeatures.length,
-        deniedCount: deniedFeatures.length
-      });
+      // [LOG_REDUCED] Log the checks
+      // logger.debug(`Multiple feature access check`, {
+      //   userId: req.user?._id,
+      //   features,
+      //   allAllowed,
+      //   someAllowed,
+      //   allowedCount: allowedFeatures.length,
+      //   deniedCount: deniedFeatures.length
+      // });
 
       // If requireAll is true and not all features are allowed
       if (options?.requireAll && !allAllowed) {

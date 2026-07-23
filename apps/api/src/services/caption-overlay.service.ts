@@ -67,10 +67,11 @@ export async function renderCaptionToFile(params: OverlayParams): Promise<void> 
     : MOTION_STYLES.has(style as CaptionStyle);
   const totalFrames = Math.ceil(durationSecs * FPS);
 
-  logger.info("Caption overlay render started", {
-    style, width, height, durationSecs, totalFrames,
-    wordCount: words.length, fontSize, segmentCount: segments?.length ?? 0,
-  });
+  // [LOG_REDUCED]
+  // logger.info("Caption overlay render started", {
+  //   style, width, height, durationSecs, totalFrames,
+  //   wordCount: words.length, fontSize, segmentCount: segments?.length ?? 0,
+  // });
 
   const ffmpeg = spawn("ffmpeg", [
     "-y",
