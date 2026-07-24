@@ -76,7 +76,7 @@ function MobileNavLink({ icon: Icon, label, href, exact = false }: { icon: any; 
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ hideMobileBar = false }: { hideMobileBar?: boolean } = {}) {
   const path = usePathname();
 
   return (
@@ -105,7 +105,7 @@ export default function Sidebar() {
       </aside>
 
       {/* ── Mobile bottom bar — only below md ── */}
-      <MobileBottomBar nav={NAV} path={path} />
+      {!hideMobileBar && <MobileBottomBar nav={NAV} path={path} />}
     </>
   );
 }

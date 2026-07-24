@@ -13,7 +13,7 @@ const ClipTimeline = dynamic(
 import { useApiFetch } from "@/lib/apiFetch";
 import {
   ArrowLeft, Play, Pause, Volume2, VolumeX,
-  Captions, Gauge, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Type, Plus, Trash2, Smile, ImageIcon, Move, Upload,
+  Captions, Gauge, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Plus, Trash2, Smile, ImageIcon, Move, Upload,
 } from "lucide-react";
 import Link from "next/link";
 import Sidebar from "../../_components/sidebar";
@@ -150,17 +150,21 @@ function useIsMobile() {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: "captions",    icon: Captions,   label: "Captions" },
-  { id: "upload",      icon: Upload,     label: "Upload" },
-  { id: "text",        icon: Type,       label: "Text" },
-  { id: "thumbnail",   icon: ImageIcon,  label: "Watermark" },
-  { id: "stickers",    icon: Layers,     label: "Stickers" },
-  { id: "speed",       icon: Gauge,      label: "Speed" },
-  { id: "enhance",     icon: Sparkles,   label: "Enhance" },
+  { id: "captions",  icon: Captions,  label: "Captions" },
+  { id: "upload",    icon: Upload,    label: "Upload" },
+  { id: "overlays",  icon: Layers,    label: "Overlays" },
+  { id: "speed",     icon: Gauge,     label: "Speed" },
+  { id: "enhance",   icon: Sparkles,  label: "Enhance" },
 ];
 
-/** Mobile: all edit tools stacked on the left of the preview. */
-const MOBILE_SIDE_TABS = TABS;
+/** Mobile: edit tools in the bottom bar (Upload is desktop-only). */
+const MOBILE_SIDE_TABS = TABS.filter(t => t.id !== "upload");
+
+const OVERLAY_SUB_TABS = [
+  { id: "text" as const, label: "Text" },
+  { id: "stickers" as const, label: "Stickers" },
+  { id: "thumbnail" as const, label: "Watermark" },
+];
 
 // ── Caption styles ────────────────────────────────────────────────────────────
 type CaptionStyleEntry = {
@@ -223,6 +227,35 @@ const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
     ],
   },
   {
+    category: "Viral",
+    styles: [
+      { id: "word-pop",      label: "Word Pop",   desc: "", preview: null, previewClass: "",
+        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_ANTON }}><span className="text-white/40 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">just</span><span className="text-white font-black text-[16px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]">BE</span><span className="text-white/40 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">kind</span></div> },
+      { id: "karaoke",       label: "Karaoke",    desc: "", preview: null, previewClass: "",
+        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_MARKER }}><span className="text-white/50 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">just</span><span className="text-yellow-400 font-black text-[12px] [text-shadow:-1px_-1px_0_black]">BE</span><span className="text-white/50 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">kind</span></div> },
+      { id: "mr-beast",      label: "MrBeast",    desc: "", preview: null, previewClass: "",
+        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_OSWALD }}><span className="text-white font-black text-[8px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]">just</span><span className="text-red-500 font-black text-[17px] [text-shadow:-2px_-2px_0_black,2px_-2px_0_black]">BE</span><span className="text-white font-black text-[8px] [text-shadow:-1px_-1px_0_black]">kind</span></div> },
+      { id: "stack-reveal",  label: "Stack",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="text-white font-black text-[20px] [text-shadow:-2px_-2px_0_black,2px_-2px_0_black,-2px_2px_0_black,2px_2px_0_black]" style={{ fontFamily: PF_OSWALD }}>KIND</span> },
+      { id: "highlight-box", label: "Highlight",  desc: "", preview: null, previewClass: "",
+        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_BANGERS }}><span className="text-white/50 font-black text-[8px]">just</span><span className="bg-yellow-400 text-black font-black text-[11px] px-1 rounded">BE</span><span className="text-white/50 font-black text-[8px]">kind</span></div> },
+      { id: "comic",         label: "Comic",      desc: "", preview: null, previewClass: "",
+        renderPreview: () => <span className="bg-blue-800 text-white font-black text-[15px] px-2 py-0.5 rounded [text-shadow:-1px_-1px_0_black]" style={{ fontFamily: PF_BANGERS }}>POW!</span> },
+    ],
+  },
+  {
+    category: "Full Line",
+    styles: [
+      { id: "full-line",     label: "Full Line",  desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <div className="flex flex-col items-center justify-center gap-0.5 px-1 w-full" style={{ fontFamily: PF_DEFAULT }}>
+            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">just be kind</span>
+            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">to others</span>
+          </div>
+        ) },
+    ],
+  },
+  {
     category: "3-Row Stacked",
     styles: [
       { id: "gothic",       label: "Gothic",    desc: "", preview: null, previewClass: "",
@@ -243,35 +276,6 @@ const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
         renderPreview: () => stackPreview("GOLD", "text-yellow-400 [text-shadow:0_0_8px_#FFD700,0_0_14px_#FFD700,-1px_-1px_0_black]", "text-white/80 [text-shadow:-1px_-1px_0_black]", PF_OSWALD) },
       { id: "stack-sunny",  label: "Sunny",     desc: "", preview: null, previewClass: "",
         renderPreview: () => stackPreview("SUN", "text-yellow-300 [text-shadow:-1px_-1px_0_black,1px_-1px_0_black,-1px_1px_0_black,1px_1px_0_black]", "text-white/80 [text-shadow:-1px_-1px_0_black]", PF_ANTON) },
-    ],
-  },
-  {
-    category: "Full Line",
-    styles: [
-      { id: "full-line",     label: "Full Line",  desc: "", preview: null, previewClass: "",
-        renderPreview: () => (
-          <div className="flex flex-col items-center justify-center gap-0.5 px-1 w-full" style={{ fontFamily: PF_DEFAULT }}>
-            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">just be kind</span>
-            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">to others</span>
-          </div>
-        ) },
-    ],
-  },
-  {
-    category: "Viral",
-    styles: [
-      { id: "word-pop",      label: "Word Pop",   desc: "", preview: null, previewClass: "",
-        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_ANTON }}><span className="text-white/40 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">just</span><span className="text-white font-black text-[16px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]">BE</span><span className="text-white/40 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">kind</span></div> },
-      { id: "karaoke",       label: "Karaoke",    desc: "", preview: null, previewClass: "",
-        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_MARKER }}><span className="text-white/50 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">just</span><span className="text-yellow-400 font-black text-[12px] [text-shadow:-1px_-1px_0_black]">BE</span><span className="text-white/50 font-black text-[8px] [text-shadow:-1px_-1px_0_black]">kind</span></div> },
-      { id: "mr-beast",      label: "MrBeast",    desc: "", preview: null, previewClass: "",
-        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_OSWALD }}><span className="text-white font-black text-[8px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black]">just</span><span className="text-red-500 font-black text-[17px] [text-shadow:-2px_-2px_0_black,2px_-2px_0_black]">BE</span><span className="text-white font-black text-[8px] [text-shadow:-1px_-1px_0_black]">kind</span></div> },
-      { id: "stack-reveal",  label: "Stack",      desc: "", preview: null, previewClass: "",
-        renderPreview: () => <span className="text-white font-black text-[20px] [text-shadow:-2px_-2px_0_black,2px_-2px_0_black,-2px_2px_0_black,2px_2px_0_black]" style={{ fontFamily: PF_OSWALD }}>KIND</span> },
-      { id: "highlight-box", label: "Highlight",  desc: "", preview: null, previewClass: "",
-        renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_BANGERS }}><span className="text-white/50 font-black text-[8px]">just</span><span className="bg-yellow-400 text-black font-black text-[11px] px-1 rounded">BE</span><span className="text-white/50 font-black text-[8px]">kind</span></div> },
-      { id: "comic",         label: "Comic",      desc: "", preview: null, previewClass: "",
-        renderPreview: () => <span className="bg-blue-800 text-white font-black text-[15px] px-2 py-0.5 rounded [text-shadow:-1px_-1px_0_black]" style={{ fontFamily: PF_BANGERS }}>POW!</span> },
     ],
   },
   {
@@ -442,12 +446,12 @@ const STIPOP_CATEGORIES = [
 ];
 
 function StipopStickerPicker({
-  placedStickers, setPlacedStickers, segmentationReady, styleGridMaxHeight, onToggleSticker, onRemoveSticker, onClearStickers,
+  placedStickers, setPlacedStickers, segmentationReady, styleGridMaxHeight = 360, onToggleSticker, onRemoveSticker, onClearStickers,
 }: {
   placedStickers: PlacedSticker[];
   setPlacedStickers: React.Dispatch<React.SetStateAction<PlacedSticker[]>>;
   segmentationReady: boolean;
-  styleGridMaxHeight: number | string;
+  styleGridMaxHeight?: number | string;
   onToggleSticker?: (s: StipopSticker) => void;
   onRemoveSticker?: (id: string) => void;
   onClearStickers?: () => void;
@@ -1083,7 +1087,7 @@ function EditPanelContent({
   speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
   brightness, setBrightness, contrast, setContrast, saturation, setSaturation,
   exportPhase, exportProgress, exportUrl, handleExport, setExportPhase, setExportUrl,
-  styleGridMaxHeight = 360,
+  styleGridMaxHeight = undefined,
   placedStickers, setPlacedStickers, segmentationReady,
   textOverlays, setTextOverlays, selectedTextId, setSelectedTextId,
   onAddTextOverlay, onRemoveTextOverlay, onToggleSticker, onRemoveSticker, onClearStickers,
@@ -1093,6 +1097,8 @@ function EditPanelContent({
   const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
   const [captionApplyMenu, setCaptionApplyMenu] = useState<CaptionStyle | null>(null);
   const captionApplyMenuRef = useRef<HTMLDivElement | null>(null);
+  const [captionSubTab, setCaptionSubTab] = useState<"styles" | "adjust" | "transcript" | "translate">("styles");
+  const [overlaySubTab, setOverlaySubTab] = useState<"text" | "stickers" | "thumbnail">("text");
 
   useEffect(() => {
     if (!captionApplyMenu) return;
@@ -1108,213 +1114,294 @@ function EditPanelContent({
     if (activeTab !== "captions") setCaptionApplyMenu(null);
   }, [activeTab]);
 
+  useEffect(() => {
+    if (hideTranscript && captionSubTab === "transcript") setCaptionSubTab("styles");
+  }, [hideTranscript, captionSubTab]);
+
+  const CAPTION_SUB_TABS = [
+    { id: "styles" as const, label: "Styles" },
+    { id: "adjust" as const, label: "Adjustment" },
+    ...(!hideTranscript ? [{ id: "transcript" as const, label: "Transcripts" }] : []),
+    { id: "translate" as const, label: "Translate" },
+  ];
+
   return (
-    <>
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col",
+        activeTab === "captions" && captionSubTab === "styles"
+          ? "overflow-hidden"
+          : "overflow-y-auto no-scrollbar",
+      )}
+    >
       {activeTab === "captions" && (
-        <div className="flex flex-col gap-5">
-          <div className="flex items-center justify-between">
-            <p className="text-[12px] font-medium text-white/70">Animation style</p>
-            <span className="text-[10px] text-white/25">
-              {captionWords.length > 0 ? `${captionWords.length} words` : "No captions yet"}
-            </span>
+        <div className="flex h-full min-h-0 flex-col gap-3">
+          {/* Capsule sub-tabs */}
+          <div className="flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
+            {CAPTION_SUB_TABS.map(t => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setCaptionSubTab(t.id)}
+                className={cn(
+                  "flex-1 rounded-full px-2 py-1.5 text-[10px] font-semibold transition-all whitespace-nowrap",
+                  captionSubTab === t.id
+                    ? "bg-white text-black shadow-sm"
+                    : "text-white/45 hover:text-white/70",
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
 
-          <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: styleGridMaxHeight }}>
-            <div className="flex flex-col gap-4 pr-0.5">
-              {CAPTION_STYLE_GROUPS.map(group => (
-                <div key={group.category}>
-                  <p className="text-[9px] font-semibold text-white/30 uppercase tracking-widest mb-1.5">{group.category}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {group.styles.map(s => {
-                      const onTimeline = captionSegments.some(seg => seg.style === s.id);
-                      const menuOpen = captionApplyMenu === s.id;
-                      return (
-                        <div
-                          key={s.id}
-                          ref={menuOpen ? captionApplyMenuRef : undefined}
-                          className={cn(
-                            "relative rounded-xl border transition-all overflow-hidden",
-                            onTimeline || menuOpen
-                              ? "border-white/50 ring-1 ring-white/20"
-                              : "border-white/8 bg-white/3 hover:border-white/20",
-                          )}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (onTimeline) {
-                                setCaptionStyle(s.id);
-                                onAddCaptionSegment(s.id);
-                                setCaptionApplyMenu(null);
-                                return;
-                              }
-                              if (askCaptionApplyMode && captionSegments.length > 0) {
-                                setCaptionApplyMenu(menuOpen ? null : s.id);
-                                return;
-                              }
-                              setCaptionStyle(s.id);
-                              onAddCaptionSegment(s.id, "add");
-                              setCaptionApplyMenu(null);
-                            }}
-                            className="relative w-full cursor-pointer text-left"
-                          >
-                            {/* Preview area */}
-                            <div className="h-14 w-full bg-[#111] flex items-center justify-center overflow-hidden">
-                              {s.renderPreview ? s.renderPreview() : (
-                                s.preview
-                                  ? <span className={cn("leading-none text-center block px-1", s.previewClass)}>{s.preview}</span>
-                                  : <span className="text-white/20 text-[11px]">⊘</span>
+          {captionSubTab === "styles" && (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div
+                className={cn(
+                  "overflow-y-auto no-scrollbar",
+                  styleGridMaxHeight == null && "min-h-0 flex-1",
+                )}
+                style={
+                  styleGridMaxHeight != null
+                    ? { maxHeight: styleGridMaxHeight }
+                    : undefined
+                }
+              >
+                <div className="flex flex-col gap-4 pr-0.5">
+                  {CAPTION_STYLE_GROUPS.map(group => (
+                    <div key={group.category}>
+                      <p className="text-[9px] font-semibold text-white/30 uppercase tracking-widest mb-1.5">{group.category}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {group.styles.map(s => {
+                          const onTimeline = captionSegments.some(seg => seg.style === s.id);
+                          const menuOpen = captionApplyMenu === s.id;
+                          return (
+                            <div
+                              key={s.id}
+                              ref={menuOpen ? captionApplyMenuRef : undefined}
+                              className={cn(
+                                "relative rounded-xl border transition-all overflow-hidden",
+                                onTimeline || menuOpen
+                                  ? "border-white/50 ring-1 ring-white/20"
+                                  : "border-white/8 bg-white/3 hover:border-white/20",
                               )}
-                            </div>
-                            {/* Label */}
-                            <div className="px-2 py-1 flex items-center justify-between bg-[#181818]">
-                              <span className="text-[9px] font-semibold text-white/60 truncate leading-tight">{s.label}</span>
-                              {captionStyle === s.id && <Check className="h-2.5 w-2.5 text-white/70 shrink-0 ml-1" />}
-                              {onTimeline && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shrink-0 ml-1" />}
-                            </div>
-                          </button>
-
-                          {menuOpen && (
-                            <div className="absolute inset-0 z-20 flex flex-col bg-[#0d0d0d]/96 backdrop-blur-[2px]">
+                            >
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setCaptionStyle(s.id);
-                                  onAddCaptionSegment(s.id, "replace");
-                                  setCaptionApplyMenu(null);
-                                }}
-                                className="flex-1 px-2 text-[10px] font-semibold text-white/85 hover:bg-white/10 transition-colors"
-                              >
-                                Replace
-                              </button>
-                              <div className="h-px bg-white/10 shrink-0" />
-                              <button
-                                type="button"
-                                onClick={() => {
+                                  // "None" clears captions — never add a None block to the timeline
+                                  if (s.id === "none") {
+                                    setCaptionApplyMenu(null);
+                                    onAddCaptionSegment("none");
+                                    return;
+                                  }
+                                  if (onTimeline) {
+                                    // Toggle off: remove from timeline AND clear preview style
+                                    // (otherwise CaptionRenderer falls back to captionStyle and
+                                    // keeps drawing the caption + checkmark)
+                                    const remaining = captionSegments.filter(seg => seg.style !== s.id);
+                                    onAddCaptionSegment(s.id);
+                                    setCaptionStyle(
+                                      remaining.length === 0
+                                        ? "none"
+                                        : (captionStyle === s.id ? remaining[0]!.style : captionStyle),
+                                    );
+                                    setCaptionApplyMenu(null);
+                                    return;
+                                  }
+                                  if (askCaptionApplyMode && captionSegments.length > 0) {
+                                    setCaptionApplyMenu(menuOpen ? null : s.id);
+                                    return;
+                                  }
                                   setCaptionStyle(s.id);
                                   onAddCaptionSegment(s.id, "add");
                                   setCaptionApplyMenu(null);
                                 }}
-                                className="flex-1 px-2 text-[10px] font-semibold text-white/85 hover:bg-white/10 transition-colors"
+                                className="relative w-full cursor-pointer text-left"
                               >
-                                Add to timeline
+                                <div className="h-14 w-full bg-[#111] flex items-center justify-center overflow-hidden">
+                                  {s.renderPreview ? s.renderPreview() : (
+                                    s.preview
+                                      ? <span className={cn("leading-none text-center block px-1", s.previewClass)}>{s.preview}</span>
+                                      : <span className="text-white/20 text-[11px]">⊘</span>
+                                  )}
+                                </div>
+                                <div className="px-2 py-1 flex items-center justify-between bg-[#181818]">
+                                  <span className="text-[9px] font-semibold text-white/60 truncate leading-tight">{s.label}</span>
+                                  {captionStyle === s.id && <Check className="h-2.5 w-2.5 text-white/70 shrink-0 ml-1" />}
+                                  {onTimeline && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shrink-0 ml-1" />}
+                                </div>
                               </button>
+
+                              {menuOpen && (
+                                <div className="absolute inset-0 z-20 flex flex-col bg-[#0d0d0d]/96 backdrop-blur-[2px]">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCaptionStyle(s.id);
+                                      onAddCaptionSegment(s.id, "replace");
+                                      setCaptionApplyMenu(null);
+                                    }}
+                                    className="flex-1 px-2 text-[10px] font-semibold text-white/85 hover:bg-white/10 transition-colors"
+                                  >
+                                    Replace
+                                  </button>
+                                  <div className="h-px bg-white/10 shrink-0" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCaptionStyle(s.id);
+                                      onAddCaptionSegment(s.id, "add");
+                                      setCaptionApplyMenu(null);
+                                    }}
+                                    className="flex-1 px-2 text-[10px] font-semibold text-white/85 hover:bg-white/10 transition-colors"
+                                  >
+                                    Add to timeline
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-
-
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] text-white/50">Font size</span>
-              <span className="text-[11px] font-semibold text-white/60">{captionFontSize}px</span>
-            </div>
-            <input
-              type="range" min={14} max={90} step={2}
-              value={captionFontSize}
-              onChange={e => setCaptionFontSize(Number(e.target.value))}
-              className="w-full accent-white cursor-pointer"
-            />
-            <div className="flex justify-between text-[10px] text-white/20">
-              <span>14px</span><span>90px</span>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] text-white/50">
-                Position
-              </span>
-              {(captionPosX !== 0 || captionPosY !== 0) && (
-                <button
-                  onClick={onResetCaptionPos}
-                  className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
-                >
-                  Reset
-                </button>
-              )}
-            </div>
-            <p className="text-[10px] text-white/30 leading-snug">
-              {captionSegments.length > 1
-                ? "Scrub to each caption segment, then drag on the preview — each style keeps its own position."
-                : "Drag the caption directly on the preview to reposition it."}
-            </p>
-          </div>
-
-          {/* Editable transcript — only shown on mobile (desktop has its own left panel) */}
-          {captionWords.length > 0 && !hideTranscript && (
-            <div className="flex flex-col gap-2">
-              <div className="h-px bg-white/6" />
-              <div className="flex items-center justify-between">
-                <p className="text-[12px] font-medium text-white/70">Transcript</p>
-                <span className="text-[10px] text-white/30">Click any word to edit</span>
-              </div>
-              <div className="flex flex-wrap gap-x-1 gap-y-1.5 rounded-xl border border-white/8 bg-white/3 p-3">
-                {captionWords.map((w, i) => (
-                  <span
-                    key={i}
-                    contentEditable
-                    suppressContentEditableWarning
-                    onBlur={(e) => {
-                      const newWord = e.currentTarget.textContent?.trim();
-                      if (newWord !== undefined && newWord !== w.word) {
-                        const updated = [...captionWords];
-                        updated[i] = { ...w, word: newWord || w.word };
-                        onCaptionWordsChange(updated);
-                      }
-                    }}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
-                    className="text-[12px] text-white/75 rounded px-0.5 -mx-0.5 outline-none hover:bg-white/8 focus:bg-white/12 focus:text-white cursor-text leading-relaxed"
-                  >
-                    {w.word}
-                  </span>
-                ))}
               </div>
             </div>
           )}
 
-          <div className="h-px bg-white/6" />
+          {captionSubTab === "adjust" && (
+            <div className="flex flex-col gap-5 overflow-y-auto no-scrollbar min-h-0 flex-1">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-white/50">Font size</span>
+                  <span className="text-[11px] font-semibold text-white/60">{captionFontSize}px</span>
+                </div>
+                <input
+                  type="range" min={14} max={90} step={2}
+                  value={captionFontSize}
+                  onChange={e => setCaptionFontSize(Number(e.target.value))}
+                  className="w-full accent-white cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-white/20">
+                  <span>14px</span><span>90px</span>
+                </div>
+              </div>
 
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <Languages className="h-3.5 w-3.5 text-white/40" />
-              <p className="text-[12px] font-medium text-white/70">Translate captions</p>
-              {translating && <Loader2 className="h-3 w-3 animate-spin text-white/40 ml-auto" />}
-            </div>
-            {captionLang && (
-              <p className="text-[10px] text-white/25">
-                Current language: <span className="text-white/45">{captionLang}</span>
-              </p>
-            )}
-            <div className="grid grid-cols-3 gap-1.5 mt-1">
-              {TRANSLATE_LANGS.map(l => (
-                <button
-                  key={l.code}
-                  onClick={() => handleTranslate(l.code)}
-                  disabled={translating || l.code === activeLang}
-                  className={cn(
-                    "rounded-lg border py-1.5 text-[10px] font-medium transition-all disabled:opacity-40",
-                    activeLang === l.code
-                      ? "border-white/30 bg-white/10 text-white/80"
-                      : "border-white/8 text-white/35 hover:border-white/20 hover:text-white/60"
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-white/50">Position</span>
+                  {(captionPosX !== 0 || captionPosY !== 0) && (
+                    <button
+                      onClick={onResetCaptionPos}
+                      className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
+                    >
+                      Reset
+                    </button>
                   )}
-                >
-                  {l.label}
-                </button>
-              ))}
+                </div>
+                <p className="text-[10px] text-white/30 leading-snug">
+                  {captionSegments.length > 1
+                    ? "Scrub to each caption segment, then drag on the preview — each style keeps its own position."
+                    : "Drag the caption directly on the preview to reposition it."}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
+
+          {captionSubTab === "transcript" && !hideTranscript && (
+            <div className="flex flex-col gap-2">
+              {captionWords.length > 0 ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[12px] font-medium text-white/70">Transcript</p>
+                    <span className="text-[10px] text-white/30">Tap any word to edit</span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 rounded-xl bg-white/[0.03] p-3 max-h-[240px] overflow-y-auto no-scrollbar">
+                    {captionWords.map((w, i) => (
+                      <span
+                        key={i}
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={(e) => {
+                          const newWord = e.currentTarget.textContent?.trim();
+                          if (newWord !== undefined && newWord !== w.word) {
+                            const updated = [...captionWords];
+                            updated[i] = { ...w, word: newWord || w.word };
+                            onCaptionWordsChange(updated);
+                          }
+                        }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
+                        className="text-[15px] font-semibold text-white/90 rounded px-1 -mx-0.5 outline-none hover:bg-white/8 focus:bg-white/12 focus:text-white cursor-text leading-5 transition-colors"
+                      >
+                        {w.word}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-[12px] text-white/30 text-center py-8">No transcript available yet.</p>
+              )}
+            </div>
+          )}
+
+          {captionSubTab === "translate" && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Languages className="h-3.5 w-3.5 text-white/40" />
+                <p className="text-[12px] font-medium text-white/70">Translate captions</p>
+                {translating && <Loader2 className="h-3 w-3 animate-spin text-white/40 ml-auto" />}
+              </div>
+              {captionLang && (
+                <p className="text-[10px] text-white/25">
+                  Current language: <span className="text-white/45">{captionLang}</span>
+                </p>
+              )}
+              <div className="grid grid-cols-3 gap-1.5 mt-1">
+                {TRANSLATE_LANGS.map(l => (
+                  <button
+                    key={l.code}
+                    onClick={() => handleTranslate(l.code)}
+                    disabled={translating || l.code === activeLang}
+                    className={cn(
+                      "rounded-lg border py-1.5 text-[10px] font-medium transition-all disabled:opacity-40",
+                      activeLang === l.code
+                        ? "border-white/30 bg-white/10 text-white/80"
+                        : "border-white/8 text-white/35 hover:border-white/20 hover:text-white/60"
+                    )}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {activeTab === "text" && (
+      {activeTab === "overlays" && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
+            {OVERLAY_SUB_TABS.map(t => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setOverlaySubTab(t.id)}
+                className={cn(
+                  "flex-1 rounded-full px-2 py-1.5 text-[10px] font-semibold transition-all whitespace-nowrap",
+                  overlaySubTab === t.id
+                    ? "bg-white text-black shadow-sm"
+                    : "text-white/45 hover:text-white/70",
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {overlaySubTab === "text" && (
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <p className="text-[12px] font-medium text-white/70">Text overlays</p>
@@ -1476,9 +1563,9 @@ function EditPanelContent({
             </p>
           )}
         </div>
-      )}
+          )}
 
-      {activeTab === "stickers" && (
+          {overlaySubTab === "stickers" && (
         <StipopStickerPicker
           placedStickers={placedStickers}
           setPlacedStickers={setPlacedStickers}
@@ -1488,6 +1575,15 @@ function EditPanelContent({
           onRemoveSticker={onRemoveSticker}
           onClearStickers={onClearStickers}
         />
+          )}
+
+          {overlaySubTab === "thumbnail" && (
+        <ThumbnailTabContent
+          thumbnailOverlay={thumbnailOverlay}
+          setThumbnailOverlay={setThumbnailOverlay}
+        />
+          )}
+        </div>
       )}
 
       {activeTab === "speed" && (        <div className="flex flex-col gap-4">
@@ -1551,14 +1647,7 @@ function EditPanelContent({
           </button>
         </div>
       )}
-
-      {activeTab === "thumbnail" && (
-        <ThumbnailTabContent
-          thumbnailOverlay={thumbnailOverlay}
-          setThumbnailOverlay={setThumbnailOverlay}
-        />
-      )}
-    </>
+    </div>
   );
 }
 
@@ -2158,6 +2247,11 @@ export default function ClipRefinePage() {
 
   // Close panel on mobile (isMobile resolves after hydration)
   useEffect(() => { if (isMobile) setPanelOpen(false); }, [isMobile]);
+
+  // Upload tab is desktop-only — leave it if somehow active on phone
+  useEffect(() => {
+    if (isMobile && activeTab === "upload") setActiveTab("captions");
+  }, [isMobile, activeTab]);
 
   // Transcript panel resize
   const [transcriptWidth, setTranscriptWidth] = useState(300);
@@ -3079,12 +3173,27 @@ export default function ClipRefinePage() {
     mode: "add" | "replace" = "add",
   ) => {
     const effectiveDur = (trimEnd > 0 ? trimEnd : duration) - trimStart;
-    if (effectiveDur <= 0 || !captionApiRef.current) return;
+    if (!captionApiRef.current) return;
+
+    // "None" means clear all caption segments — never place a None block on the timeline
+    if (style === "none") {
+      captionSegments.forEach(seg => captionApiRef.current?.removeSegment(seg.id));
+      setCaptionStyle("none");
+      return;
+    }
+
+    if (effectiveDur <= 0) return;
 
     // Toggle: if a segment with this style exists, remove it
     const existing = captionSegments.find(seg => seg.style === style);
     if (existing) {
       captionApiRef.current.removeSegment(existing.id);
+      // Keep preview in sync — empty timeline should not keep rendering this style
+      const remaining = captionSegments.filter(seg => seg.id !== existing.id);
+      setCaptionStyle(prev => {
+        if (prev !== style) return prev;
+        return remaining[0]?.style ?? "none";
+      });
       return;
     }
 
@@ -3189,17 +3298,15 @@ export default function ClipRefinePage() {
       type="button"
       onClick={() => handleMobileTab(id)}
       className={cn(
-        "flex flex-col items-center justify-center gap-0.5 w-11 py-1.5 rounded-xl border backdrop-blur-sm transition-all cursor-pointer",
+        "flex flex-1 flex-col items-center justify-center gap-0.5 h-12 rounded-lg transition-colors cursor-pointer",
         activeTab === id && mobileDrawerOpen
-          ? "border-white/25 bg-white/15 text-white"
-          : "border-white/10 bg-black/55 text-white/55 active:bg-white/10 active:text-white",
+          ? "text-white"
+          : "text-white/35 active:text-white/70",
       )}
       aria-label={label}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0" />
-      <span className="text-[8px] font-medium leading-tight text-center px-0.5 truncate max-w-full">
-        {label === "Watermark" ? "Mark" : label}
-      </span>
+      <Icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+      <span className="text-[9px] font-medium">{label}</span>
     </button>
   );
 
@@ -3249,13 +3356,26 @@ export default function ClipRefinePage() {
           to   { transform: translateY(-50%); }
         }
       `}</style>
-      <Sidebar />
-      <Topbar />
+      <Sidebar hideMobileBar />
+      <Topbar
+        left={
+          isMobile ? (
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[13px] font-medium text-white/70 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back</span>
+            </button>
+          ) : null
+        }
+      />
 
       <main
         className={cn(
           "mt-12 flex-1 flex overflow-hidden relative",
-          isMobile ? "flex-col ml-0 pb-[3.25rem]" : "flex-row ml-14 pb-0"
+          isMobile ? "flex-col ml-0" : "flex-row ml-14 pb-0"
         )}
         style={{ height: "calc(100vh - 48px)" }}
       >
@@ -3337,22 +3457,20 @@ export default function ClipRefinePage() {
 
           {/* Video preview */}
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-black items-center justify-center relative">
-          <button
-            onClick={() => router.back()}
-            className="absolute top-3 left-3 z-20 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 text-[11px] text-white/50 hover:text-white transition-colors backdrop-blur-sm"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Back</span>
-          </button>
-
-          {/* Mobile: all edit tools — vertically centered on the left */}
-          {isMobile && (
-            <div className="absolute top-1/2 left-2 z-20 -translate-y-1/2 flex flex-col gap-1 pointer-events-auto">
-              {MOBILE_SIDE_TABS.map(renderMobileSideTab)}
-            </div>
+          {/* Desktop only — Back stays on the preview */}
+          {!isMobile && (
+            <button
+              onClick={() => router.back()}
+              className="absolute top-3 left-3 z-20 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 text-[11px] text-white/50 hover:text-white transition-colors backdrop-blur-sm"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Back</span>
+            </button>
           )}
 
-          {/* Mobile side panel — confined to the preview frame above the timeline */}
+          {/* Mobile edit tools moved to bottom bar */}
+
+          {/* Mobile panel — bottom sheet above the tool bar */}
           {isMobile && mobileDrawerOpen && (
             <button
               type="button"
@@ -3364,15 +3482,15 @@ export default function ClipRefinePage() {
           {isMobile && drawerMounted && (
             <div
               className={cn(
-                "absolute top-0 bottom-0 left-0 z-[45] flex flex-col bg-[#111] border-r border-white/10 rounded-r-2xl shadow-[0_0_48px_rgba(0,0,0,0.8)]",
-                "transition-transform duration-300 ease-out w-[min(78%,280px)]",
+                "absolute left-0 right-0 bottom-0 z-[45] flex flex-col bg-[#111] border-t border-white/10 rounded-t-2xl shadow-[0_0_48px_rgba(0,0,0,0.8)]",
+                "transition-transform duration-300 ease-out h-[min(58%,420px)]",
                 !mobileDrawerOpen && "pointer-events-none",
               )}
               style={{
-                transform: mobileDrawerOpen ? "translateX(0)" : "translateX(-105%)",
+                transform: mobileDrawerOpen ? "translateY(0)" : "translateY(105%)",
               }}
             >
-              <div className="flex items-center justify-between px-3 pt-2.5 pb-2 shrink-0 border-b border-white/6">
+              <div className="flex items-center justify-between px-3 pt-2.5 pb-2 shrink-0">
                 <p className="text-[13px] font-semibold text-white">{activeTabLabel}</p>
                 <button
                   onClick={closeDrawer}
@@ -3382,13 +3500,16 @@ export default function ClipRefinePage() {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto px-3 py-2.5 no-scrollbar min-h-0">
-                <EditPanelContent {...editPanelProps} styleGridMaxHeight={160} />
+                <EditPanelContent {...editPanelProps} styleGridMaxHeight={280} />
               </div>
             </div>
           )}
 
-          {/* Aspect ratio + mobile export (top right) */}
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
+          {/* Aspect ratio — left on mobile (replaces Back), right on desktop with export */}
+          <div className={cn(
+            "absolute top-3 z-20 flex items-center gap-1.5",
+            isMobile ? "left-3" : "right-3",
+          )}>
             <div ref={arDropdownRef} className="relative">
             <button
               onClick={() => setArDropdownOpen(o => !o)}
@@ -3408,7 +3529,13 @@ export default function ClipRefinePage() {
             </button>
 
             {arDropdownOpen && (
-              <div className="absolute right-0 top-full mt-1.5 flex flex-col rounded-2xl border border-white/10 bg-[#111] shadow-2xl overflow-hidden" style={{ minWidth: 200 }}>
+              <div
+                className={cn(
+                  "absolute top-full mt-1.5 flex flex-col rounded-2xl border border-white/10 bg-[#111] shadow-2xl overflow-hidden",
+                  isMobile ? "left-0" : "right-0",
+                )}
+                style={{ minWidth: 200 }}
+              >
 
                 {/* Aspect ratio section */}
                 <div className="px-3 pt-3 pb-1.5">
@@ -3533,7 +3660,11 @@ export default function ClipRefinePage() {
               </div>
             )}
             </div>
-            {isMobile && (
+          </div>
+
+          {/* Mobile export — stays top-right */}
+          {isMobile && (
+            <div className="absolute top-3 right-3 z-20">
               <ExportClipButton
                 exportPhase={exportPhase === "error" ? "idle" : exportPhase}
                 exportProgress={exportProgress}
@@ -3545,19 +3676,19 @@ export default function ClipRefinePage() {
                 className="backdrop-blur-sm shadow-lg"
                 creditCost={exportCreditCost}
               />
-            )}
-          </div>
+            </div>
+          )}
 
           <div className={cn(
             "relative flex items-center justify-center w-full flex-1 min-h-0 overflow-hidden",
             !isMobile && "px-6 py-8",
-            isMobile && "pl-14 pr-3 py-3"
+            isMobile && "px-3 py-3"
           )}>
             {src ? (
               <div
                 ref={videoContainerRef}
                 className={cn(
-                  "relative overflow-hidden shadow-2xl shadow-black/80 shrink-0",
+                  "relative overflow-hidden shadow-2xl shadow-black/80 shrink-0 border border-white/[0.12]",
                   !isMobile && "md:rounded-2xl",
                   isMobile && "rounded-xl"
                 )}
@@ -4058,6 +4189,15 @@ export default function ClipRefinePage() {
             )}
           </div>
           )}
+
+          {/* Mobile: edit tools as bottom bar (matches dashboard MobileBottomBar) */}
+          {isMobile && (
+            <nav className="shrink-0 w-full border-t border-white/10 bg-[#0a0a0a]">
+              <div className="flex items-center px-2 pb-2">
+                {MOBILE_SIDE_TABS.map(renderMobileSideTab)}
+              </div>
+            </nav>
+          )}
         </div>{/* closes outer flex-col (video area wrapper) */}
 
         {/* ── Desktop: collapsible icon sidebar + sliding panel ── */}
@@ -4085,7 +4225,7 @@ export default function ClipRefinePage() {
                     </button>
                   ))}
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
                   <EditPanelContent {...editPanelProps} hideTranscript={true} />
                 </div>
                 <div className="p-4 border-t border-white/6 shrink-0">
