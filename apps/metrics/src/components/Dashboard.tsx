@@ -4,6 +4,18 @@ import { useEffect, useState } from "react";
 import { clearAuth, metricsFetch } from "@/lib/api";
 import { SEGMENT_ORDER, type SalesSegmentId } from "@/lib/segment-meta";
 
+type PlanFilter = "all" | "free" | "core" | "growth" | "scale";
+type StatusFilter = "all" | "active" | "inactive" | "cancelled" | "free";
+type ActivityFilter =
+  | "all"
+  | "has_projects"
+  | "never_started"
+  | "has_exports"
+  | "no_exports"
+  | "topped_up";
+type SignupFilter = "all" | "7d" | "30d";
+type OnboardedFilter = "all" | "yes" | "no";
+
 type UsersPayload = {
   totalUsers: number;
   page: number;
@@ -12,8 +24,88 @@ type UsersPayload = {
   totalInView: number;
   sort: string;
   q?: string;
+  filters?: {
+    plan: PlanFilter;
+    status: StatusFilter;
+    activity: ActivityFilter;
+    signup: SignupFilter;
+    onboarded: OnboardedFilter;
+  };
   users: UserRow[];
 };
+
+type FilterPill<T extends string> = { id: T; label: string };
+
+const PLAN_FILTERS: FilterPill<PlanFilter>[] = [
+  { id: "all", label: "All" },
+  { id: "free", label: "Free" },
+  { id: "core", label: "Core" },
+  { id: "growth", label: "Growth" },
+  { id: "scale", label: "Scale" },
+];
+
+const STATUS_FILTERS: FilterPill<StatusFilter>[] = [
+  { id: "all", label: "All" },
+  { id: "active", label: "Active" },
+  { id: "inactive", label: "Inactive" },
+  { id: "cancelled", label: "Cancelled" },
+  { id: "free", label: "Free status" },
+];
+
+const ACTIVITY_FILTERS: FilterPill<ActivityFilter>[] = [
+  { id: "all", label: "All" },
+  { id: "has_projects", label: "Has projects" },
+  { id: "never_started", label: "Never started" },
+  { id: "has_exports", label: "Has exports" },
+  { id: "no_exports", label: "No exports" },
+  { id: "topped_up", label: "Topped up" },
+];
+
+const SIGNUP_FILTERS: FilterPill<SignupFilter>[] = [
+  { id: "all", label: "All time" },
+  { id: "7d", label: "Last 7d" },
+  { id: "30d", label: "Last 30d" },
+];
+
+const ONBOARDED_FILTERS: FilterPill<OnboardedFilter>[] = [
+  { id: "all", label: "All" },
+  { id: "yes", label: "Onboarded" },
+  { id: "no", label: "Not onboarded" },
+];
+
+function FilterPills<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: FilterPill<T>[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="w-16 shrink-0 text-[11px] uppercase tracking-wide text-white/35">
+        {label}
+      </span>
+      {options.map((opt) => (
+        <button
+          key={opt.id}
+          type="button"
+          onClick={() => onChange(opt.id)}
+          className={`rounded-full border px-3 py-1.5 text-[12px] ${
+            value === opt.id
+              ? "border-white/20 bg-white text-black"
+              : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10 hover:text-white/80"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 type Overview = {
   generatedAt: string;
@@ -477,9 +569,21 @@ function PeoplePanel({
   const [query, setQuery] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(1);
+  const [plan, setPlan] = useState<PlanFilter>("all");
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [activity, setActivity] = useState<ActivityFilter>("all");
+  const [signup, setSignup] = useState<SignupFilter>("all");
+  const [onboarded, setOnboarded] = useState<OnboardedFilter>("all");
   const [data, setData] = useState<UsersPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const filtersActive =
+    plan !== "all" ||
+    status !== "all" ||
+    activity !== "all" ||
+    signup !== "all" ||
+    onboarded !== "all";
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(query.trim()), 300);
@@ -498,6 +602,11 @@ function PeoplePanel({
           sort: "signup",
         });
         if (debouncedQ) params.set("q", debouncedQ);
+        if (plan !== "all") params.set("plan", plan);
+        if (status !== "all") params.set("status", status);
+        if (activity !== "all") params.set("activity", activity);
+        if (signup !== "all") params.set("signup", signup);
+        if (onboarded !== "all") params.set("onboarded", onboarded);
         const res = await metricsFetch<UsersPayload>(`/users?${params}`);
         if (!cancelled) setData(res);
       } catch (err) {
@@ -517,13 +626,22 @@ function PeoplePanel({
     };
     // onAuthError is stable enough for logout redirect; omit to avoid refetch loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQ, page]);
+  }, [debouncedQ, page, plan, status, activity, signup, onboarded]);
+
+  function resetFilters() {
+    setPlan("all");
+    setStatus("all");
+    setActivity("all");
+    setSignup("all");
+    setOnboarded("all");
+    setPage(1);
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-white/45">
-          Search anyone by name, email, or username.
+          Search and filter anyone by plan, status, and usage.
         </p>
         <label className="relative block w-full sm:max-w-sm">
           <span className="sr-only">Search people</span>
@@ -541,6 +659,65 @@ function PeoplePanel({
         </label>
       </div>
 
+      <div className="space-y-3 rounded-2xl border border-white/8 bg-[#141414] p-4">
+        <FilterPills
+          label="Plan"
+          options={PLAN_FILTERS}
+          value={plan}
+          onChange={(v) => {
+            setPlan(v);
+            setPage(1);
+          }}
+        />
+        <FilterPills
+          label="Status"
+          options={STATUS_FILTERS}
+          value={status}
+          onChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
+        />
+        <FilterPills
+          label="Usage"
+          options={ACTIVITY_FILTERS}
+          value={activity}
+          onChange={(v) => {
+            setActivity(v);
+            setPage(1);
+          }}
+        />
+        <FilterPills
+          label="Signup"
+          options={SIGNUP_FILTERS}
+          value={signup}
+          onChange={(v) => {
+            setSignup(v);
+            setPage(1);
+          }}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <FilterPills
+            label="Onboard"
+            options={ONBOARDED_FILTERS}
+            value={onboarded}
+            onChange={(v) => {
+              setOnboarded(v);
+              setPage(1);
+            }}
+          />
+          {filtersActive && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/55 hover:bg-white/10 hover:text-white/80"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      </div>
+
       {error && (
         <p className="rounded-xl border border-white/12 bg-white/5 px-3 py-2 text-sm text-white/70">
           {error}
@@ -555,7 +732,9 @@ function PeoplePanel({
             <span>
               {debouncedQ
                 ? `${data?.totalInView ?? 0} match${(data?.totalInView ?? 0) === 1 ? "" : "es"} for “${debouncedQ}”`
-                : `${data?.totalInView ?? 0} recent signups`}
+                : filtersActive
+                  ? `${data?.totalInView ?? 0} people match filters`
+                  : `${data?.totalInView ?? 0} recent signups`}
             </span>
             {loading && <span>Updating…</span>}
           </div>

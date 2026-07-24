@@ -453,6 +453,31 @@ export async function getOverview() {
 
 export type UsersSort = "recent" | "projects" | "clips" | "exports" | "signup";
 
+export type PlanFilter = "all" | "free" | "core" | "growth" | "scale";
+export type StatusFilter =
+  | "all"
+  | "active"
+  | "inactive"
+  | "cancelled"
+  | "free";
+export type ActivityFilter =
+  | "all"
+  | "has_projects"
+  | "never_started"
+  | "has_exports"
+  | "no_exports"
+  | "topped_up";
+export type SignupFilter = "all" | "7d" | "30d";
+export type OnboardedFilter = "all" | "yes" | "no";
+
+export type UsersListFilters = {
+  plan?: PlanFilter;
+  status?: StatusFilter;
+  activity?: ActivityFilter;
+  signup?: SignupFilter;
+  onboarded?: OnboardedFilter;
+};
+
 function escapeRegex(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -484,26 +509,168 @@ function userSearchFilter(q: string): Record<string, unknown> | null {
   return { $or: or };
 }
 
+function normalizePlan(v?: string): PlanFilter {
+  if (v === "free" || v === "core" || v === "growth" || v === "scale") return v;
+  return "all";
+}
+
+function normalizeStatus(v?: string): StatusFilter {
+  if (
+    v === "active" ||
+    v === "inactive" ||
+    v === "cancelled" ||
+    v === "free"
+  ) {
+    return v;
+  }
+  return "all";
+}
+
+function normalizeActivity(v?: string): ActivityFilter {
+  if (
+    v === "has_projects" ||
+    v === "never_started" ||
+    v === "has_exports" ||
+    v === "no_exports" ||
+    v === "topped_up"
+  ) {
+    return v;
+  }
+  return "all";
+}
+
+function normalizeSignup(v?: string): SignupFilter {
+  if (v === "7d" || v === "30d") return v;
+  return "all";
+}
+
+function normalizeOnboarded(v?: string): OnboardedFilter {
+  if (v === "yes" || v === "no") return v;
+  return "all";
+}
+
+export function parseUsersListFilters(
+  sp: URLSearchParams | { get(name: string): string | null }
+): UsersListFilters {
+  return {
+    plan: normalizePlan(sp.get("plan") ?? undefined),
+    status: normalizeStatus(sp.get("status") ?? undefined),
+    activity: normalizeActivity(sp.get("activity") ?? undefined),
+    signup: normalizeSignup(sp.get("signup") ?? undefined),
+    onboarded: normalizeOnboarded(sp.get("onboarded") ?? undefined),
+  };
+}
+
+function hasActiveListFilters(filters: UsersListFilters, q?: string) {
+  return Boolean(
+    q?.trim() ||
+      (filters.plan && filters.plan !== "all") ||
+      (filters.status && filters.status !== "all") ||
+      (filters.activity && filters.activity !== "all") ||
+      (filters.signup && filters.signup !== "all") ||
+      (filters.onboarded && filters.onboarded !== "all")
+  );
+}
+
+async function buildUsersListFilter(
+  opts: UsersListFilters & { q?: string; maps: ActivityMaps }
+): Promise<Record<string, unknown>> {
+  const and: Record<string, unknown>[] = [];
+
+  const search = userSearchFilter(opts.q ?? "");
+  if (search) and.push(search);
+
+  if (opts.status && opts.status !== "all") {
+    and.push({ subscriptionStatus: opts.status });
+  }
+
+  if (opts.onboarded === "yes") and.push({ isOnboarded: true });
+  if (opts.onboarded === "no") and.push({ isOnboarded: { $ne: true } });
+
+  if (opts.signup === "7d") and.push({ createdAt: { $gte: daysAgo(7) } });
+  if (opts.signup === "30d") and.push({ createdAt: { $gte: daysAgo(30) } });
+
+  if (opts.plan && opts.plan !== "all") {
+    if (opts.plan === "free") {
+      // Missing credits docs also count as free in the UI
+      const paidIds = await UserCredits.distinct("_id", {
+        plan: { $ne: "free" },
+      });
+      if (paidIds.length > 0) and.push({ _id: { $nin: paidIds } });
+    } else {
+      const ids = await UserCredits.distinct("_id", { plan: opts.plan });
+      and.push({ _id: { $in: ids } });
+    }
+  }
+
+  if (opts.activity && opts.activity !== "all") {
+    const { maps } = opts;
+    if (opts.activity === "has_projects") {
+      const ids = [...maps.projects.entries()]
+        .filter(([, p]) => p.projectCount > 0)
+        .map(([id]) => id);
+      and.push({ _id: { $in: ids } });
+    } else if (opts.activity === "never_started") {
+      const ids = [...maps.projects.keys()];
+      if (ids.length > 0) and.push({ _id: { $nin: ids } });
+    } else if (opts.activity === "has_exports") {
+      const ids = [...maps.exports.entries()]
+        .filter(([, e]) => e.exportDoneCount > 0)
+        .map(([id]) => id);
+      and.push({ _id: { $in: ids } });
+    } else if (opts.activity === "no_exports") {
+      const withExports = new Set(
+        [...maps.exports.entries()]
+          .filter(([, e]) => e.exportDoneCount > 0)
+          .map(([id]) => id)
+      );
+      const ids = [...maps.projects.entries()]
+        .filter(([id, p]) => p.projectCount > 0 && !withExports.has(id))
+        .map(([id]) => id);
+      and.push({ _id: { $in: ids } });
+    } else if (opts.activity === "topped_up") {
+      const ids = [...maps.topups.keys()];
+      and.push({ _id: { $in: ids } });
+    }
+  }
+
+  if (and.length === 0) return {};
+  if (and.length === 1) return and[0]!;
+  return { $and: and };
+}
+
 export async function getUsersMetrics(opts?: {
   page?: number;
   limit?: number;
   sort?: UsersSort;
   q?: string;
   maps?: ActivityMaps;
-}) {
+} & UsersListFilters) {
   const page = clampPage(opts?.page ?? 1);
   const limit = clampLimit(opts?.limit ?? DEFAULT_PAGE_SIZE);
   const sort = opts?.sort ?? "recent";
-  const search = userSearchFilter(opts?.q ?? "");
+  const filters: UsersListFilters = {
+    plan: normalizePlan(opts?.plan),
+    status: normalizeStatus(opts?.status),
+    activity: normalizeActivity(opts?.activity),
+    signup: normalizeSignup(opts?.signup),
+    onboarded: normalizeOnboarded(opts?.onboarded),
+  };
   const maps = opts?.maps ?? (await getActivityMaps());
+  const useDbList =
+    sort === "signup" || hasActiveListFilters(filters, opts?.q);
 
   const totalUsers = await User.countDocuments();
 
-  // Paginated list: for activity sorts, rank from maps; for signup/search use DB skip/limit
+  // Paginated list: for activity sorts, rank from maps; for signup/search/filters use DB skip/limit
   let pageRows: UserMetricsRow[] = [];
 
-  if (search || sort === "signup") {
-    const filter = search ?? {};
+  if (useDbList) {
+    const filter = await buildUsersListFilter({
+      ...filters,
+      q: opts?.q,
+      maps,
+    });
     const [matchedTotal, users] = await Promise.all([
       User.countDocuments(filter),
       User.find(filter)
@@ -532,8 +699,11 @@ export async function getUsersMetrics(opts?: {
       limit,
       totalPages,
       totalInView: matchedTotal,
-      sort: search ? ("signup" as const) : sort,
+      sort: hasActiveListFilters(filters, opts?.q)
+        ? ("signup" as const)
+        : sort,
       q: opts?.q?.trim() || undefined,
+      filters,
       users: pageRows,
     };
   }
@@ -579,6 +749,7 @@ export async function getUsersMetrics(opts?: {
     totalPages,
     totalInView: totalRanked,
     sort,
+    filters,
     users: pageRows,
   };
 }
