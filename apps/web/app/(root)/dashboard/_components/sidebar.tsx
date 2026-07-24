@@ -32,7 +32,10 @@ function MobileBottomBar({ nav, path }: { nav: typeof NAV; path: string }) {
   if (!isMobile) return null;
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#0a0a0a]">
-      <div className="flex items-center px-2 pb-2">
+      <div
+        className="flex items-center px-2 pt-0.5"
+        style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+      >
         {nav.map(({ icon, label, href, exact }) => (
           <MobileNavLink key={href} icon={icon} label={label} href={href} exact={exact} />
         ))}

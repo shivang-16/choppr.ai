@@ -423,6 +423,8 @@ interface EditPanelProps {
   onToggleSticker?: (s: StipopSticker) => void;
   onRemoveSticker?: (id: string) => void;
   onClearStickers?: () => void;
+  /** Mobile: one sticker at a time (no timeline). */
+  stickerSingleSelect?: boolean;
   onAddToTimeline?: (asset: {
     type: "video" | "audio" | "image";
     url: string;
@@ -446,7 +448,7 @@ const STIPOP_CATEGORIES = [
 ];
 
 function StipopStickerPicker({
-  placedStickers, setPlacedStickers, segmentationReady, styleGridMaxHeight = 360, onToggleSticker, onRemoveSticker, onClearStickers,
+  placedStickers, setPlacedStickers, segmentationReady, styleGridMaxHeight = 360, onToggleSticker, onRemoveSticker, onClearStickers, singleSelect = false,
 }: {
   placedStickers: PlacedSticker[];
   setPlacedStickers: React.Dispatch<React.SetStateAction<PlacedSticker[]>>;
@@ -455,6 +457,8 @@ function StipopStickerPicker({
   onToggleSticker?: (s: StipopSticker) => void;
   onRemoveSticker?: (id: string) => void;
   onClearStickers?: () => void;
+  /** Mobile: one sticker at a time (no timeline to manage multi timing). */
+  singleSelect?: boolean;
 }) {
   // "trending" | "category" | "search" | "pack"
   type ViewMode = "trending" | "category" | "search" | "pack";
@@ -533,6 +537,15 @@ function StipopStickerPicker({
     const isPlaced = placedStickers.some(ps => ps.stickerId === key);
     if (isPlaced) {
       setPlacedStickers(placedStickers.filter(ps => ps.stickerId !== key));
+    } else if (singleSelect) {
+      setPlacedStickers([{
+        stickerId:  key,
+        stickerUrl: s.renderUrl,
+        previewUrl: s.previewUrl,
+        x: 0.5,
+        y: 0.5,
+        scale: 1,
+      }]);
     } else {
       setPlacedStickers([...placedStickers, {
         stickerId:  key,
@@ -709,7 +722,9 @@ function StipopStickerPicker({
         <div className="flex flex-col gap-2">
           <div className="h-px bg-white/6" />
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-medium text-white/50">Placed ({placedStickers.length})</p>
+            <p className="text-[10px] font-medium text-white/50">
+              {singleSelect ? "Selected" : `Placed (${placedStickers.length})`}
+            </p>
             <button
               onClick={() => {
                 if (onClearStickers) onClearStickers();
@@ -717,7 +732,7 @@ function StipopStickerPicker({
               }}
               className="text-[10px] text-white/25 hover:text-red-400 transition-colors"
             >
-              Remove all
+              {singleSelect ? "Remove" : "Remove all"}
             </button>
           </div>
           {placedStickers.map((ps, i) => (
@@ -754,6 +769,11 @@ function StipopStickerPicker({
               </button>
             </div>
           ))}
+          {singleSelect && (
+            <p className="text-[10px] text-white/25 text-center">
+              Tap another sticker to replace · drag on video to reposition
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -1091,6 +1111,7 @@ function EditPanelContent({
   placedStickers, setPlacedStickers, segmentationReady,
   textOverlays, setTextOverlays, selectedTextId, setSelectedTextId,
   onAddTextOverlay, onRemoveTextOverlay, onToggleSticker, onRemoveSticker, onClearStickers,
+  stickerSingleSelect = false,
   onAddToTimeline,
   thumbnailOverlay, setThumbnailOverlay,
 }: EditPanelProps) {
@@ -1574,6 +1595,7 @@ function EditPanelContent({
           onToggleSticker={onToggleSticker}
           onRemoveSticker={onRemoveSticker}
           onClearStickers={onClearStickers}
+          singleSelect={stickerSingleSelect}
         />
           )}
 
@@ -2976,14 +2998,13 @@ export default function ClipRefinePage() {
   }, []);
 
   const isOverlayVisible = useCallback((startTime: number | undefined, duration: number | undefined) => {
-    // If no startTime defined, always show (backwards compat)
+    // If no startTime defined, always show (mobile single-select / backwards compat)
     if (startTime === undefined || startTime === null) return true;
-    // Use raw timeline cursor position — overlay startTime/duration are in timeline coordinates.
-    // This is correct regardless of speed or trimStart because the text/sticker elements
-    // sit at absolute timeline positions (not source-video positions).
+    // On mobile there is no timeline — drive visibility from the scrubber clock.
+    const t = isMobile ? currentTime : timelineTime;
     const dur = duration ?? DEFAULT_OVERLAY_DUR;
-    return timelineTime >= startTime - 0.05 && timelineTime < startTime + dur + 0.05;
-  }, [timelineTime]);
+    return t >= startTime - 0.05 && t < startTime + dur + 0.05;
+  }, [isMobile, currentTime, timelineTime]);
 
   const handleOverlayTimingChange = useCallback((items: OverlayTimingItem[]) => {
     // Cap duration: if timeline reports a duration >= video duration, it's a Twick default
@@ -3111,6 +3132,24 @@ export default function ClipRefinePage() {
         overlayApiRef.current?.removeById(key);
         return prev.filter(ps => ps.stickerId !== key);
       }
+
+      // Mobile: one sticker only (no timeline to manage multi timing) — same as captions.
+      if (isMobile) {
+        for (const ps of prev) {
+          timelineOverlayIdsRef.current.delete(ps.stickerId);
+          overlayApiRef.current?.removeById(ps.stickerId);
+        }
+        return [{
+          stickerId: key,
+          stickerUrl: s.renderUrl,
+          previewUrl: s.previewUrl,
+          x: 0.5,
+          y: 0.5,
+          scale: 1,
+          // Always visible for the whole clip on mobile
+        }];
+      }
+
       const start = overlayApiRef.current?.getCurrentTime() ?? currentTime;
       void overlayApiRef.current?.addSticker({
         id: key,
@@ -3131,7 +3170,7 @@ export default function ClipRefinePage() {
         duration: DEFAULT_OVERLAY_DUR,
       }];
     });
-  }, [currentTime]);
+  }, [currentTime, isMobile]);
 
   const handleRemoveSticker = useCallback((id: string) => {
     setPlacedStickers(prev => prev.filter(ps => ps.stickerId !== id));
@@ -3273,6 +3312,7 @@ export default function ClipRefinePage() {
     onToggleSticker: handleToggleSticker,
     onRemoveSticker: handleRemoveSticker,
     onClearStickers: handleClearStickers,
+    stickerSingleSelect: isMobile,
     onAddToTimeline: (asset) => {
       void mediaApiRef.current?.addMedia(asset);
     },
@@ -3311,7 +3351,7 @@ export default function ClipRefinePage() {
   );
 
   return (
-    <div className="flex min-h-screen bg-[#0a0a0a]">
+    <div className="flex h-[100svh] max-h-[100svh] overflow-hidden bg-[#0a0a0a]">
       <style>{`
         @keyframes chopprAurora {
           0%   { transform: translate(0%,0%) scale(1.1); }
@@ -3377,7 +3417,7 @@ export default function ClipRefinePage() {
           "mt-12 flex-1 flex overflow-hidden relative",
           isMobile ? "flex-col ml-0" : "flex-row ml-14 pb-0"
         )}
-        style={{ height: "calc(100vh - 48px)" }}
+        style={{ height: "calc(100svh - 48px)" }}
       >
 
         {/* ── Video area: transcript (left) + drag handle + video preview (right) ── */}
@@ -4094,7 +4134,7 @@ export default function ClipRefinePage() {
 
           {/* ── Timeline (desktop) / simple playback (mobile, temporary) ── */}
           {isMobile ? (
-            <div className="shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a] px-4 pb-3 pt-2 pb-safe">
+            <div className="shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a] px-4 pb-3 pt-2">
               <input
                 type="range"
                 min={0}
@@ -4190,10 +4230,14 @@ export default function ClipRefinePage() {
           </div>
           )}
 
-          {/* Mobile: edit tools as bottom bar (matches dashboard MobileBottomBar) */}
+          {/* Mobile: edit tools bar — in-flow inside svh layout so it stays
+              above mobile browser chrome (fixed bottom-0 sits under it on iOS). */}
           {isMobile && (
-            <nav className="shrink-0 w-full border-t border-white/10 bg-[#0a0a0a]">
-              <div className="flex items-center px-2 pb-2">
+            <nav className="shrink-0 w-full border-t border-white/10 bg-[#0a0a0a] z-40">
+              <div
+                className="flex items-center px-2 pt-0.5"
+                style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+              >
                 {MOBILE_SIDE_TABS.map(renderMobileSideTab)}
               </div>
             </nav>
