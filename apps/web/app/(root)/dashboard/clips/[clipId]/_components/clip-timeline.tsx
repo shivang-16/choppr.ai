@@ -56,6 +56,7 @@ import {
 import { TimelineMediaLengthClamp } from "./timeline-media-length-clamp";
 import {
   TimelineCaptionBridge,
+  CAPTION_TRACK,
   type CaptionTrackApi,
   type CaptionSegment,
 } from "./timeline-caption-bridge";
@@ -942,6 +943,8 @@ function ClipTimelineControls({
   userSeekRef,
   onResetAll,
   isMobile = false,
+  captionApiRef,
+  captionSpan = 0,
 }: {
   zoomConfig: TimelineZoomConfig;
   trackZoom: number;
@@ -954,6 +957,9 @@ function ClipTimelineControls({
   userSeekRef: MutableRefObject<number | null>;
   onResetAll?: () => void;
   isMobile?: boolean;
+  captionApiRef?: MutableRefObject<CaptionTrackApi | null>;
+  /** Timeline span used when re-splitting captions equally after delete. */
+  captionSpan?: number;
 }) {
   const {
     currentTime,
@@ -1021,6 +1027,21 @@ function ClipTimelineControls({
   );
 
   const handleDelete = useCallback(() => {
+    const captionTrack = editor.getTimelineData()?.tracks?.find(t => t.getName() === CAPTION_TRACK);
+    const captionIds = new Set(captionTrack?.getElements().map(el => el.getId()) ?? []);
+    let removedCaption = false;
+
+    const markCaptionRemovals = (ids: Iterable<string>) => {
+      for (const id of ids) {
+        if (captionIds.has(id)) removedCaption = true;
+      }
+    };
+
+    const resplitCaptionsIfNeeded = () => {
+      if (!removedCaption || !captionApiRef?.current || captionSpan <= 0) return;
+      captionApiRef.current.resplitEqual(captionSpan);
+    };
+
     if (selectionContainsProtected(selectedIds, protectedClipId, editor)) {
       // Delete everything selected except the protected main clip
       const toRemove: string[] = [];
@@ -1038,19 +1059,24 @@ function ClipTimelineControls({
             }
             continue;
           }
+          if (track.getName() === CAPTION_TRACK) removedCaption = true;
           editor.removeTrack(track);
           continue;
         }
         toRemove.push(id);
       }
+      markCaptionRemovals(toRemove);
       if (toRemove.length) {
         editor.removeElements(toRemove);
         editor.refresh();
       }
+      resplitCaptionsIfNeeded();
       return;
     }
+    markCaptionRemovals(selectedIds);
     deleteItem();
-  }, [selectedIds, protectedClipId, editor, deleteItem]);
+    resplitCaptionsIfNeeded();
+  }, [selectedIds, protectedClipId, editor, deleteItem, captionApiRef, captionSpan]);
 
   // Block Delete/Backspace from removing the main clip via keyboard
   useEffect(() => {
@@ -1210,6 +1236,8 @@ function ClipTimelineInner(props: ClipTimelineProps) {
           userSeekRef={userSeekRef}
           onResetAll={props.onResetAll}
           isMobile={props.isMobile}
+          captionApiRef={props.captionApiRef}
+          captionSpan={Math.max(0, (props.trimEnd > 0 ? props.trimEnd : props.duration) - props.trimStart)}
         />
       </div>
     </div>

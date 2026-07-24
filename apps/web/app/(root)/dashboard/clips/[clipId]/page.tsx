@@ -1203,9 +1203,11 @@ function EditPanelContent({
                               ref={menuOpen ? captionApplyMenuRef : undefined}
                               className={cn(
                                 "relative rounded-xl border transition-all overflow-hidden",
-                                onTimeline || menuOpen
-                                  ? "border-white/50 ring-1 ring-white/20"
-                                  : "border-white/8 bg-white/3 hover:border-white/20",
+                                menuOpen
+                                  ? "border-white ring-2 ring-white/40 shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_8px_24px_rgba(0,0,0,0.55)] z-10 scale-[1.02]"
+                                  : onTimeline
+                                    ? "border-white/50 ring-1 ring-white/20"
+                                    : "border-white/8 bg-white/3 hover:border-white/20",
                               )}
                             >
                               <button
@@ -1256,7 +1258,7 @@ function EditPanelContent({
                               </button>
 
                               {menuOpen && (
-                                <div className="absolute inset-0 z-20 flex flex-col bg-[#0d0d0d]/96 backdrop-blur-[2px]">
+                                <div className="absolute inset-0 z-20 flex flex-col bg-black/90 backdrop-blur-sm ring-1 ring-inset ring-white/25">
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -1264,11 +1266,11 @@ function EditPanelContent({
                                       onAddCaptionSegment(s.id, "replace");
                                       setCaptionApplyMenu(null);
                                     }}
-                                    className="flex-1 px-2 text-[10px] font-semibold text-white/85 hover:bg-white/10 transition-colors"
+                                    className="flex-1 px-2 text-[11px] font-semibold text-white hover:bg-white/15 active:bg-white/20 transition-colors"
                                   >
-                                    Replace
+                                    Replace current
                                   </button>
-                                  <div className="h-px bg-white/10 shrink-0" />
+                                  <div className="h-px bg-white/20 shrink-0" />
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -1276,7 +1278,7 @@ function EditPanelContent({
                                       onAddCaptionSegment(s.id, "add");
                                       setCaptionApplyMenu(null);
                                     }}
-                                    className="flex-1 px-2 text-[10px] font-semibold text-white/85 hover:bg-white/10 transition-colors"
+                                    className="flex-1 px-2 text-[11px] font-semibold text-white hover:bg-white/15 active:bg-white/20 transition-colors"
                                   >
                                     Add to timeline
                                   </button>
@@ -3216,17 +3218,17 @@ export default function ClipRefinePage() {
 
     // "None" means clear all caption segments — never place a None block on the timeline
     if (style === "none") {
-      captionSegments.forEach(seg => captionApiRef.current?.removeSegment(seg.id));
+      captionApiRef.current.resetSegments([], captionWordsRef.current, effectiveDur);
       setCaptionStyle("none");
       return;
     }
 
     if (effectiveDur <= 0) return;
 
-    // Toggle: if a segment with this style exists, remove it
+    // Toggle: if a segment with this style exists, remove it and re-split remaining equally
     const existing = captionSegments.find(seg => seg.style === style);
     if (existing) {
-      captionApiRef.current.removeSegment(existing.id);
+      captionApiRef.current.removeSegment(existing.id, effectiveDur);
       // Keep preview in sync — empty timeline should not keep rendering this style
       const remaining = captionSegments.filter(seg => seg.id !== existing.id);
       setCaptionStyle(prev => {

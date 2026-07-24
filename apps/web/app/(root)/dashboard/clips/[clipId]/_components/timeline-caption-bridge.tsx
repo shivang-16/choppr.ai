@@ -46,8 +46,17 @@ export type CaptionTrackApi = {
     words: CaptionWord[],
     videoDuration: number,
   ) => void;
-  /** Remove one segment by id. */
-  removeSegment: (id: string) => void;
+  /**
+   * Remove one segment by id, then re-split remaining ones equally across
+   * [0, videoDuration] (same as add). Pass videoDuration so a lone leftover
+   * expands to full length until the user trims it manually.
+   */
+  removeSegment: (id: string, videoDuration: number) => void;
+  /**
+   * Re-split whatever is currently on the caption track into equal parts
+   * covering [0, videoDuration]. Used after timeline delete.
+   */
+  resplitEqual: (videoDuration: number) => void;
   /** Update position for one segment (persisted on the timeline element). */
   updateSegmentPosition: (id: string, posX: number, posY: number) => void;
   /** Get the current segments (read from timeline). */
@@ -208,7 +217,13 @@ export function useTimelineCaptionApi(
 
   const buildSegments = useCallback(
     async (specs: SegmentSpec[], words: CaptionWord[], videoDuration: number) => {
-      if (!specs.length || videoDuration <= 0) return;
+      if (videoDuration <= 0) return;
+
+      // Empty specs = clear the caption track (e.g. style "None")
+      if (!specs.length) {
+        clearCaptionTrack();
+        return;
+      }
 
       clearCaptionTrack();
 
@@ -270,13 +285,47 @@ export function useTimelineCaptionApi(
   );
 
   const removeSegment = useCallback(
-    (id: string) => {
-      const el = findById(editor, id);
-      if (!el) return;
-      editor.removeElement(el);
-      editor.refresh();
+    (id: string, videoDuration: number) => {
+      const track = editor.getTimelineData()?.tracks?.find(t => t.getName() === CAPTION_TRACK);
+      if (!track) return;
+
+      const words = wordsRef.current;
+      const remaining: SegmentSpec[] = track
+        .getElements()
+        .filter(el => el.getId() !== id)
+        .map(el => {
+          const seg = decodeSegmentMeta(el, words);
+          return {
+            style: seg?.style ?? ("subtitle" as CaptionStyle),
+            posX: seg?.posX ?? 0,
+            posY: seg?.posY ?? 0,
+          };
+        });
+
+      // Rebuild remaining as equal parts covering the full span (1 left → full length)
+      void buildSegments(remaining, words, videoDuration);
     },
-    [editor],
+    [editor, buildSegments, wordsRef],
+  );
+
+  const resplitEqual = useCallback(
+    (videoDuration: number) => {
+      if (videoDuration <= 0) return;
+      const track = editor.getTimelineData()?.tracks?.find(t => t.getName() === CAPTION_TRACK);
+      if (!track) return;
+      const words = wordsRef.current;
+      const specs: SegmentSpec[] = track.getElements().map(el => {
+        const seg = decodeSegmentMeta(el, words);
+        return {
+          style: seg?.style ?? ("subtitle" as CaptionStyle),
+          posX: seg?.posX ?? 0,
+          posY: seg?.posY ?? 0,
+        };
+      });
+      if (!specs.length) return;
+      void buildSegments(specs, words, videoDuration);
+    },
+    [editor, buildSegments, wordsRef],
   );
 
   const updateSegmentPosition = useCallback(
@@ -323,9 +372,9 @@ export function useTimelineCaptionApi(
   }, [editor]);
 
   useEffect(() => {
-    apiRef.current = { resetSegments, addSegment, removeSegment, updateSegmentPosition, getSegments, rescaleTimings };
+    apiRef.current = { resetSegments, addSegment, removeSegment, resplitEqual, updateSegmentPosition, getSegments, rescaleTimings };
     return () => { apiRef.current = null; };
-  }, [apiRef, resetSegments, addSegment, removeSegment, updateSegmentPosition, getSegments, rescaleTimings]);
+  }, [apiRef, resetSegments, addSegment, removeSegment, resplitEqual, updateSegmentPosition, getSegments, rescaleTimings]);
 
   // Push segments back to parent whenever the timeline changes
   useEffect(() => {
