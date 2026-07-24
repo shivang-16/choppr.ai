@@ -3508,42 +3508,7 @@ export default function ClipRefinePage() {
             </button>
           )}
 
-          {/* Mobile edit tools moved to bottom bar */}
-
-          {/* Mobile panel — bottom sheet above the tool bar */}
-          {isMobile && mobileDrawerOpen && (
-            <button
-              type="button"
-              aria-label="Close panel"
-              className="absolute inset-0 z-[40] bg-black/45"
-              onClick={closeDrawer}
-            />
-          )}
-          {isMobile && drawerMounted && (
-            <div
-              className={cn(
-                "absolute left-0 right-0 bottom-0 z-[45] flex flex-col bg-[#111] border-t border-white/10 rounded-t-2xl shadow-[0_0_48px_rgba(0,0,0,0.8)]",
-                "transition-transform duration-300 ease-out h-[min(58%,420px)]",
-                !mobileDrawerOpen && "pointer-events-none",
-              )}
-              style={{
-                transform: mobileDrawerOpen ? "translateY(0)" : "translateY(105%)",
-              }}
-            >
-              <div className="flex items-center justify-between px-3 pt-2.5 pb-2 shrink-0">
-                <p className="text-[13px] font-semibold text-white">{activeTabLabel}</p>
-                <button
-                  onClick={closeDrawer}
-                  className="h-7 w-7 flex items-center justify-center rounded-full bg-white/8 text-white/40 hover:text-white transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto px-3 py-2.5 no-scrollbar min-h-0">
-                <EditPanelContent {...editPanelProps} styleGridMaxHeight={280} />
-              </div>
-            </div>
-          )}
+          {/* Mobile edit tools moved to bottom bar — sheet rendered next to the bar */}
 
           {/* Aspect ratio — left on mobile (replaces Back), right on desktop with export */}
           <div className={cn(
@@ -4230,17 +4195,56 @@ export default function ClipRefinePage() {
           </div>
           )}
 
-          {/* Mobile: edit tools bar — in-flow inside svh layout so it stays
-              above mobile browser chrome (fixed bottom-0 sits under it on iOS). */}
+          {/* Mobile: bottom sheet rises from the editor bar (not from inside the video). */}
           {isMobile && (
-            <nav className="shrink-0 w-full border-t border-white/10 bg-[#0a0a0a] z-40">
-              <div
-                className="flex items-center px-2 pt-0.5"
-                style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
-              >
-                {MOBILE_SIDE_TABS.map(renderMobileSideTab)}
-              </div>
-            </nav>
+            <div className="relative shrink-0 z-40">
+              {mobileDrawerOpen && (
+                <button
+                  type="button"
+                  aria-label="Close panel"
+                  className="fixed inset-x-0 top-12 bottom-0 z-[44] bg-black/45"
+                  onClick={closeDrawer}
+                />
+              )}
+              {drawerMounted && (
+                <div
+                  className={cn(
+                    "absolute left-0 right-0 bottom-full z-[45] flex flex-col bg-[#111] border-t border-white/10 rounded-t-2xl shadow-[0_0_48px_rgba(0,0,0,0.8)]",
+                    "transition-transform duration-300 ease-out",
+                    !mobileDrawerOpen && "pointer-events-none",
+                  )}
+                  style={{
+                    height: "50svh",
+                    maxHeight: "50svh",
+                    transform: mobileDrawerOpen ? "translateY(0)" : "translateY(110%)",
+                  }}
+                >
+                  <div className="mx-auto mt-1.5 mb-0.5 h-1 w-9 shrink-0 rounded-full bg-white/15" />
+                  <div className="flex items-center justify-between px-3 pt-1.5 pb-2 shrink-0">
+                    <p className="text-[13px] font-semibold text-white">{activeTabLabel}</p>
+                    <button
+                      onClick={closeDrawer}
+                      className="h-7 w-7 flex items-center justify-center rounded-full bg-white/8 text-white/40 hover:text-white transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-3">
+                    {/* No fixed style-grid cap — styles fill the expanded sheet and scroll inside */}
+                    <EditPanelContent {...editPanelProps} styleGridMaxHeight={undefined} />
+                  </div>
+                </div>
+              )}
+
+              <nav className="relative z-50 w-full border-t border-white/10 bg-[#0a0a0a]">
+                <div
+                  className="flex items-center px-2 pt-0.5"
+                  style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+                >
+                  {MOBILE_SIDE_TABS.map(renderMobileSideTab)}
+                </div>
+              </nav>
+            </div>
           )}
         </div>{/* closes outer flex-col (video area wrapper) */}
 
