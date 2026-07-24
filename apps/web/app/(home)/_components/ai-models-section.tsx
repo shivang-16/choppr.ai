@@ -343,7 +343,7 @@ export default function AiModelsSection() {
             <Sparkles className="h-3 w-3 text-white/70" strokeWidth={2.5} />
             AI editing models
           </span>
-          <h2 className="max-w-3xl text-[clamp(1.7rem,3.6vw,3.2rem)] font-semibold leading-[1.08] tracking-[-0.04em] text-white">
+          <h2 className="max-w-3xl text-[clamp(1.7rem,3.6vw,3.2rem)] font-normal leading-[1.08] tracking-[-0.01em] text-white">
             Models that read your footage frame by frame
           </h2>
           <p className="max-w-xl text-balance text-[clamp(0.95rem,2vw,1.05rem)] leading-relaxed text-white/55">

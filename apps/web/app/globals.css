@@ -44,9 +44,8 @@
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
   --font-inter: var(--font-inter);
-  --font-work-sans: var(--font-work-sans);
+  --font-overused-grotesk: var(--font-overused-grotesk);
   --font-geist-mono: var(--font-geist-mono);
-  --font-geist-sans: var(--font-geist-sans);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -106,10 +105,10 @@
   --sidebar-accent-foreground: #000000;
   --sidebar-border: #e5e5e5;
   --sidebar-ring: #000000;
-  --font-sans: Geist, sans-serif;
+  --font-sans: var(--font-overused-grotesk), "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: Geist Mono, monospace;
-  --font-inter: Inter;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-inter: var(--font-overused-grotesk);
   --radius: 0.4rem;
   --shadow-2xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.06);
   --shadow-xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.08);
@@ -119,7 +118,7 @@
   --shadow-lg: 0px 8px 12px 0px hsl(0 0% 0% / 0.1), 0px 4px 6px -1px hsl(0 0% 0% / 0.1);
   --shadow-xl: 0px 16px 24px 0px hsl(0 0% 0% / 0.1), 0px 8px 10px -1px hsl(0 0% 0% / 0.1);
   --shadow-2xl: 0px 24px 48px 0px hsl(0 0% 0% / 0.18);
-  --tracking-normal: 0em;
+  --tracking-normal: 0.02em;
   --spacing: 0.25rem;
   --container-8xl: 1440px;
 }
@@ -158,10 +157,10 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #222222;
   --sidebar-ring: #ffffff;
-  --font-sans: Geist, sans-serif;
+  --font-sans: var(--font-overused-grotesk), "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: Geist Mono, monospace;
-  --font-inter: Inter;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-inter: var(--font-overused-grotesk);
   --radius: 0.4rem;
   --shadow-2xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.3);
   --shadow-xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.4);
@@ -175,7 +174,9 @@
 
 body {
   font-family:
-    var(--font-work-sans),
+    var(--font-overused-grotesk),
+    "Helvetica Neue",
+    Helvetica,
     Arial,
     system-ui,
     -apple-system,

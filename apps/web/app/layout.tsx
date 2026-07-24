@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Work_Sans, Inter } from "next/font/google";
+import localFont from "next/font/local";
+import { Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
-import { Analytics } from "@vercel/analytics/next"
+import { Analytics } from "@vercel/analytics/next";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -10,26 +11,27 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const overusedGrotesk = localFont({
+  src: [
+    {
+      path: "./fonts/OverusedGrotesk-Light.woff2",
+      weight: "300",
+      style: "normal",
+    },
+    {
+      path: "./fonts/OverusedGrotesk-Roman.woff2",
+      weight: "400",
+      style: "normal",
+    },
+  ],
+  variable: "--font-overused-grotesk",
+  display: "swap",
+  fallback: ["Helvetica Neue", "Helvetica", "Arial", "sans-serif"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-});
-
-const workSans = Work_Sans({
-  variable: "--font-work-sans",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-});
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -46,11 +48,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${workSans.variable} ${geistSans.variable} ${geistMono.variable} ${inter.variable} output-scrollbar min-h-screen antialiased`}
+        className={`${overusedGrotesk.variable} ${geistMono.variable} ${overusedGrotesk.className} output-scrollbar min-h-screen antialiased`}
       >
         <Providers>{children}</Providers>
-        <Analytics /> 
-        {/* <Toaster richColors closeButton position="top-center" /> */}
+        <Analytics />
       </body>
     </html>
   );

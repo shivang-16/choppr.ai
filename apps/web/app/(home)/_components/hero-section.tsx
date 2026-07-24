@@ -84,7 +84,7 @@ export default function HeroSection() {
 
         {/* Headline */}
         <div className="flex flex-col items-center gap-4 text-center">
-          <h2 className="max-w-4xl text-[clamp(1.8rem,4vw,4rem)] font-semibold leading-[1.1] tracking-[-0.04em] text-white text-center">
+          <h2 className="max-w-4xl text-[clamp(1.8rem,4vw,4rem)] font-normal leading-[1.1] tracking-[-0.01em] text-white text-center">
             Your best moments deserve<br />
             <span className="text-white">to go viral.</span>
           </h2>
