@@ -158,7 +158,7 @@ const PLATFORM_ICONS: Record<string, React.ReactNode> = {
 };
 
 const FEATURE_TAGS = [
-  "AI clipping", "AI captioning", "AI reframe",
+  "AI clipping",
 ];
 
 // ── Timing (ms) ──
@@ -212,11 +212,32 @@ export default function HeroVideoDemo() {
   const clipsVisible = clipsSrc !== null;
 
   return (
-    <div id="how-it-works" className="relative w-full max-w-4xl select-none">
-      <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-[#0d0d0d] flex flex-col">
+    <div id="how-it-works" className="relative h-full w-full select-none">
+      <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/8 bg-[#0d0d0d]">
 
         {/* ── Main animation stage ── */}
-        <div className="relative h-[580px] overflow-hidden">
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+
+          {/* ── Ambient glow — blurred copy of the current source, smoothly
+                 cross-fading colors like YouTube's ambient mode ── */}
+          <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+            <AnimatePresence>
+              <motion.img
+                key={`ambient-${srcIdx}`}
+                src={src.img}
+                alt=""
+                aria-hidden
+                className="absolute left-1/2 top-1/2 h-[130%] w-[130%] -translate-x-1/2 -translate-y-1/2 object-cover"
+                style={{ filter: "blur(100px) saturate(1.6) brightness(0.75)" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.5 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 3, ease: "easeInOut" }}
+              />
+            </AnimatePresence>
+            {/* Gentle darkening so it stays subtle but visible */}
+            <div className="absolute inset-0 bg-gradient-to-b from-[#0d0d0d]/55 via-[#0d0d0d]/15 to-[#0d0d0d]/70" />
+          </div>
 
           {/* ── Source video (drops from top, passes bar, exits below) ── */}
           <AnimatePresence>
@@ -374,7 +395,7 @@ export default function HeroVideoDemo() {
         </div>
 
         {/* ── Feature tags ── */}
-        <div className="border-t border-white/6 py-3">
+        <div className="shrink-0 border-t border-white/6 py-3">
           <div className="flex gap-2.5 px-5 overflow-x-auto no-scrollbar">
             {FEATURE_TAGS.map((tag) => (
               <button
@@ -387,20 +408,6 @@ export default function HeroVideoDemo() {
             ))}
           </div>
         </div>
-      </div>
-
-      {/* Source dots */}
-      <div className="flex items-center justify-center gap-1.5 mt-4">
-        {SOURCES.map((_, i) => (
-          <div
-            key={i}
-            className="h-1.5 rounded-full transition-all duration-300"
-            style={{
-              width: i === srcIdx ? 16 : 6,
-              backgroundColor: i === srcIdx ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.15)",
-            }}
-          />
-        ))}
       </div>
     </div>
   );

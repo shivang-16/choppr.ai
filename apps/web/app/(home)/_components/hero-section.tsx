@@ -7,7 +7,7 @@ import { Link2, Upload, Scissors, Zap, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { URL_PLACEHOLDERS, validateVideoUrl } from "@/lib/url-placeholders";
-import HeroVideoDemo from "./hero-video-demo";
+import HeroDemoCarousel from "./hero-demo-carousel";
 
 const BADGES = [
   { icon: Zap, label: "10x faster editing" },
@@ -79,7 +79,7 @@ export default function HeroSection() {
         aria-hidden
       />
 
-      <div className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-8 mt-10">
+      <div className="relative z-10 flex w-full max-w-6xl flex-col items-center gap-8 mt-10">
         {/* Badge row */}
         <div className="flex flex-wrap items-center justify-center gap-2">
           {BADGES.map(({ icon: Icon, label }) => (
@@ -156,9 +156,11 @@ export default function HeroSection() {
         <p className="text-[12.5px] text-white/45">
           No credit card required &nbsp;·&nbsp; Start creating in seconds
         </p>
+      </div>
 
-        {/* Video showcase */}
-        <HeroVideoDemo />
+      {/* Feature demos — carousel spans full screen width */}
+      <div className="relative z-10 mt-12 w-full max-w-none px-2 sm:px-6">
+        <HeroDemoCarousel />
       </div>
     </section>
   );
