@@ -12,7 +12,7 @@ const SLIDES: { id: string; label: string; render: (active: boolean) => ReactNod
   { id: "reframe", label: "AI reframe", render: (active) => <HeroReframeDemo active={active} /> },
 ];
 
-const CARD_MAX = 980;
+const CARD_MAX = 1120;
 const CARD_ASPECT = 980 / 640; // width / height — locked on every screen
 
 export default function HeroDemoCarousel() {
@@ -36,7 +36,7 @@ export default function HeroDemoCarousel() {
 
   // Card width follows the viewport; leave room on both sides for the arrows.
   // Height is derived so the ratio never changes.
-  const cardW = Math.min(CARD_MAX, Math.max(stageW - 72, 240));
+  const cardW = Math.min(CARD_MAX, Math.max(stageW - 56, 240));
   const cardH = Math.round(cardW / CARD_ASPECT);
   const gap = cardW * 0.04;
 

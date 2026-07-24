@@ -52,7 +52,7 @@ const SOCIALS = [
 
 export default function Footer() {
   return (
-    <footer className="relative w-full overflow-hidden bg-[#080808] border-t border-white/6">
+    <footer className="relative w-full overflow-hidden border-t border-white/6">
       <div className="relative z-10 mx-auto max-w-7xl px-6 pt-16">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-10">
           {/* Brand — below lists on mobile */}
