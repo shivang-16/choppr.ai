@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import HeroVideoDemo from "./hero-video-demo";
 import HeroCaptionDemo from "./hero-caption-demo";
@@ -19,6 +19,7 @@ export default function HeroDemoCarousel() {
   const [active, setActive] = useState(0);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [stageW, setStageW] = useState(0);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const el = stageRef.current;
@@ -34,9 +35,35 @@ export default function HeroDemoCarousel() {
     setActive((i) => (i + dir + SLIDES.length) % SLIDES.length);
   };
 
+  const onTouchStart = (e: TouchEvent) => {
+    const t = e.touches[0];
+    if (!t) return;
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const onTouchEnd = (e: TouchEvent) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    // Need a clear horizontal swipe — ignore vertical page scrolls
+    if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+    go(dx < 0 ? 1 : -1);
+  };
+
+  const onTouchCancel = () => {
+    touchStart.current = null;
+  };
+
   // Card width follows the viewport; leave room on both sides for the arrows.
   // Height is derived so the ratio never changes.
-  const cardW = Math.min(CARD_MAX, Math.max(stageW - 56, 240));
+  // Tablets get a slightly narrower card so the layout breathes.
+  const sidePad = stageW >= 768 && stageW < 1100 ? 120 : 56;
+  const cardMax = stageW >= 768 && stageW < 1100 ? 880 : CARD_MAX;
+  const cardW = Math.min(cardMax, Math.max(stageW - sidePad, 240));
   const cardH = Math.round(cardW / CARD_ASPECT);
   const gap = cardW * 0.04;
 
@@ -49,8 +76,11 @@ export default function HeroDemoCarousel() {
     <div className="relative w-full">
       <div
         ref={stageRef}
-        className="relative overflow-hidden"
+        className="relative touch-pan-y overflow-hidden"
         style={{ height: cardH }}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchCancel}
       >
         {stageW > 0 &&
           SLIDES.map((slide, i) => {
