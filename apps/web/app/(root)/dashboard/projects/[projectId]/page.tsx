@@ -513,7 +513,7 @@ export default function ProjectDetailPage() {
     <div className="flex min-h-screen bg-[#0a0a0a] overflow-x-hidden">
       <Sidebar />
       <Topbar />
-      <main className="ml-0 md:ml-14 mt-12 flex-1 flex flex-col px-3 sm:px-6 py-5 md:py-10 pb-28 md:pb-10 overflow-x-hidden">
+      <main className="ml-0 md:ml-14 mt-0 md:mt-12 flex-1 flex flex-col px-3 sm:px-6 py-5 md:py-10 pb-28 md:pb-10 overflow-x-hidden">
         <div className="max-w-5xl w-full mx-auto flex flex-col gap-4 md:gap-6 flex-1">
 
           {/* Back + header */}

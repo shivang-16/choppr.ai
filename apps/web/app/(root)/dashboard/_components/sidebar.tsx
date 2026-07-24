@@ -104,8 +104,10 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* ── Mobile bottom bar — only below md ── */}
-      <MobileBottomBar nav={NAV} path={path} />
+      {/* ── Mobile bottom bar — only below md; hidden on clip editor (tools live there) ── */}
+      {!path.startsWith("/dashboard/clips/") && (
+        <MobileBottomBar nav={NAV} path={path} />
+      )}
     </>
   );
 }

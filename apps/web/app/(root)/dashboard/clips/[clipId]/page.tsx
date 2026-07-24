@@ -159,8 +159,8 @@ const TABS = [
   { id: "enhance",     icon: Sparkles,   label: "Enhance" },
 ];
 
-/** Mobile: all edit tools stacked on the left of the preview. */
-const MOBILE_SIDE_TABS = TABS;
+/** Mobile toolbox: Stickers lives under Text as a sub-tab. */
+const MOBILE_SIDE_TABS = TABS.filter(t => t.id !== "stickers");
 
 // ── Caption styles ────────────────────────────────────────────────────────────
 type CaptionStyleEntry = {
@@ -337,8 +337,6 @@ const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
   },
 ];
 
-
-
 const SPEED_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
 const TRANSLATE_LANGS = [
@@ -362,6 +360,14 @@ const TRANSLATE_LANGS = [
 interface EditPanelProps {
   activeTab: string;
   hideTranscript?: boolean;
+  /** Mobile bottom sheet: split captions into top sub-tabs. Desktop keeps stacked sections. */
+  mobileLayout?: boolean;
+  /** Controlled captions sub-tab (mobile). */
+  captionSubTab?: "templates" | "style" | "transcript";
+  onCaptionSubTabChange?: (tab: "templates" | "style" | "transcript") => void;
+  /** Controlled text/stickers sub-tab (mobile). */
+  textSubTab?: "text" | "stickers";
+  onTextSubTabChange?: (tab: "text" | "stickers") => void;
   captionStyle: CaptionStyle;
   setCaptionStyle: (s: CaptionStyle) => void;
   onAddCaptionSegment: (style: CaptionStyle, mode?: "add" | "replace") => void;
@@ -1077,7 +1083,7 @@ function RemoveBgButton({
 }
 
 function EditPanelContent({
-  activeTab, hideTranscript = false, captionStyle, setCaptionStyle, onAddCaptionSegment, askCaptionApplyMode = false, captionSegments, captionWords, onCaptionWordsChange, captionFontSize, setCaptionFontSize,
+  activeTab, hideTranscript = false, mobileLayout = false, captionSubTab: captionSubTabProp, onCaptionSubTabChange, textSubTab: textSubTabProp, onTextSubTabChange, captionStyle, setCaptionStyle, onAddCaptionSegment, askCaptionApplyMode = false, captionSegments, captionWords, onCaptionWordsChange, captionFontSize, setCaptionFontSize,
   captionPosY, setCaptionPosY, captionPosX, setCaptionPosX, onResetCaptionPos,
   captionLang, activeLang, translating, handleTranslate,
   speed, setSpeed, trimStart, setTrimStart, effectiveTrimEnd, setTrimEnd, duration, fmt, videoRef,
@@ -1092,7 +1098,14 @@ function EditPanelContent({
 }: EditPanelProps) {
   const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
   const [captionApplyMenu, setCaptionApplyMenu] = useState<CaptionStyle | null>(null);
+  const [captionSubTabInternal, setCaptionSubTabInternal] = useState<"templates" | "style" | "transcript">("templates");
+  const captionSubTab = captionSubTabProp ?? captionSubTabInternal;
+  const setCaptionSubTab = onCaptionSubTabChange ?? setCaptionSubTabInternal;
+  const [textSubTabInternal, setTextSubTabInternal] = useState<"text" | "stickers">("text");
+  const textSubTab = textSubTabProp ?? textSubTabInternal;
+  const setTextSubTab = onTextSubTabChange ?? setTextSubTabInternal;
   const captionApplyMenuRef = useRef<HTMLDivElement | null>(null);
+  const captionStyleSectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!captionApplyMenu) return;
@@ -1108,18 +1121,74 @@ function EditPanelContent({
     if (activeTab !== "captions") setCaptionApplyMenu(null);
   }, [activeTab]);
 
+  const captionSubTabs = [
+    { id: "templates" as const, label: "Templates" },
+    { id: "style" as const, label: "Style" },
+    ...(!hideTranscript ? [{ id: "transcript" as const, label: "Transcript" }] : []),
+  ];
+
+  const showCaptionSection = (id: "templates" | "style") => {
+    if (!mobileLayout) return true;
+    return captionSubTab === id;
+  };
+
+  const handleCaptionSubTabClick = (id: typeof captionSubTabs[number]["id"]) => {
+    setCaptionSubTab(id);
+  };
+
   return (
     <>
       {activeTab === "captions" && (
-        <div className="flex flex-col gap-5">
+        <div
+          className={cn(
+            "flex flex-col",
+            mobileLayout ? "h-full min-h-0 gap-3" : "gap-5",
+          )}
+        >
+          {/* On mobile, transcript opens a separate overlay — hide body content for that tab */}
+          {!(mobileLayout && captionSubTab === "transcript") && (
+          <div className={cn(
+            mobileLayout && "flex-1 min-h-0 flex flex-col rounded-t-3xl bg-[#111] border-t border-white/10 shadow-[0_0_48px_rgba(0,0,0,0.8)] overflow-hidden",
+          )}>
+          {mobileLayout && (
+            <div className="shrink-0 flex items-center justify-center px-2 pt-2 pb-1.5 z-10">
+              <div className="flex items-center justify-center gap-1 overflow-x-auto no-scrollbar overscroll-x-contain rounded-full bg-white/10 backdrop-blur-md p-1">
+              {captionSubTabs.map(tab => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleCaptionSubTabClick(tab.id)}
+                  className={cn(
+                    "shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors",
+                    captionSubTab === tab.id
+                      ? "bg-white/15 text-white"
+                      : "text-white/45 active:text-white/70",
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+              </div>
+            </div>
+          )}
+
+          <div className={cn(mobileLayout && "flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-4 px-2 pb-2")}>
+          {/* Templates (mobile) / Animation style (desktop) */}
+          {((mobileLayout && showCaptionSection("templates")) || (!mobileLayout)) && (
+          <div ref={captionStyleSectionRef} className="flex flex-col gap-3 scroll-mt-10">
+          {!mobileLayout && (
           <div className="flex items-center justify-between">
             <p className="text-[12px] font-medium text-white/70">Animation style</p>
             <span className="text-[10px] text-white/25">
               {captionWords.length > 0 ? `${captionWords.length} words` : "No captions yet"}
             </span>
           </div>
+          )}
 
-          <div className="overflow-y-auto no-scrollbar" style={{ maxHeight: styleGridMaxHeight }}>
+          <div
+            className={cn(!mobileLayout && "overflow-y-auto no-scrollbar")}
+            style={mobileLayout ? undefined : { maxHeight: styleGridMaxHeight }}
+          >
             <div className="flex flex-col gap-4 pr-0.5">
               {CAPTION_STYLE_GROUPS.map(group => (
                 <div key={group.category}>
@@ -1209,9 +1278,13 @@ function EditPanelContent({
               ))}
             </div>
           </div>
+          </div>
+          )}
 
 
-          <div className="flex flex-col gap-2">
+          {/* Style tab (mobile): size + translate. Desktop: size always shown in stack. */}
+          {((mobileLayout && showCaptionSection("style")) || (!mobileLayout)) && (
+          <div className="flex flex-col gap-2 scroll-mt-10">
             <div className="flex items-center justify-between">
               <span className="text-[12px] text-white/50">Font size</span>
               <span className="text-[11px] font-semibold text-white/60">{captionFontSize}px</span>
@@ -1226,7 +1299,9 @@ function EditPanelContent({
               <span>14px</span><span>90px</span>
             </div>
           </div>
+          )}
 
+          {(!mobileLayout) && (
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[12px] text-white/50">
@@ -1247,9 +1322,43 @@ function EditPanelContent({
                 : "Drag the caption directly on the preview to reposition it."}
             </p>
           </div>
+          )}
 
-          {/* Editable transcript — only shown on mobile (desktop has its own left panel) */}
-          {captionWords.length > 0 && !hideTranscript && (
+          {/* Translate: mobile Style tab only here; desktop renders after transcript below */}
+          {mobileLayout && showCaptionSection("style") && (
+          <div className="flex flex-col gap-2 scroll-mt-10">
+            <div className="flex items-center gap-2">
+              <Languages className="h-3.5 w-3.5 text-white/40" />
+              <p className="text-[12px] font-medium text-white/70">Translate captions</p>
+              {translating && <Loader2 className="h-3 w-3 animate-spin text-white/40 ml-auto" />}
+            </div>
+            {captionLang && (
+              <p className="text-[10px] text-white/25">
+                Current language: <span className="text-white/45">{captionLang}</span>
+              </p>
+            )}
+            <div className="grid grid-cols-3 gap-1.5 mt-1">
+              {TRANSLATE_LANGS.map(l => (
+                <button
+                  key={l.code}
+                  onClick={() => handleTranslate(l.code)}
+                  disabled={translating || l.code === activeLang}
+                  className={cn(
+                    "rounded-lg border py-1.5 text-[10px] font-medium transition-all disabled:opacity-40",
+                    activeLang === l.code
+                      ? "border-white/30 bg-white/10 text-white/80"
+                      : "border-white/8 text-white/35 hover:border-white/20 hover:text-white/60"
+                  )}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          )}
+
+          {/* Desktop transcript (stacked) */}
+          {!mobileLayout && !hideTranscript && captionWords.length > 0 && (
             <div className="flex flex-col gap-2">
               <div className="h-px bg-white/6" />
               <div className="flex items-center justify-between">
@@ -1280,9 +1389,10 @@ function EditPanelContent({
             </div>
           )}
 
-          <div className="h-px bg-white/6" />
-
+          {/* Desktop translate — keep original position after transcript */}
+          {!mobileLayout && (
           <div className="flex flex-col gap-2">
+            <div className="h-px bg-white/6" />
             <div className="flex items-center gap-2">
               <Languages className="h-3.5 w-3.5 text-white/40" />
               <p className="text-[12px] font-medium text-white/70">Translate captions</p>
@@ -1311,10 +1421,214 @@ function EditPanelContent({
               ))}
             </div>
           </div>
+          )}
+          </div>
+          </div>
+          )}
         </div>
       )}
 
       {activeTab === "text" && (
+        <div
+          className={cn(
+            "flex flex-col",
+            mobileLayout ? "h-full min-h-0 gap-3" : "gap-4",
+          )}
+        >
+          {mobileLayout ? (
+            <div className="flex flex-1 min-h-0 flex-col rounded-t-3xl bg-[#111] border-t border-white/10 shadow-[0_0_48px_rgba(0,0,0,0.8)] overflow-hidden">
+              <div className="shrink-0 flex items-center justify-center px-2 pt-2 pb-1.5 z-10">
+                <div className="flex items-center justify-center gap-1 overflow-x-auto no-scrollbar overscroll-x-contain rounded-full bg-white/10 backdrop-blur-md p-1">
+                  {([
+                    { id: "text" as const, label: "Text" },
+                    { id: "stickers" as const, label: "Stickers" },
+                  ]).map(tab => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setTextSubTab(tab.id)}
+                      className={cn(
+                        "shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors",
+                        textSubTab === tab.id
+                          ? "bg-white/15 text-white"
+                          : "text-white/45 active:text-white/70",
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-4 px-2 pb-2">
+                {textSubTab === "text" && (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[12px] font-medium text-white/70">Text overlays</p>
+                      <button
+                        onClick={() => {
+                          if (onAddTextOverlay) {
+                            onAddTextOverlay();
+                            return;
+                          }
+                          const id = `txt-${Date.now()}`;
+                          setTextOverlays(prev => [...prev, {
+                            id, text: "Your text", x: 0.5, y: 0.5, fontSize: 20, color: "#ffffff",
+                            bold: false, italic: false, startTime: 0, duration: 4,
+                          }]);
+                          setSelectedTextId(id);
+                        }}
+                        className="flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      >
+                        <Plus className="h-3 w-3" /> Add text
+                      </button>
+                    </div>
+
+                    {textOverlays.length === 0 && (
+                      <p className="text-[12px] text-white/25 text-center py-6">No text overlays yet.<br />Click "Add text" to start.</p>
+                    )}
+
+                    {textOverlays.map((t) => {
+                      const isSelected = selectedTextId === t.id;
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => setSelectedTextId(isSelected ? null : t.id)}
+                          className={cn(
+                            "flex flex-col gap-3 rounded-xl border p-3 cursor-pointer transition-all",
+                            isSelected ? "border-white/30 bg-white/6" : "border-white/8 bg-white/2 hover:border-white/15"
+                          )}
+                        >
+                          <div className="flex items-center gap-1.5 border-b border-white/15 pb-1">
+                            <input
+                              id={`txt-input-${t.id}`}
+                              value={t.text}
+                              onChange={(e) => setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, text: e.target.value } : o))}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/25"
+                              placeholder="Enter text…"
+                            />
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEmojiOpenId(emojiOpenId === t.id ? null : t.id); setSelectedTextId(t.id); }}
+                              className={cn(
+                                "flex items-center justify-center h-6 w-6 rounded transition-colors cursor-pointer shrink-0",
+                                emojiOpenId === t.id ? "bg-white/15 text-white" : "text-white/40 hover:text-white/70 hover:bg-white/8"
+                              )}
+                              title="Insert emoji"
+                            >
+                              <Smile className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+
+                          {emojiOpenId === t.id && (
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <EmojiPicker
+                                onEmojiClick={(emojiData) => {
+                                  const em = emojiData.emoji;
+                                  const inputEl = document.getElementById(`txt-input-${t.id}`) as HTMLInputElement | null;
+                                  const pos = inputEl?.selectionStart ?? t.text.length;
+                                  const newText = t.text.slice(0, pos) + em + t.text.slice(pos);
+                                  setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, text: newText } : o));
+                                  setEmojiOpenId(null);
+                                  requestAnimationFrame(() => { inputEl?.focus(); inputEl?.setSelectionRange(pos + em.length, pos + em.length); });
+                                }}
+                                theme={"dark" as import("emoji-picker-react").Theme}
+                                width="100%"
+                                height={300}
+                                searchDisabled={false}
+                                skinTonesDisabled
+                                previewConfig={{ showPreview: false }}
+                                style={{
+                                  "--epr-search-input-height": "28px",
+                                  "--epr-search-input-font-size": "12px",
+                                  "--epr-search-input-padding": "0 8px 0 30px",
+                                  "--epr-search-bar-height": "44px",
+                                  "--epr-category-label-height": "24px",
+                                  "--epr-emoji-size": "24px",
+                                  "--epr-emoji-padding": "4px",
+                                } as React.CSSProperties}
+                              />
+                            </div>
+                          )}
+
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-white/50">Font size</span>
+                              <span className="text-[11px] font-semibold text-white/60">{t.fontSize}px</span>
+                            </div>
+                            <input
+                              type="range" min={12} max={120} step={2}
+                              value={t.fontSize}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, fontSize: Number(e.target.value) } : o))}
+                              className="w-full accent-white cursor-pointer"
+                            />
+                            <div className="flex justify-between text-[10px] text-white/20"><span>12px</span><span>120px</span></div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <div className="relative h-6 w-6 shrink-0">
+                              <div
+                                className="h-6 w-6 rounded-full border-2 border-white/20 cursor-pointer"
+                                style={{ background: t.color }}
+                                onClick={(e) => { e.stopPropagation(); (e.currentTarget.nextElementSibling as HTMLInputElement | null)?.click(); }}
+                              />
+                              <input
+                                type="color"
+                                value={t.color}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, color: e.target.value } : o))}
+                                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                              />
+                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, bold: !o.bold } : o)); }}
+                              className={cn("px-2.5 py-1 rounded-lg text-[12px] font-bold transition-colors cursor-pointer", t.bold ? "bg-white/20 text-white" : "bg-white/5 text-white/40 hover:text-white/70")}
+                              title="Bold"
+                            >B</button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, italic: !o.italic } : o)); }}
+                              className={cn("px-2.5 py-1 rounded-lg text-[12px] italic transition-colors cursor-pointer", t.italic ? "bg-white/20 text-white" : "bg-white/5 text-white/40 hover:text-white/70")}
+                              title="Italic"
+                            >I</button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onRemoveTextOverlay) onRemoveTextOverlay(t.id);
+                                else {
+                                  setTextOverlays(prev => prev.filter(o => o.id !== t.id));
+                                  if (selectedTextId === t.id) setSelectedTextId(null);
+                                }
+                              }}
+                              className="ml-auto text-white/25 hover:text-red-400 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {textOverlays.length > 0 && (
+                      <p className="text-[10px] text-white/25 text-center">
+                        Drag text on the video to reposition · trim on the timeline to control when it shows
+                      </p>
+                    )}
+                  </div>
+                )}
+                {textSubTab === "stickers" && (
+                  <StipopStickerPicker
+                    placedStickers={placedStickers}
+                    setPlacedStickers={setPlacedStickers}
+                    segmentationReady={segmentationReady}
+                    styleGridMaxHeight={styleGridMaxHeight}
+                    onToggleSticker={onToggleSticker}
+                    onRemoveSticker={onRemoveSticker}
+                    onClearStickers={onClearStickers}
+                  />
+                )}
+              </div>
+            </div>
+          ) : (
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <p className="text-[12px] font-medium text-white/70">Text overlays</p>
@@ -1476,9 +1790,11 @@ function EditPanelContent({
             </p>
           )}
         </div>
+          )}
+        </div>
       )}
 
-      {activeTab === "stickers" && (
+      {activeTab === "stickers" && !mobileLayout && (
         <StipopStickerPicker
           placedStickers={placedStickers}
           setPlacedStickers={setPlacedStickers}
@@ -1522,7 +1838,6 @@ function EditPanelContent({
           usage="timeline"
           draggable
           onAddToTimeline={onAddToTimeline}
-          title="My media"
         />
       )}
 
@@ -2145,6 +2460,8 @@ export default function ClipRefinePage() {
   const [activeTab, setActiveTab]     = useState("captions");
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [drawerMounted, setDrawerMounted] = useState(false);
+  const [captionSubTab, setCaptionSubTab] = useState<"templates" | "style" | "transcript">("templates");
+  const [textSubTab, setTextSubTab] = useState<"text" | "stickers">("text");
   const [panelOpen, setPanelOpen]     = useState(true);
 
   const handleSidebarIconClick = (tabId: string) => {
@@ -3174,6 +3491,8 @@ export default function ClipRefinePage() {
       setMobileDrawerOpen(false);
     } else {
       setActiveTab(id);
+      if (id === "captions") setCaptionSubTab("templates");
+      if (id === "text") setTextSubTab("text");
       if (!drawerMounted) setDrawerMounted(true);
       setMobileDrawerOpen(true);
     }
@@ -3181,24 +3500,22 @@ export default function ClipRefinePage() {
 
   const closeDrawer = () => setMobileDrawerOpen(false);
 
-  const activeTabLabel = TABS.find(t => t.id === activeTab)?.label ?? "";
-
   const renderMobileSideTab = ({ id, icon: Icon, label }: typeof TABS[number]) => (
     <button
       key={id}
       type="button"
       onClick={() => handleMobileTab(id)}
       className={cn(
-        "flex flex-col items-center justify-center gap-0.5 w-11 py-1.5 rounded-xl border backdrop-blur-sm transition-all cursor-pointer",
+        "flex shrink-0 flex-col items-center justify-center gap-1 w-16 h-14 rounded-lg transition-all cursor-pointer",
         activeTab === id && mobileDrawerOpen
-          ? "border-white/25 bg-white/15 text-white"
-          : "border-white/10 bg-black/55 text-white/55 active:bg-white/10 active:text-white",
+          ? "text-white bg-white/10"
+          : "text-white/45 active:text-white active:bg-white/8",
       )}
       aria-label={label}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0" />
-      <span className="text-[8px] font-medium leading-tight text-center px-0.5 truncate max-w-full">
-        {label === "Watermark" ? "Mark" : label}
+      <Icon className="h-6 w-6 shrink-0" />
+      <span className="text-[9px] font-medium leading-tight text-center px-0.5 truncate max-w-full">
+        {label}
       </span>
     </button>
   );
@@ -3254,10 +3571,10 @@ export default function ClipRefinePage() {
 
       <main
         className={cn(
-          "mt-12 flex-1 flex overflow-hidden relative",
-          isMobile ? "flex-col ml-0 pb-[3.25rem]" : "flex-row ml-14 pb-0"
+          "mt-0 md:mt-12 flex-1 flex overflow-hidden relative",
+          isMobile ? "flex-col ml-0 pb-0" : "flex-row ml-14 pb-0"
         )}
-        style={{ height: "calc(100vh - 48px)" }}
+        style={{ height: isMobile ? "100vh" : "calc(100vh - 48px)" }}
       >
 
         {/* ── Video area: transcript (left) + drag handle + video preview (right) ── */}
@@ -3337,22 +3654,18 @@ export default function ClipRefinePage() {
 
           {/* Video preview */}
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-black items-center justify-center relative">
-          <button
-            onClick={() => router.back()}
-            className="absolute top-3 left-3 z-20 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 text-[11px] text-white/50 hover:text-white transition-colors backdrop-blur-sm"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Back</span>
-          </button>
-
-          {/* Mobile: all edit tools — vertically centered on the left */}
-          {isMobile && (
-            <div className="absolute top-1/2 left-2 z-20 -translate-y-1/2 flex flex-col gap-1 pointer-events-auto">
-              {MOBILE_SIDE_TABS.map(renderMobileSideTab)}
-            </div>
+          {/* Desktop back — unchanged */}
+          {!isMobile && (
+            <button
+              onClick={() => router.back()}
+              className="absolute top-3 left-3 z-20 flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 text-[11px] text-white/50 hover:text-white transition-colors backdrop-blur-sm"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Back</span>
+            </button>
           )}
 
-          {/* Mobile side panel — confined to the preview frame above the timeline */}
+          {/* Mobile edit sheet — slides up from bottom, above the toolbox */}
           {isMobile && mobileDrawerOpen && (
             <button
               type="button"
@@ -3364,31 +3677,129 @@ export default function ClipRefinePage() {
           {isMobile && drawerMounted && (
             <div
               className={cn(
-                "absolute top-0 bottom-0 left-0 z-[45] flex flex-col bg-[#111] border-r border-white/10 rounded-r-2xl shadow-[0_0_48px_rgba(0,0,0,0.8)]",
-                "transition-transform duration-300 ease-out w-[min(78%,280px)]",
-                !mobileDrawerOpen && "pointer-events-none",
+                "absolute left-0 right-0 bottom-0 z-[45] flex flex-col bg-transparent",
+                "h-[min(70%,420px)] transition-transform duration-300 ease-out",
+                (!mobileDrawerOpen || (activeTab === "captions" && captionSubTab === "transcript")) && "pointer-events-none",
               )}
               style={{
-                transform: mobileDrawerOpen ? "translateX(0)" : "translateX(-105%)",
+                transform:
+                  mobileDrawerOpen && !(activeTab === "captions" && captionSubTab === "transcript")
+                    ? "translateY(0)"
+                    : "translateY(105%)",
               }}
             >
-              <div className="flex items-center justify-between px-3 pt-2.5 pb-2 shrink-0 border-b border-white/6">
-                <p className="text-[13px] font-semibold text-white">{activeTabLabel}</p>
-                <button
-                  onClick={closeDrawer}
-                  className="h-7 w-7 flex items-center justify-center rounded-full bg-white/8 text-white/40 hover:text-white transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto px-3 py-2.5 no-scrollbar min-h-0">
-                <EditPanelContent {...editPanelProps} styleGridMaxHeight={160} />
+              <div
+                className={cn(
+                  "flex flex-1 min-h-0 w-full bg-transparent h-full",
+                  activeTab === "captions" || activeTab === "text" ? "flex-col" : "overflow-y-auto no-scrollbar rounded-t-3xl bg-[#111] border-t border-white/10 shadow-[0_0_48px_rgba(0,0,0,0.8)]",
+                )}
+              >
+                <EditPanelContent
+                  {...editPanelProps}
+                  styleGridMaxHeight={220}
+                  mobileLayout
+                  captionSubTab={captionSubTab}
+                  onCaptionSubTabChange={setCaptionSubTab}
+                  textSubTab={textSubTab}
+                  onTextSubTabChange={setTextSubTab}
+                />
               </div>
             </div>
           )}
 
-          {/* Aspect ratio + mobile export (top right) */}
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
+          {/* Mobile transcript — separate overlay opened from captions Transcript tab */}
+          {isMobile && drawerMounted && (
+            <div
+              className={cn(
+                "absolute left-0 right-0 bottom-0 z-[46] flex flex-col bg-transparent",
+                "h-[min(70%,420px)] transition-transform duration-300 ease-out",
+                !(mobileDrawerOpen && activeTab === "captions" && captionSubTab === "transcript") && "pointer-events-none",
+              )}
+              style={{
+                transform:
+                  mobileDrawerOpen && activeTab === "captions" && captionSubTab === "transcript"
+                    ? "translateY(0)"
+                    : "translateY(105%)",
+              }}
+            >
+              <div className="flex flex-col flex-1 min-h-0 h-full w-full bg-transparent">
+                <div className="flex flex-1 min-h-0 flex-col rounded-t-3xl bg-[#111] border-t border-white/10 shadow-[0_0_48px_rgba(0,0,0,0.8)] overflow-hidden">
+                <div className="shrink-0 flex items-center justify-center bg-[#111] px-3 pt-3 pb-1.5 z-10">
+                  <div className="flex items-center justify-center gap-1 rounded-full bg-white/10 backdrop-blur-md p-1">
+                    {([
+                      { id: "templates" as const, label: "Templates" },
+                      { id: "style" as const, label: "Style" },
+                      { id: "transcript" as const, label: "Transcript" },
+                    ]).map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setCaptionSubTab(tab.id)}
+                        className={cn(
+                          "shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors",
+                          captionSubTab === tab.id
+                            ? "bg-white/15 text-white"
+                            : "text-white/45 active:text-white/70",
+                        )}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-2 px-3 pb-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[12px] font-medium text-white/70">Transcript</p>
+                    <span className="text-[10px] text-white/30">Click any word to edit</span>
+                  </div>
+                  {captionWords.length > 0 ? (
+                    <div className="flex flex-wrap gap-x-1 gap-y-1.5 rounded-xl border border-white/8 bg-white/3 p-3">
+                      {captionWords.map((w, i) => (
+                        <span
+                          key={i}
+                          contentEditable
+                          suppressContentEditableWarning
+                          onBlur={(e) => {
+                            const newWord = e.currentTarget.textContent?.trim();
+                            if (newWord !== undefined && newWord !== w.word) {
+                              const updated = [...captionWords];
+                              updated[i] = { ...w, word: newWord || w.word };
+                              setCaptionWords(updated);
+                            }
+                          }}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
+                          className="text-[12px] text-white/75 rounded px-0.5 -mx-0.5 outline-none hover:bg-white/8 focus:bg-white/12 focus:text-white cursor-text leading-relaxed"
+                        >
+                          {w.word}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[12px] text-white/30 text-center py-8">No captions yet</p>
+                  )}
+                </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Top controls: mobile = full-width bar with back; desktop = top-right only */}
+          <div
+            className={cn(
+              "absolute top-3 z-20 flex items-center gap-1.5",
+              isMobile ? "left-3 right-3 justify-between" : "right-3"
+            )}
+          >
+            {isMobile && (
+              <button
+                onClick={() => router.back()}
+                aria-label="Back"
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-black/60 text-white/50 hover:text-white transition-colors backdrop-blur-sm"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+            )}
+            <div className="flex items-center gap-1.5">
             <div ref={arDropdownRef} className="relative">
             <button
               onClick={() => setArDropdownOpen(o => !o)}
@@ -3546,12 +3957,13 @@ export default function ClipRefinePage() {
                 creditCost={exportCreditCost}
               />
             )}
+            </div>
           </div>
 
           <div className={cn(
             "relative flex items-center justify-center w-full flex-1 min-h-0 overflow-hidden",
             !isMobile && "px-6 py-8",
-            isMobile && "pl-14 pr-3 py-3"
+            isMobile && "px-3 py-3"
           )}>
             {src ? (
               <div
@@ -3963,7 +4375,7 @@ export default function ClipRefinePage() {
 
           {/* ── Timeline (desktop) / simple playback (mobile, temporary) ── */}
           {isMobile ? (
-            <div className="shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a] px-4 pb-3 pt-2 pb-safe">
+            <div className="shrink-0 w-full flex flex-col gap-2 border-t border-white/6 bg-[#0a0a0a] px-3 pb-2 pt-2 pb-safe">
               <input
                 type="range"
                 min={0}
@@ -3977,7 +4389,7 @@ export default function ClipRefinePage() {
                 }}
                 className="w-full accent-white cursor-pointer h-1"
               />
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 px-1">
                 <button
                   type="button"
                   onClick={togglePlay}
@@ -3987,13 +4399,6 @@ export default function ClipRefinePage() {
                     ? <Pause className="h-3.5 w-3.5 fill-black" />
                     : <Play className="h-3.5 w-3.5 fill-black ml-0.5" />}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setMuted(m => !m)}
-                  className="text-white hover:text-white/70 transition-colors"
-                >
-                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                </button>
                 <span className="text-[11px] font-mono text-white/70">
                   {fmt(currentTime)} / {fmt(duration)}
                 </span>
@@ -4002,10 +4407,18 @@ export default function ClipRefinePage() {
                     {speed}×
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setMuted(m => !m)}
+                  className="ml-auto text-white hover:text-white/70 transition-colors"
+                >
+                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </button>
               </div>
-              <p className="text-[11px] text-white/45 text-center pt-0.5">
-                Switch to large screen for editor mode
-              </p>
+              {/* Edit toolbox — replaces mobile nav / editor-mode notice */}
+              <div className="flex items-center gap-1 border-t border-white/8 pt-1.5 -mx-3 px-2 overflow-x-auto no-scrollbar overscroll-x-contain">
+                {MOBILE_SIDE_TABS.map(renderMobileSideTab)}
+              </div>
             </div>
           ) : (
           <div className="shrink-0 w-full">

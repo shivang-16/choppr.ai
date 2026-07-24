@@ -19,7 +19,7 @@ export default function Topbar() {
   }, []);
 
   return (
-    <header className="fixed top-0 left-0 md:left-14 right-0 z-30 flex items-center justify-end gap-3 border-b border-white/6 bg-[#0a0a0a] px-6 h-12">
+    <header className="fixed top-0 left-0 md:left-14 right-0 z-30 hidden md:flex items-center justify-end gap-3 border-b border-white/6 bg-[#0a0a0a] px-6 h-12">
       {/* Bell */}
       <button className="relative flex h-8 w-8 items-center justify-center rounded-lg text-white/40 hover:bg-white/6 hover:text-white/70 transition-colors">
         <Bell className="h-4 w-4" />

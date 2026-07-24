@@ -221,7 +221,7 @@ export default function JobPage() {
     <div className="flex min-h-screen bg-[#0a0a0a]">
       <Sidebar />
       <Topbar />
-      <main className="ml-14 mt-12 flex-1 flex flex-col px-6 py-10">
+      <main className="ml-14 mt-0 md:mt-12 flex-1 flex flex-col px-6 py-10">
         <div className="w-full max-w-4xl mx-auto flex flex-col gap-6">
 
           {/* Status row */}

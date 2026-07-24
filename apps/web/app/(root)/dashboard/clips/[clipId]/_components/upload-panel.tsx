@@ -212,7 +212,6 @@ export function UploadPanel({
 
   const accept = usage === "watermark" ? WATERMARK_ACCEPT : TIMELINE_ACCEPT;
   const maxMb = usage === "watermark" ? 20 : 200;
-  const panelTitle = title ?? (usage === "timeline" ? "My media" : "Your images");
   const isEmpty = !loading && assets.length === 0 && pending.length === 0;
 
   useEffect(() => {
@@ -382,16 +381,18 @@ export function UploadPanel({
 
   return (
     <div className="flex flex-col gap-3 min-h-0">
-      <p className="text-[14px] font-semibold text-white tracking-tight">
-        {panelTitle}
-      </p>
+      {title ? (
+        <p className="text-[14px] font-semibold text-white tracking-tight">
+          {title}
+        </p>
+      ) : null}
 
       {/* Import media — CapCut-style split button */}
-      <div className="flex w-full overflow-hidden rounded-lg shadow-[0_4px_16px_rgba(124,58,237,0.35)]">
+      <div className="flex w-full shrink-0 items-stretch rounded-xl shadow-[0_4px_16px_rgba(124,58,237,0.35)]">
         <button
           type="button"
           onClick={openPicker}
-          className="flex-1 bg-[#7c3aed] hover:bg-[#6d28d9] active:bg-[#5b21b6] px-3 py-2.5 text-[13px] font-semibold text-white transition-colors cursor-pointer"
+          className="flex h-12 flex-1 items-center justify-center rounded-l-xl bg-[#7c3aed] hover:bg-[#6d28d9] active:bg-[#5b21b6] px-4 text-[13px] leading-normal font-semibold text-white transition-colors cursor-pointer"
         >
           Import media
         </button>
@@ -399,7 +400,7 @@ export function UploadPanel({
           type="button"
           onClick={openPicker}
           aria-label="Import options"
-          className="flex w-10 items-center justify-center border-l border-white/20 bg-[#7c3aed] hover:bg-[#6d28d9] active:bg-[#5b21b6] transition-colors cursor-pointer"
+          className="flex h-12 w-11 shrink-0 items-center justify-center rounded-r-xl border-l border-white/20 bg-[#7c3aed] hover:bg-[#6d28d9] active:bg-[#5b21b6] transition-colors cursor-pointer"
         >
           <ChevronDown className="h-4 w-4 text-white" strokeWidth={2.5} />
         </button>
