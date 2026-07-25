@@ -14,7 +14,7 @@ export interface UrlValidationResult {
 
 const ALLOWED_PLATFORMS: { name: string; pattern: RegExp }[] = [
   {
-    // Any youtube.com or youtu.be URL — live is blocked separately above
+    // Any youtube.com or youtu.be URL (including /live/ replays)
     name: "YouTube",
     pattern: /^https?:\/\/((www\.|m\.)?youtube\.com|youtu\.be)\//i,
   },
@@ -54,14 +54,6 @@ export function validateVideoUrl(raw: string): UrlValidationResult {
     new URL(trimmed);
   } catch {
     return { valid: false, error: "That doesn't look like a valid URL. Please check and try again." };
-  }
-
-  // Reject YouTube live streams before the platform allowlist
-  if (/youtube\.com\/live\//i.test(trimmed)) {
-    return {
-      valid: false,
-      error: "YouTube live streams are not supported. Please use a regular YouTube video, short, or replay link.",
-    };
   }
 
   // Platform allowlist

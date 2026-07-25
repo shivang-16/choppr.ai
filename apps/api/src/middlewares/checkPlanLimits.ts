@@ -5,14 +5,18 @@ import { logger } from "../utils/logger.js";
 
 /**
  * Enforces plan-level video length limit.
- * Reads `durationSecs` from the request body (optional, client-supplied).
- * If the client doesn't send it we skip the check here — the worker will
- * enforce it once the actual duration is known.
+ * Requires `durationSecs` in the body — jobs without a known duration are rejected.
  */
 export async function checkVideoLengthLimit(req: Request, res: Response, next: NextFunction) {
   try {
     const durationSecs = Number(req.body?.durationSecs);
-    if (!durationSecs || durationSecs <= 0) return next();
+    if (!Number.isFinite(durationSecs) || durationSecs <= 0) {
+      res.status(400).json({
+        error: "duration_required",
+        message: "Unable to get the video duration. Please try again.",
+      });
+      return;
+    }
 
     const userId = (req as any).user?._id ?? (req as any).auth?.userId;
     if (!userId) return next();

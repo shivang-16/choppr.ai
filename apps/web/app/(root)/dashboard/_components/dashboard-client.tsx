@@ -135,37 +135,71 @@ function extractYouTubeId(url: string) {
   return match?.[1] ?? null;
 }
 
-async function fetchVideoMeta(url: string, apiFetch: (u: string, o?: RequestInit) => Promise<Response>): Promise<VideoMeta | null> {
+function formatDurationLabel(durationSecs: number): string {
+  const h = Math.floor(durationSecs / 3600);
+  const m = Math.floor((durationSecs % 3600) / 60);
+  const s = Math.floor(durationSecs % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+async function readLocalFileDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    const tmp = document.createElement("video");
+    tmp.preload = "metadata";
+    const objUrl = URL.createObjectURL(file);
+    const done = (secs: number) => {
+      URL.revokeObjectURL(objUrl);
+      tmp.removeAttribute("src");
+      tmp.load();
+      resolve(secs > 0 && Number.isFinite(secs) ? Math.floor(secs) : 0);
+    };
+    tmp.onloadedmetadata = () => done(tmp.duration || 0);
+    tmp.onerror = () => done(0);
+    // Some browsers never fire metadata for odd containers
+    setTimeout(() => done(tmp.duration || 0), 8000);
+    tmp.src = objUrl;
+  });
+}
+
+async function fetchVideoMeta(url: string, apiFetch: (u: string, o?: RequestInit) => Promise<Response>): Promise<VideoMeta> {
   const platform = getPlatformInfo(url);
   const ytId = extractYouTubeId(url);
-  if (ytId) {
-    const [oembedRes, metaRes] = await Promise.all([
-      fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`),
-      apiFetch(`${API_URL}/api/video-meta?url=${encodeURIComponent(url)}`),
-    ]);
-    const title = oembedRes.ok ? (await oembedRes.json()).title ?? "YouTube Video" : "YouTube Video";
-    if (!metaRes.ok) throw new Error("Failed to fetch video metadata. Please try again.");
-    const metaJson = await metaRes.json();
-    const durationSecs: number | null = metaJson.durationSecs ?? null;
-    if (!durationSecs || durationSecs <= 0) throw new Error("Could not load video metadata. Please try again.");
-    const dur = `${Math.floor(durationSecs / 3600) > 0 ? Math.floor(durationSecs / 3600) + ":" : ""}${String(Math.floor((durationSecs % 3600) / 60)).padStart(2, "0")}:${String(durationSecs % 60).padStart(2, "0")}`;
-    return {
-      url,
-      thumbnail: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
-      title,
-      duration: dur,
-      durationSecs,
-      platform,
-    };
+
+  const metaRes = await apiFetch(`${API_URL}/api/video-meta?url=${encodeURIComponent(url)}`);
+  const metaJson = await metaRes.json().catch(() => ({}));
+  const durationSecs: number | null = metaJson.durationSecs ?? null;
+
+  if (!metaRes.ok || !durationSecs || durationSecs <= 0) {
+    throw new Error(metaJson.error ?? "Unable to get the video.");
   }
-  // Non-YouTube: no real thumbnail available before processing
-  let hostname = url;
-  try { hostname = new URL(url).hostname.replace("www.", ""); } catch {}
+
+  let title = (metaJson.title as string) || platform?.name || "Video";
+  // Only YouTube CDN thumbs load reliably in the browser.
+  // Drive / X / IG / Loom thumbs from yt-dlp are often auth-walled → broken <img>.
+  let thumbnail = "";
+
+  if (ytId) {
+    thumbnail = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+    try {
+      const oembedRes = await fetch(
+        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`,
+      );
+      if (oembedRes.ok) {
+        const oembed = await oembedRes.json();
+        if (oembed.title) title = oembed.title;
+      }
+    } catch {
+      // keep yt-dlp title
+    }
+  }
+
   return {
     url,
-    thumbnail: "",
-    title: platform?.name ?? hostname,
-    duration: "0:00",
+    thumbnail,
+    title,
+    duration: formatDurationLabel(durationSecs),
+    durationSecs,
     platform,
   };
 }
@@ -225,6 +259,10 @@ function DashboardInner() {
   }, []);
   const [inputUrl, setInputUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState("Loading preview…");
+  const loadingStatusTimerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  /** Create-job plan-limit error on the clips settings view (not the top red line). */
+  const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoMeta | null>(null);
@@ -250,6 +288,7 @@ function DashboardInner() {
 
   // "thumbnail" = show thumbnail + two buttons; "clips" = expand clip settings
   const [videoMode, setVideoMode] = useState<"thumbnail" | "clips">("thumbnail");
+  const [thumbFailed, setThumbFailed] = useState(false);
 
   const [clipModel, setClipModel] = useState("Auto");
   const [genre, setGenre] = useState("Auto");
@@ -283,6 +322,24 @@ function DashboardInner() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => () => {
+    loadingStatusTimerRef.current.forEach(clearTimeout);
+  }, []);
+
+  const clearLoadingStatusTimers = () => {
+    loadingStatusTimerRef.current.forEach(clearTimeout);
+    loadingStatusTimerRef.current = [];
+  };
+
+  const startLoadingStatusSequence = () => {
+    clearLoadingStatusTimers();
+    setLoadingStatus("Loading preview…");
+    loadingStatusTimerRef.current.push(
+      setTimeout(() => setLoadingStatus("Fetching video…"), 1200),
+      setTimeout(() => setLoadingStatus("Fetching video duration…"), 3200),
+    );
+  };
+
   const handleFetch = async (url: string) => {
     const trimmed = url.trim();
     if (!trimmed) return false;
@@ -293,13 +350,17 @@ function DashboardInner() {
     if (!validation.valid) {
       setError(validation.error ?? "Please enter a valid video URL.");
       setLoading(false);
+      clearLoadingStatusTimers();
       return false;
     }
 
     setLoading(true);
+    startLoadingStatusSequence();
     try {
       const meta = await fetchVideoMeta(trimmed, apiFetch);
       setVideo(meta);
+      setThumbFailed(false);
+      setUpgradePrompt(null);
       setVideoMode("thumbnail");
       posthog.capture("video_url_submitted", {
         platform: meta?.platform?.name ?? "unknown",
@@ -317,7 +378,9 @@ function DashboardInner() {
       setVideo(null);
       return false;
     } finally {
+      clearLoadingStatusTimers();
       setLoading(false);
+      setLoadingStatus("Loading preview…");
     }
   };
 
@@ -367,21 +430,35 @@ function DashboardInner() {
     }
     uploadCancelledRef.current = false;
     setError(null);
-    setUploadProgress(0);
+    setVideo(null);
     setUploadedS3Key(null);
+
+    // 1) Local duration BEFORE S3 — block upload if over plan
+    const localDuration = await readLocalFileDuration(file);
+    if (
+      localDuration > 0 &&
+      maxVideoLengthMins != null &&
+      localDuration > maxVideoLengthMins * 60
+    ) {
+      setError(
+        `Your plan allows videos up to ${maxVideoLengthMins} minutes. Upgrade to process longer videos.`,
+      );
+      return;
+    }
+
+    setUploadProgress(0);
     posthog.capture("file_upload_started", {
       file_size_mb: Math.round(file.size / (1024 * 1024)),
+      local_duration_secs: localDuration || null,
     });
 
     try {
-      // 1. Get presigned URL
       const presignRes = await apiFetch(`${API_URL}/api/uploads/presign`, { method: "POST" });
       if (uploadCancelledRef.current) return;
       if (!presignRes.ok) throw new Error("Failed to get upload URL");
       const { uploadUrl, s3Key } = await presignRes.json();
       if (uploadCancelledRef.current) return;
 
-      // 2. PUT directly to S3 with XMLHttpRequest for progress tracking
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         uploadXhrRef.current = xhr;
@@ -398,31 +475,67 @@ function DashboardInner() {
 
       if (uploadCancelledRef.current) return;
       uploadXhrRef.current = null;
-      setUploadedS3Key(s3Key);
       setUploadProgress(null);
       posthog.capture("file_upload_completed", {
         file_size_mb: Math.round(file.size / (1024 * 1024)),
       });
 
-      // Read local duration from the file so we can show an accurate credit estimate
-      const durationSecs = await new Promise<number>((resolve) => {
-        const tmp = document.createElement("video");
-        tmp.preload = "metadata";
-        const objUrl = URL.createObjectURL(file);
-        tmp.src = objUrl;
-        tmp.onloadedmetadata = () => { URL.revokeObjectURL(objUrl); tmp.removeAttribute("src"); tmp.load(); resolve(tmp.duration || 0); };
-        tmp.onerror = () => { URL.revokeObjectURL(objUrl); tmp.removeAttribute("src"); tmp.load(); resolve(0); };
+      // 2) Authoritative duration via API ffprobe on S3
+      setLoading(true);
+      setLoadingStatus("Fetching video duration…");
+      const probeRes = await apiFetch(`${API_URL}/api/uploads/probe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ s3Key }),
       });
-      const dur = durationSecs > 0 ? `${Math.floor(durationSecs / 60)}:${String(Math.floor(durationSecs % 60)).padStart(2, "0")}` : "0:00";
-      setVideo({ url: `[Uploaded] ${file.name}`, thumbnail: "", title: file.name, duration: dur, durationSecs });
+      const probeJson = await probeRes.json().catch(() => ({}));
+      const durationSecs: number =
+        typeof probeJson.durationSecs === "number" && probeJson.durationSecs > 0
+          ? probeJson.durationSecs
+          : localDuration;
+
+      if (!durationSecs || durationSecs <= 0) {
+        setUploadedS3Key(null);
+        throw new Error(probeJson.error ?? "Unable to determine video duration.");
+      }
+
+      if (maxVideoLengthMins != null && durationSecs > maxVideoLengthMins * 60) {
+        setUploadedS3Key(null);
+        setError(
+          `Your plan allows videos up to ${maxVideoLengthMins} minutes. Upgrade to process longer videos.`,
+        );
+        setLoading(false);
+        return;
+      }
+
+      setUploadedS3Key(s3Key);
+      setUpgradePrompt(null);
+      setVideo({
+        url: `[Uploaded] ${file.name}`,
+        thumbnail: "",
+        title: file.name,
+        duration: formatDurationLabel(durationSecs),
+        durationSecs,
+        platform: {
+          name: "Upload",
+          color: "#a3a3a3",
+          icon: <Upload className="w-8 h-8" />,
+        },
+      });
       setVideoMode("thumbnail");
+      setThumbFailed(false);
+      const mins = durationSecs / 60;
+      setMaxClips(mins <= 5 ? 5 : 10);
     } catch (err: unknown) {
       uploadXhrRef.current = null;
       setUploadProgress(null);
-      // Silent cancel — don't show an error toast
+      setUploadedS3Key(null);
       if (err instanceof DOMException && err.name === "AbortError") return;
       if (uploadCancelledRef.current) return;
       setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setLoading(false);
+      setLoadingStatus("Loading preview…");
     }
   };
 
@@ -430,13 +543,22 @@ function DashboardInner() {
   const handleSubmit = async () => {
     if (!video) return;
 
-    // Client-side plan limit check
-    if (maxVideoLengthMins != null && video.durationSecs && video.durationSecs > maxVideoLengthMins * 60) {
-      setError(`Your plan allows videos up to ${maxVideoLengthMins} minutes. Upgrade to process longer videos.`);
+    if (!video.durationSecs || video.durationSecs <= 0) {
+      setError("Unable to get the video duration. Please try again.");
+      return;
+    }
+
+    // Client-side plan limit — show upgrade CTA under Get clips (not top red line)
+    if (maxVideoLengthMins != null && video.durationSecs > maxVideoLengthMins * 60) {
+      setUpgradePrompt(
+        `Your plan allows videos up to ${maxVideoLengthMins} minutes. Upgrade to process longer videos.`,
+      );
+      setError(null);
       return;
     }
 
     setError(null);
+    setUpgradePrompt(null);
     setSubmitting(true);
     try {
       const body: Record<string, unknown> = {
@@ -445,7 +567,7 @@ function DashboardInner() {
         genre,
         clipLength,
         maxClips,
-        ...(video.durationSecs && video.durationSecs > 0 ? { durationSecs: video.durationSecs } : {}),
+        durationSecs: video.durationSecs,
       };
       if (uploadedS3Key) {
         body.s3Key = uploadedS3Key;
@@ -464,7 +586,20 @@ function DashboardInner() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message ?? data.error ?? "Failed to create job");
+        const msg = String(data.message ?? data.error ?? "Failed to create job");
+        // Plan / size limit from create-job → swap Get clips to Upgrade (no top red error)
+        if (
+          data.error === "video_too_long" ||
+          /plan allows videos|video_too_long|upgrade to process/i.test(msg)
+        ) {
+          setUpgradePrompt(
+            data.message ??
+              `Your plan allows videos up to ${data.maxVideoLengthMins ?? maxVideoLengthMins ?? "your plan"} minutes. Upgrade to process longer videos.`,
+          );
+          setError(null);
+          return;
+        }
+        throw new Error(msg);
       }
 
       const { projectId } = await res.json();
@@ -490,22 +625,32 @@ function DashboardInner() {
     setVideo(null);
     setInputUrl("");
     setError(null);
+    setUpgradePrompt(null);
     setUploadedS3Key(null);
     setUploadProgress(null);
     setLanguage("auto");
     setVideoMode("thumbnail");
+    setThumbFailed(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   // "Edit Full" — creates a job in transcribe-only mode (no clipping)
   const handleEditFull = async () => {
     if (!video) return;
+    if (!video.durationSecs || video.durationSecs <= 0) {
+      setError("Unable to get the video duration. Please try again.");
+      return;
+    }
+    if (maxVideoLengthMins != null && video.durationSecs > maxVideoLengthMins * 60) {
+      setError(`Your plan allows videos up to ${maxVideoLengthMins} minutes. Upgrade to process longer videos.`);
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
       const body: Record<string, unknown> = {
         editFull: true,
-        ...(video.durationSecs && video.durationSecs > 0 ? { durationSecs: video.durationSecs } : {}),
+        durationSecs: video.durationSecs,
       };
       if (uploadedS3Key) {
         body.s3Key = uploadedS3Key;
@@ -687,8 +832,10 @@ function DashboardInner() {
         {/* Loading indicator while auto-fetching */}
         {!video && loading && (
           <div className="mt-3 flex items-center justify-center gap-2 text-[13px] text-white/40 py-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading preview…
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            <span key={loadingStatus} className="animate-in fade-in duration-300">
+              {loadingStatus}
+            </span>
           </div>
         )}
 
@@ -701,8 +848,19 @@ function DashboardInner() {
             Fetch video manually
           </button>
         )}
-        {error && (
-          <p className="mt-2 text-[12px] text-red-400 text-center">{error}</p>
+        {/* Top error — hide plan/upgrade messages while video settings are open (shown under Get clips instead) */}
+        {error && !(video && /plan allows videos|upgrade to process/i.test(error)) && (
+          <div className="mt-3 flex flex-col items-center gap-2.5">
+            <p className="text-[12px] text-red-400 text-center">{error}</p>
+            {!video && /plan allows videos/i.test(error) && (
+              <a
+                href="/dashboard/billing"
+                className="rounded-2xl bg-white px-5 py-2.5 text-[13px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99]"
+              >
+                Upgrade to continue →
+              </a>
+            )}
+          </div>
         )}
 
         {!video && !loading && (
@@ -817,30 +975,50 @@ function DashboardInner() {
             </div>
           )}
 
-          {/* Thumbnail / platform placeholder */}
+          {/* Thumbnail / platform placeholder — never show a broken image */}
           <div className="relative w-72 rounded-2xl overflow-hidden border border-white/10 shadow-xl">
-            {video.thumbnail ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={video.thumbnail} alt={video.title} className="w-full aspect-video object-cover" />
-                <div className="absolute top-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white/70 font-mono">720p</div>
-              </>
-            ) : video.platform ? (
-              <div
-                className="w-full aspect-video flex flex-col items-center justify-center gap-3"
-                style={{ background: `radial-gradient(ellipse at center, ${video.platform.color}22 0%, #111 70%)` }}
-              >
-                <div style={{ color: video.platform.color }} className="opacity-80">
-                  {video.platform.icon}
+            {(() => {
+              const thumbUrl = video.thumbnail?.trim();
+              const showThumb = !!thumbUrl && /^https?:\/\//i.test(thumbUrl) && !thumbFailed;
+              const platform = video.platform;
+
+              if (showThumb) {
+                return (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={thumbUrl}
+                      alt=""
+                      className="w-full aspect-video object-cover bg-[#111]"
+                      onError={() => setThumbFailed(true)}
+                    />
+                    <div className="absolute top-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white/70 font-mono">720p</div>
+                  </>
+                );
+              }
+
+              if (platform) {
+                return (
+                  <div
+                    className="w-full aspect-video flex flex-col items-center justify-center gap-3"
+                    style={{ background: `radial-gradient(ellipse at center, ${platform.color}22 0%, #111 70%)` }}
+                  >
+                    <div style={{ color: platform.color }} className="opacity-80">
+                      {platform.icon}
+                    </div>
+                    <span className="text-[11px] font-medium text-white/40">{platform.name} video</span>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="w-full aspect-video bg-[#1a1a1a] flex flex-col items-center justify-center gap-2">
+                  <Film className="h-8 w-8 text-white/25" />
+                  <span className="text-[11px] font-medium text-white/35">Video</span>
                 </div>
-                <span className="text-[11px] font-medium text-white/40">{video.platform.name} video</span>
-              </div>
-            ) : (
-              <div className="w-full aspect-video bg-[#1a1a1a] flex items-center justify-center">
-                <CheckCircle className="h-8 w-8 text-green-400" />
-              </div>
-            )}
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
+              );
+            })()}
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2 pointer-events-none">
               <p className="text-[11px] text-white/70 truncate">{video.title}</p>
               {video.durationSecs && video.durationSecs > 0 && (
                 <p className="text-[10px] text-white/40 mt-0.5">
@@ -1020,26 +1198,46 @@ function DashboardInner() {
 
           </div>
 
-          {maxVideoLengthMins != null && video.durationSecs && video.durationSecs > maxVideoLengthMins * 60 ? (
-            <a
-              href="/dashboard/billing"
-              className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] flex items-center justify-center gap-2 mb-8"
-            >
-              Upgrade your plan to continue →
-            </a>
-          ) : (() => {
+          {(() => {
+            const overPlan =
+              !!upgradePrompt ||
+              (maxVideoLengthMins != null &&
+                !!video.durationSecs &&
+                video.durationSecs > maxVideoLengthMins * 60);
+
+            if (overPlan) {
+              return (
+                <div className="flex flex-col items-center gap-2.5 w-full mb-8">
+                  <a
+                    href="/dashboard/billing"
+                    className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] flex items-center justify-center gap-2"
+                  >
+                    Upgrade to continue →
+                  </a>
+                  <p className="text-[12px] text-red-400 text-center leading-snug px-2">
+                    {upgradePrompt ??
+                      `Your plan allows videos up to ${maxVideoLengthMins} minutes. Upgrade to process longer videos.`}
+                  </p>
+                </div>
+              );
+            }
+
             const requiredCredits = video.durationSecs && video.durationSecs > 0
               ? Math.ceil(video.durationSecs / 60) * 2
               : 2;
             const insufficientCredits = userBalance !== null && userBalance < requiredCredits;
-            return insufficientCredits ? (
-              <a
-                href="/pricing"
-                className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] flex items-center justify-center gap-2 mb-8"
-              >
-                Get more credits → ({userBalance}/{requiredCredits} credits)
-              </a>
-            ) : (
+            if (insufficientCredits) {
+              return (
+                <a
+                  href="/pricing"
+                  className="w-full rounded-2xl bg-white py-3.5 text-[14px] font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99] flex items-center justify-center gap-2 mb-8"
+                >
+                  Get more credits → ({userBalance}/{requiredCredits} credits)
+                </a>
+              );
+            }
+
+            return (
               <button
                 onClick={handleSubmit}
                 disabled={submitting}

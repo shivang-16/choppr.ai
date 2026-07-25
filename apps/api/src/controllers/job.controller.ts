@@ -50,7 +50,8 @@ const CreateJobSchema = z.object({
   genre:          z.string().default("Auto"),
   clipLength:     z.string().default("Auto (0m-3m)"),
   maxClips:       z.number().int().min(1).max(20).default(10),
-  durationSecs:   z.number().min(0).optional(),
+  /** Required — clients must resolve duration before creating a job */
+  durationSecs:   z.number().positive("Video duration is required"),
   language:       z.string().optional(),
   editFull:       z.boolean().default(false),
   /** Optional display name from video metadata (YouTube title, file name, etc.) */
@@ -122,6 +123,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
         ...(displayName ? { name: displayName } : {}),
         sourceUrl,
         ...(resolvedThumbnail ? { thumbnailUrl: resolvedThumbnail } : {}),
+        videoDuration:  durationSecs,
         status:         "pending",
         aspectRatio,
         backgroundFill,
@@ -143,6 +145,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
         status:      "pending",
         progress:    0,
         projectId,
+        videoDuration: durationSecs,
         ...(s3Key ? { sourceVideoS3Key: s3Key } : {}),
       }),
     ]);

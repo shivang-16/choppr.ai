@@ -1,75 +1,14 @@
 import { Router, Request, Response } from "express";
-import { existsSync } from "fs";
-import { readFile, writeFile, unlink } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
-import { youtubeDl as ytDlpExec } from "youtube-dl-exec";
 import { baseAuth } from "../middlewares/checkAuth.js";
 import { logger } from "../utils/logger.js";
+import { fetchMetaLight, fetchDurationViaDownload } from "../utils/video-duration.js";
 
 const router = Router();
 router.use(baseAuth);
 
-// Path to the Playwright auth state saved alongside this server
-const STORAGE_STATE_PATH = join(process.cwd(), ".youtube_auth_state.json");
-
 /**
- * Convert Playwright storage-state cookies to Netscape HTTP Cookie File
- * format that yt-dlp understands. Mirrors the Python logic in cookie_refresher.py.
- */
-function cookiesToNetscape(cookies: Array<Record<string, any>>): string {
-  const lines = ["# Netscape HTTP Cookie File\n"];
-  const now = Math.floor(Date.now() / 1000);
-  for (const c of cookies) {
-    const domain = String(c.domain ?? "");
-    const flag   = domain.startsWith(".") ? "TRUE" : "FALSE";
-    const path   = String(c.path ?? "/");
-    const secure = c.secure ? "TRUE" : "FALSE";
-    let   expires = Math.floor(Number(c.expires ?? 0));
-    if (expires < 0) expires = now + 365 * 24 * 3600;
-    lines.push(`${domain}\t${flag}\t${path}\t${secure}\t${expires}\t${c.name}\t${c.value}\n`);
-  }
-  return lines.join("");
-}
-
-/**
- * Fetch video metadata directly on this server using youtube-dl-exec (bundles
- * yt-dlp) + saved YouTube cookies. No Playwright refresh, no agent hop.
- * Throws if .youtube_auth_state.json is missing.
- */
-async function fetchMetaLocal(url: string) {
-  if (!existsSync(STORAGE_STATE_PATH)) {
-    throw new Error(".youtube_auth_state.json not found");
-  }
-
-  const state   = JSON.parse(await readFile(STORAGE_STATE_PATH, "utf-8"));
-  const cookies = (state.cookies ?? []) as Array<Record<string, any>>;
-  const tmpFile = join(tmpdir(), `yt-cookies-${process.pid}-${Date.now()}.txt`);
-
-  await writeFile(tmpFile, cookiesToNetscape(cookies));
-
-  try {
-    const info = await ytDlpExec(url, {
-      cookies:    tmpFile,
-      dumpSingleJson: true,
-      noPlaylist: true,
-      noWarnings: true,
-    }) as Record<string, any>;
-
-    const rawDuration = parseFloat(String(info.duration ?? "0"));
-    return {
-      durationSecs: rawDuration > 0 ? Math.floor(rawDuration) : null,
-      thumbnail:    (info.thumbnail as string) ?? null,
-      title:        (info.title    as string) ?? null,
-    };
-  } finally {
-    await unlink(tmpFile).catch(() => {});
-  }
-}
-
-/**
- * Proxy fallback — hits the Python agent exactly as before.
- * Used when yt-dlp is unavailable on this server or the cookie file is absent.
+ * Proxy fallback — hits the Python agent for light yt-dlp meta.
+ * Used when local yt-dlp is unavailable on this server.
  */
 async function fetchMetaViaAgent(url: string) {
   const workerUrl = process.env.WORKER_URL ?? "http://localhost:8000";
@@ -85,46 +24,64 @@ async function fetchMetaViaAgent(url: string) {
 }
 
 // GET /api/video-meta?url=...
+// 1) Light yt-dlp metadata
+// 2) If no duration → download video + ffprobe (API)
+// 3) If that fails → unable to get the video
 router.get("/", async (req: Request, res: Response) => {
   const url = String(req.query.url ?? "").trim();
   if (!url) { res.status(400).json({ error: "url is required" }); return; }
 
-  // Try locally first — keeps the agent free for heavy processing
+  let title: string | null = null;
+  let thumbnail: string | null = null;
+  let durationSecs: number | null = null;
+
+  // Step 1: light metadata
   try {
-    const meta = await fetchMetaLocal(url);
-    // [LOG_REDUCED]
-    // logger.info("Video metadata fetched locally", {
-    //   url,
-    //   durationSecs: meta.durationSecs,
-    //   title: meta.title,
-    // });
-    res.json(meta);
-    return;
+    const meta = await fetchMetaLight(url);
+    durationSecs = meta.durationSecs;
+    title = meta.title;
+    thumbnail = meta.thumbnail;
   } catch (localErr) {
-    logger.warn("video-meta: local yt-dlp failed, falling back to agent", {
+    logger.warn("video-meta: local yt-dlp light meta failed, trying agent", {
       url,
       error: localErr instanceof Error ? localErr.message : String(localErr),
-      stack: localErr instanceof Error ? localErr.stack : undefined,
     });
+    try {
+      const data = await fetchMetaViaAgent(url);
+      durationSecs = typeof data.durationSecs === "number" ? data.durationSecs : null;
+      title = (data.title as string) ?? null;
+      thumbnail = (data.thumbnail as string) ?? null;
+    } catch (e) {
+      logger.warn("video-meta: agent light meta also failed", {
+        url,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
   }
 
-  // Agent fallback
-  try {
-    const data = await fetchMetaViaAgent(url);
-    // [LOG_REDUCED]
-    // logger.info("Video metadata fetched via agent fallback", {
-    //   url,
-    //   durationSecs: data.durationSecs ?? null,
-    // });
-    res.json(data);
-  } catch (e) {
-    logger.error("video-meta: agent fallback also failed", {
-      url,
-      error: e instanceof Error ? e.message : String(e),
-      stack: e instanceof Error ? e.stack : undefined,
-    });
-    res.json({ durationSecs: null });
+  if (durationSecs && durationSecs > 0) {
+    res.json({ durationSecs, thumbnail, title });
+    return;
   }
+
+  // Step 2: heavy fallback — download + ffprobe on API
+  logger.info("video-meta: no duration from light meta, downloading for ffprobe", { url });
+  const deep = await fetchDurationViaDownload(url);
+  if (deep.durationSecs && deep.durationSecs > 0) {
+    res.json({
+      durationSecs: deep.durationSecs,
+      thumbnail: thumbnail ?? deep.thumbnail,
+      title: title ?? deep.title,
+    });
+    return;
+  }
+
+  res.status(422).json({
+    durationSecs: null,
+    thumbnail,
+    title,
+    error: deep.error ?? "Unable to get the video.",
+  });
 });
 
 export default router;
