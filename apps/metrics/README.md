@@ -18,6 +18,12 @@ pnpm --filter metrics dev
 
 Open [http://localhost:3001](http://localhost:3001), sign in — metrics load automatically. Use **Refresh** to reload.
 
+## Date range
+
+Global filter in the header (default **Last 7 days**). Presets: Today, 7 / 30 / 90 days, All time, or custom from/to.
+
+Scopes overview activity, daily breakdown, leaderboards, sales activity maps, people activity ranks, and free-plan overages. Plan/subscription stock chips stay all-time.
+
 ## Scale notes
 
 - Overview uses counts / `$group` only (no full document dumps)
@@ -25,6 +31,20 @@ Open [http://localhost:3001](http://localhost:3001), sign in — metrics load au
 - Sales leads are built with a **batched cursor** (250 users at a time); UI pages **25** at a time
 - Refresh hits `/api/snapshot` once (aggregates computed once, not 3×)
 - Sales pagination reuses a short in-memory cache (~2 min) so Next/Prev stays cheap
+
+## Free plan overages tab
+
+Lists free-plan projects (and a per-user rollup) that exceed video length limits:
+
+| Limit | Value |
+|-------|-------|
+| Current free | **30 min** / **150 credits** |
+| Previous free (legacy) | **45 min** / **250 credits** |
+
+- **Soft** — duration &gt; 30 min but ≤ 45 min (bypasses current free only)
+- **Hard** — duration &gt; 45 min (past the old free ceiling)
+
+Includes source URL, estimated job credits, status, and user contact. API: `GET /api/bypass`.
 
 ## Sales tab (“Who to message”)
 

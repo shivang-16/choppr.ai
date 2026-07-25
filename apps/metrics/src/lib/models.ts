@@ -22,11 +22,14 @@ const ProjectSchema = new Schema(
     _id: String,
     userId: String,
     title: String,
+    name: String,
+    sourceUrl: String,
     status: String,
     totalClips: Number,
     videoDuration: Number,
     aspectRatio: String,
     error: String,
+    jobId: String,
   },
   { timestamps: true, collection: "projects", _id: false }
 );
@@ -70,6 +73,8 @@ const CreditLedgerSchema = new Schema(
     userId: String,
     amount: Number,
     type: String,
+    jobId: String,
+    jobDurationMins: Number,
   },
   { timestamps: { createdAt: true, updatedAt: false }, collection: "creditledgers" }
 );

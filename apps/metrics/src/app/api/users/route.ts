@@ -8,6 +8,7 @@ import {
   parseUsersListFilters,
   type UsersSort,
 } from "@/lib/metrics";
+import { parseRangeFromSearchParams } from "@/lib/date-range";
 
 export async function GET(req: NextRequest) {
   const auth = requireMetricsAuth(req);
@@ -23,8 +24,16 @@ export async function GET(req: NextRequest) {
     const sort = (sp.get("sort") || "recent") as UsersSort;
     const q = sp.get("q") || undefined;
     const filters = parseUsersListFilters(sp);
+    const range = parseRangeFromSearchParams(sp);
 
-    const data = await getUsersMetrics({ page, limit, sort, q, ...filters });
+    const data = await getUsersMetrics({
+      page,
+      limit,
+      sort,
+      q,
+      range,
+      ...filters,
+    });
     return NextResponse.json(data);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load users";

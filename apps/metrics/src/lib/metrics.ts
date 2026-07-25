@@ -12,6 +12,12 @@ import {
   type SalesSegmentId,
   type UserMetricsRow,
 } from "./sales";
+import {
+  createdAtMatch,
+  defaultDateRange,
+  parseDateRange,
+  type ParsedDateRange,
+} from "./date-range";
 
 const LEADERBOARD_LIMIT = 50;
 const DEFAULT_PAGE_SIZE = 25;
@@ -51,6 +57,7 @@ export type ActivityMaps = {
 
 type SalesCache = {
   at: number;
+  rangeKey: string;
   maps: ActivityMaps;
   summary: Record<SalesSegmentId, number>;
   leads: SalesLead[];
@@ -62,6 +69,15 @@ function daysAgo(n: number) {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d;
+}
+
+function resolveRange(range?: ParsedDateRange): ParsedDateRange {
+  return range ?? parseDateRange(defaultDateRange());
+}
+
+function matchCreatedAt(range: ParsedDateRange): Record<string, unknown> {
+  const createdAt = createdAtMatch(range);
+  return createdAt ? { createdAt } : {};
 }
 
 function toMap(rows: { _id: string; count: number }[]) {
@@ -79,10 +95,17 @@ function clampLimit(limit: number) {
 
 const aggOpts = { allowDiskUse: true };
 
-export async function getActivityMaps(): Promise<ActivityMaps> {
+export async function getActivityMaps(
+  range?: ParsedDateRange
+): Promise<ActivityMaps> {
+  const r = resolveRange(range);
+  const dateMatch = matchCreatedAt(r);
+  const hasDate = Object.keys(dateMatch).length > 0;
+
   const [projectStats, clipStats, exportStats, topups] = await Promise.all([
     Project.aggregate(
       [
+        ...(hasDate ? [{ $match: dateMatch }] : []),
         {
           $group: {
             _id: "$userId",
@@ -107,6 +130,7 @@ export async function getActivityMaps(): Promise<ActivityMaps> {
     ),
     Clip.aggregate(
       [
+        ...(hasDate ? [{ $match: dateMatch }] : []),
         {
           $group: {
             _id: "$userId",
@@ -119,6 +143,7 @@ export async function getActivityMaps(): Promise<ActivityMaps> {
     ),
     Export.aggregate(
       [
+        ...(hasDate ? [{ $match: dateMatch }] : []),
         {
           $group: {
             _id: "$userId",
@@ -134,7 +159,12 @@ export async function getActivityMaps(): Promise<ActivityMaps> {
     ),
     CreditLedger.aggregate(
       [
-        { $match: { type: "grant_topup" } },
+        {
+          $match: {
+            type: "grant_topup",
+            ...dateMatch,
+          },
+        },
         {
           $group: {
             _id: "$userId",
@@ -342,32 +372,196 @@ async function buildLeaderboards(maps: ActivityMaps) {
   };
 }
 
-export async function getOverview() {
+export type DailyBucket = {
+  date: string;
+  users: number;
+  projects: number;
+  clips: number;
+  exports: number;
+  exportsDone: number;
+  creditsSpent: number;
+  topupCredits: number;
+};
+
+async function getDailySeries(range: ParsedDateRange): Promise<DailyBucket[]> {
+  if (!range.from || !range.to) {
+    // All-time: last 30 days of daily buckets for a usable chart
+    const to = new Date();
+    const from = daysAgo(29);
+    from.setHours(0, 0, 0, 0);
+    return getDailySeries({
+      ...range,
+      from,
+      to,
+      label: "Last 30 days",
+      key: "daily-fallback-30",
+    });
+  }
+
+  const dateMatch = matchCreatedAt(range);
+  const dayGroup = {
+    $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+  };
+
+  const [users, projects, clips, exports, credits] = await Promise.all([
+    User.aggregate(
+      [
+        { $match: dateMatch },
+        { $group: { _id: dayGroup, count: { $sum: 1 } } },
+      ],
+      aggOpts
+    ),
+    Project.aggregate(
+      [
+        { $match: dateMatch },
+        { $group: { _id: dayGroup, count: { $sum: 1 } } },
+      ],
+      aggOpts
+    ),
+    Clip.aggregate(
+      [
+        { $match: dateMatch },
+        { $group: { _id: dayGroup, count: { $sum: 1 } } },
+      ],
+      aggOpts
+    ),
+    Export.aggregate(
+      [
+        { $match: dateMatch },
+        {
+          $group: {
+            _id: dayGroup,
+            count: { $sum: 1 },
+            done: {
+              $sum: { $cond: [{ $eq: ["$status", "done"] }, 1, 0] },
+            },
+          },
+        },
+      ],
+      aggOpts
+    ),
+    CreditLedger.aggregate(
+      [
+        {
+          $match: {
+            type: { $in: ["job_cost", "export_cost", "grant_topup"] },
+            ...dateMatch,
+          },
+        },
+        {
+          $group: {
+            _id: dayGroup,
+            spent: {
+              $sum: {
+                $cond: [
+                  { $in: ["$type", ["job_cost", "export_cost"]] },
+                  { $abs: "$amount" },
+                  0,
+                ],
+              },
+            },
+            topup: {
+              $sum: {
+                $cond: [{ $eq: ["$type", "grant_topup"] }, "$amount", 0],
+              },
+            },
+          },
+        },
+      ],
+      aggOpts
+    ),
+  ]);
+
+  const byDate = new Map<string, DailyBucket>();
+
+  function ensure(date: string): DailyBucket {
+    let row = byDate.get(date);
+    if (!row) {
+      row = {
+        date,
+        users: 0,
+        projects: 0,
+        clips: 0,
+        exports: 0,
+        exportsDone: 0,
+        creditsSpent: 0,
+        topupCredits: 0,
+      };
+      byDate.set(date, row);
+    }
+    return row;
+  }
+
+  // Fill every UTC calendar day in range so gaps show as zeros
+  // (matches Mongo $dateToString default timezone)
+  const cursor = new Date(
+    Date.UTC(
+      range.from.getUTCFullYear(),
+      range.from.getUTCMonth(),
+      range.from.getUTCDate()
+    )
+  );
+  const end = new Date(
+    Date.UTC(
+      range.to.getUTCFullYear(),
+      range.to.getUTCMonth(),
+      range.to.getUTCDate()
+    )
+  );
+  while (cursor <= end) {
+    const key = cursor.toISOString().slice(0, 10);
+    ensure(key);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  for (const r of users) ensure(r._id as string).users = r.count;
+  for (const r of projects) ensure(r._id as string).projects = r.count;
+  for (const r of clips) ensure(r._id as string).clips = r.count;
+  for (const r of exports) {
+    const row = ensure(r._id as string);
+    row.exports = r.count;
+    row.exportsDone = r.done;
+  }
+  for (const r of credits) {
+    const row = ensure(r._id as string);
+    row.creditsSpent = r.spent ?? 0;
+    row.topupCredits = r.topup ?? 0;
+  }
+
+  return [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export async function getOverview(range?: ParsedDateRange) {
   const now = new Date();
+  const r = resolveRange(range);
+  const dateMatch = matchCreatedAt(r);
+  const hasDate = Object.keys(dateMatch).length > 0;
   const d7 = daysAgo(7);
   const d30 = daysAgo(30);
 
   const [
     totalUsers,
+    usersInRange,
     users7d,
     users30d,
     onboarded,
     bySubscription,
     byPlan,
-    totalProjects,
+    projectsInRange,
     projectsByStatus,
-    projects7d,
-    projects30d,
-    totalClips,
-    clips7d,
-    totalExports,
+    projectsAllTime,
+    clipsInRange,
+    clipsAllTime,
+    exportsInRange,
     exportsByStatus,
-    exports7d,
-    exportsDone,
+    exportsDoneInRange,
+    exportsAllTime,
     topupRevenue,
     creditSpent,
+    daily,
   ] = await Promise.all([
     User.countDocuments(),
+    hasDate ? User.countDocuments(dateMatch) : User.countDocuments(),
     User.countDocuments({ createdAt: { $gte: d7 } }),
     User.countDocuments({ createdAt: { $gte: d30 } }),
     User.countDocuments({ isOnboarded: true }),
@@ -379,25 +573,37 @@ export async function getOverview() {
       [{ $group: { _id: "$plan", count: { $sum: 1 } } }],
       aggOpts
     ),
-    Project.countDocuments(),
+    hasDate ? Project.countDocuments(dateMatch) : Project.countDocuments(),
     Project.aggregate(
-      [{ $group: { _id: "$status", count: { $sum: 1 } } }],
+      [
+        ...(hasDate ? [{ $match: dateMatch }] : []),
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ],
       aggOpts
     ),
-    Project.countDocuments({ createdAt: { $gte: d7 } }),
-    Project.countDocuments({ createdAt: { $gte: d30 } }),
+    Project.countDocuments(),
+    hasDate ? Clip.countDocuments(dateMatch) : Clip.countDocuments(),
     Clip.countDocuments(),
-    Clip.countDocuments({ createdAt: { $gte: d7 } }),
-    Export.countDocuments(),
+    hasDate ? Export.countDocuments(dateMatch) : Export.countDocuments(),
     Export.aggregate(
-      [{ $group: { _id: "$status", count: { $sum: 1 } } }],
+      [
+        ...(hasDate ? [{ $match: dateMatch }] : []),
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ],
       aggOpts
     ),
-    Export.countDocuments({ createdAt: { $gte: d7 } }),
-    Export.countDocuments({ status: "done" }),
+    hasDate
+      ? Export.countDocuments({ ...dateMatch, status: "done" })
+      : Export.countDocuments({ status: "done" }),
+    Export.countDocuments(),
     CreditLedger.aggregate(
       [
-        { $match: { type: "grant_topup" } },
+        {
+          $match: {
+            type: "grant_topup",
+            ...dateMatch,
+          },
+        },
         {
           $group: {
             _id: null,
@@ -410,17 +616,30 @@ export async function getOverview() {
     ),
     CreditLedger.aggregate(
       [
-        { $match: { type: { $in: ["job_cost", "export_cost"] } } },
+        {
+          $match: {
+            type: { $in: ["job_cost", "export_cost"] },
+            ...dateMatch,
+          },
+        },
         { $group: { _id: null, credits: { $sum: "$amount" } } },
       ],
       aggOpts
     ),
+    getDailySeries(r),
   ]);
 
   return {
     generatedAt: now.toISOString(),
+    range: {
+      preset: r.preset,
+      from: r.from?.toISOString() ?? null,
+      to: r.to?.toISOString() ?? null,
+      label: r.label,
+    },
     users: {
       total: totalUsers,
+      inRange: usersInRange,
       last7d: users7d,
       last30d: users30d,
       onboarded,
@@ -428,19 +647,22 @@ export async function getOverview() {
       byPlan: toMap(byPlan),
     },
     projects: {
-      total: totalProjects,
-      last7d: projects7d,
-      last30d: projects30d,
+      total: projectsInRange,
+      allTime: projectsAllTime,
+      last7d: projectsInRange,
+      last30d: projectsInRange,
       byStatus: toMap(projectsByStatus),
     },
     clips: {
-      total: totalClips,
-      last7d: clips7d,
+      total: clipsInRange,
+      allTime: clipsAllTime,
+      last7d: clipsInRange,
     },
     exports: {
-      total: totalExports,
-      last7d: exports7d,
-      done: exportsDone,
+      total: exportsInRange,
+      allTime: exportsAllTime,
+      last7d: exportsInRange,
+      done: exportsDoneInRange,
       byStatus: toMap(exportsByStatus),
     },
     credits: {
@@ -448,6 +670,7 @@ export async function getOverview() {
       topupCreditsGranted: topupRevenue[0]?.credits ?? 0,
       creditsSpent: Math.abs(creditSpent[0]?.credits ?? 0),
     },
+    daily,
   };
 }
 
@@ -645,6 +868,7 @@ export async function getUsersMetrics(opts?: {
   sort?: UsersSort;
   q?: string;
   maps?: ActivityMaps;
+  range?: ParsedDateRange;
 } & UsersListFilters) {
   const page = clampPage(opts?.page ?? 1);
   const limit = clampLimit(opts?.limit ?? DEFAULT_PAGE_SIZE);
@@ -656,7 +880,7 @@ export async function getUsersMetrics(opts?: {
     signup: normalizeSignup(opts?.signup),
     onboarded: normalizeOnboarded(opts?.onboarded),
   };
-  const maps = opts?.maps ?? (await getActivityMaps());
+  const maps = opts?.maps ?? (await getActivityMaps(opts?.range));
   const useDbList =
     sort === "signup" || hasActiveListFilters(filters, opts?.q);
 
@@ -813,18 +1037,29 @@ async function buildSalesLeadsFromMaps(maps: ActivityMaps): Promise<{
   return { summary, leads };
 }
 
-async function getSalesCache(fresh = false): Promise<SalesCache> {
+async function getSalesCache(
+  fresh = false,
+  range?: ParsedDateRange
+): Promise<SalesCache> {
+  const r = resolveRange(range);
   if (
     !fresh &&
     salesCache &&
+    salesCache.rangeKey === r.key &&
     Date.now() - salesCache.at < CACHE_TTL_MS
   ) {
     return salesCache;
   }
 
-  const maps = await getActivityMaps();
+  const maps = await getActivityMaps(r);
   const { summary, leads } = await buildSalesLeadsFromMaps(maps);
-  salesCache = { at: Date.now(), maps, summary, leads };
+  salesCache = {
+    at: Date.now(),
+    rangeKey: r.key,
+    maps,
+    summary,
+    leads,
+  };
   return salesCache;
 }
 
@@ -837,11 +1072,12 @@ export async function getSalesOutreach(opts?: {
   limit?: number;
   segment?: SalesSegmentId | "all";
   fresh?: boolean;
+  range?: ParsedDateRange;
 }) {
   const page = clampPage(opts?.page ?? 1);
   const limit = clampLimit(opts?.limit ?? DEFAULT_PAGE_SIZE);
   const segment = opts?.segment ?? "all";
-  const cache = await getSalesCache(opts?.fresh ?? false);
+  const cache = await getSalesCache(opts?.fresh ?? false, opts?.range);
 
   const filtered =
     segment === "all"
@@ -866,12 +1102,16 @@ export async function getSalesOutreach(opts?: {
 }
 
 /** One-shot dashboard load — activity maps computed once. */
-export async function getDashboardSnapshot(opts?: { fresh?: boolean }) {
+export async function getDashboardSnapshot(opts?: {
+  fresh?: boolean;
+  range?: ParsedDateRange;
+}) {
+  const r = resolveRange(opts?.range);
   if (opts?.fresh) bustMetricsCache();
 
   const [overview, cache] = await Promise.all([
-    getOverview(),
-    getSalesCache(opts?.fresh ?? true),
+    getOverview(r),
+    getSalesCache(opts?.fresh ?? true, r),
   ]);
 
   const leaderboards = await buildLeaderboards(cache.maps);

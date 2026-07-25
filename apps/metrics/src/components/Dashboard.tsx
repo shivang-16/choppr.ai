@@ -3,6 +3,14 @@
 import { useEffect, useState } from "react";
 import { clearAuth, metricsFetch } from "@/lib/api";
 import { SEGMENT_ORDER, type SalesSegmentId } from "@/lib/segment-meta";
+import { BypassPanel } from "@/components/BypassPanel";
+import { DateRangeBar } from "@/components/DateRangeBar";
+import {
+  defaultDateRange,
+  formatRangeLabel,
+  rangeQueryParams,
+  type DateRange,
+} from "@/lib/date-range";
 
 type PlanFilter = "all" | "free" | "core" | "growth" | "scale";
 
@@ -28,10 +36,28 @@ const PLAN_FILTERS: { id: PlanFilter; label: string }[] = [
   { id: "scale", label: "Scale" },
 ];
 
+type DailyBucket = {
+  date: string;
+  users: number;
+  projects: number;
+  clips: number;
+  exports: number;
+  exportsDone: number;
+  creditsSpent: number;
+  topupCredits: number;
+};
+
 type Overview = {
   generatedAt: string;
+  range?: {
+    preset: string;
+    from: string | null;
+    to: string | null;
+    label: string;
+  };
   users: {
     total: number;
+    inRange?: number;
     last7d: number;
     last30d: number;
     onboarded: number;
@@ -40,13 +66,15 @@ type Overview = {
   };
   projects: {
     total: number;
+    allTime?: number;
     last7d: number;
     last30d: number;
     byStatus: Record<string, number>;
   };
-  clips: { total: number; last7d: number };
+  clips: { total: number; allTime?: number; last7d: number };
   exports: {
     total: number;
+    allTime?: number;
     last7d: number;
     done: number;
     byStatus: Record<string, number>;
@@ -56,6 +84,7 @@ type Overview = {
     topupCreditsGranted: number;
     creditsSpent: number;
   };
+  daily?: DailyBucket[];
 };
 
 type UserRow = {
@@ -161,6 +190,7 @@ type Tab =
   | "overview"
   | "people"
   | "sales"
+  | "bypass"
   | "active"
   | "projects"
   | "clips"
@@ -484,8 +514,10 @@ function UserTable({
 
 function PeoplePanel({
   onAuthError,
+  range,
 }: {
   onAuthError: () => void;
+  range: DateRange;
 }) {
   const [query, setQuery] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -511,6 +543,8 @@ function PeoplePanel({
           limit: "25",
           sort: "signup",
         });
+        const rq = new URLSearchParams(rangeQueryParams(range));
+        rq.forEach((v, k) => params.set(k, v));
         if (debouncedQ) params.set("q", debouncedQ);
         if (plan !== "all") params.set("plan", plan);
         const res = await metricsFetch<UsersPayload>(`/users?${params}`);
@@ -532,7 +566,7 @@ function PeoplePanel({
     };
     // onAuthError is stable enough for logout redirect; omit to avoid refetch loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQ, page, plan]);
+  }, [debouncedQ, page, plan, range.preset, range.from, range.to]);
 
   return (
     <div className="space-y-4">
@@ -765,6 +799,7 @@ function SalesPanel({
 
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("overview");
+  const [range, setRange] = useState<DateRange>(() => defaultDateRange());
   const [overview, setOverview] = useState<Overview | null>(null);
   const [leaderboards, setLeaderboards] = useState<Leaderboards | null>(null);
   const [sales, setSales] = useState<SalesPayload | null>(null);
@@ -772,11 +807,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [salesPaging, setSalesPaging] = useState(false);
 
-  async function load() {
+  async function load(nextRange: DateRange = range) {
     setLoading(true);
     setError("");
     try {
-      const snap = await metricsFetch<SnapshotPayload>("/snapshot?fresh=1");
+      const qs = rangeQueryParams(nextRange);
+      const snap = await metricsFetch<SnapshotPayload>(
+        `/snapshot?fresh=1&${qs}`
+      );
       setOverview(snap.overview);
       setLeaderboards(snap.leaderboards);
       setSales(snap.sales);
@@ -798,8 +836,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     setSalesPaging(true);
     setError("");
     try {
+      const qs = rangeQueryParams(range);
       const data = await metricsFetch<SalesPayload>(
-        `/sales?page=${page}&limit=25&segment=${segment}`
+        `/sales?page=${page}&limit=25&segment=${segment}&${qs}`
       );
       setSales(data);
     } catch (err) {
@@ -811,6 +850,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     } finally {
       setSalesPaging(false);
     }
+  }
+
+  function handleRangeChange(next: DateRange) {
+    setRange(next);
+    load(next);
   }
 
   // Load once on open / page reload — no polling.
@@ -828,15 +872,20 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     { id: "overview", label: "Overview" },
     { id: "people", label: "People" },
     { id: "sales", label: "Who to message" },
+    { id: "bypass", label: "Free plan overages" },
     { id: "active", label: "Recently active" },
     { id: "projects", label: "Top projects" },
     { id: "clips", label: "Top clips" },
     { id: "exports", label: "Top exports" },
   ];
 
+  const rangeLabel =
+    overview?.range?.label ??
+    formatRangeLabel(range.preset, range.from ? new Date(range.from) : null, range.to ? new Date(range.to) : null);
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[12px] font-medium tracking-[0.2em] text-white/40 uppercase">
             Choppr
@@ -845,30 +894,37 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             Metrics
           </h1>
           <p className="mt-1 text-sm text-white/45">
-            Marketing & sales ·{" "}
+            Marketing & sales · {rangeLabel}
             {overview
-              ? `Updated ${fmtDate(overview.generatedAt)}`
+              ? ` · Updated ${fmtDate(overview.generatedAt)}`
               : loading
-                ? "Loading…"
-                : "Ready"}
+                ? " · Loading…"
+                : ""}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={load}
+        <div className="flex flex-col items-stretch gap-3 sm:items-end">
+          <DateRangeBar
+            value={range}
+            onChange={handleRangeChange}
             disabled={loading}
-            className="rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-white/90 disabled:opacity-60"
-          >
-            {loading ? "Loading…" : "Refresh"}
-          </button>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="rounded-2xl border border-white/12 bg-white/6 px-4 py-2 text-sm text-white/55 hover:bg-white/10 hover:text-white"
-          >
-            Sign out
-          </button>
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => load()}
+              disabled={loading}
+              className="rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-white/90 disabled:opacity-60"
+            >
+              {loading ? "Loading…" : "Refresh"}
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-2xl border border-white/12 bg-white/6 px-4 py-2 text-sm text-white/55 hover:bg-white/10 hover:text-white"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -910,45 +966,61 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             <div className="space-y-8">
               <section>
                 <h2 className="mb-3 text-[12px] font-medium tracking-wider text-white/40 uppercase">
-                  Users
+                  Users · {rangeLabel}
                 </h2>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <StatCard label="Total users" value={overview.users.total} />
-                  <StatCard label="New (7d)" value={overview.users.last7d} />
-                  <StatCard label="New (30d)" value={overview.users.last30d} />
+                  <StatCard
+                    label="New signups"
+                    value={overview.users.inRange ?? overview.users.last7d}
+                    sub={`in selected range`}
+                  />
+                  <StatCard
+                    label="Total users"
+                    value={overview.users.total}
+                    sub="All time"
+                  />
+                  <StatCard label="New (7d rolling)" value={overview.users.last7d} />
                   <StatCard
                     label="Onboarded"
                     value={overview.users.onboarded}
-                    sub={`${overview.users.total ? Math.round((overview.users.onboarded / overview.users.total) * 100) : 0}% of total`}
+                    sub={`${overview.users.total ? Math.round((overview.users.onboarded / overview.users.total) * 100) : 0}% of total · all time`}
                   />
                 </div>
                 <div className="mt-3 space-y-2">
-                  <p className="text-[12px] text-white/40">By subscription</p>
+                  <p className="text-[12px] text-white/40">By subscription (all time)</p>
                   <StatusChips map={overview.users.bySubscription} />
-                  <p className="pt-2 text-[12px] text-white/40">By plan</p>
+                  <p className="pt-2 text-[12px] text-white/40">By plan (all time)</p>
                   <StatusChips map={overview.users.byPlan} />
                 </div>
               </section>
 
               <section>
                 <h2 className="mb-3 text-[12px] font-medium tracking-wider text-white/40 uppercase">
-                  Product activity
+                  Product activity · {rangeLabel}
                 </h2>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <StatCard
                     label="Projects"
                     value={overview.projects.total}
-                    sub={`+${overview.projects.last7d} this week`}
+                    sub={
+                      overview.projects.allTime != null
+                        ? `${overview.projects.allTime} all time`
+                        : undefined
+                    }
                   />
                   <StatCard
                     label="Clips"
                     value={overview.clips.total}
-                    sub={`+${overview.clips.last7d} this week`}
+                    sub={
+                      overview.clips.allTime != null
+                        ? `${overview.clips.allTime} all time`
+                        : undefined
+                    }
                   />
                   <StatCard
                     label="Exports (done)"
                     value={overview.exports.done}
-                    sub={`${overview.exports.total} total · +${overview.exports.last7d} week`}
+                    sub={`${overview.exports.total} total in range`}
                   />
                   <StatCard
                     label="Credits spent"
@@ -964,16 +1036,70 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 </div>
               </section>
 
+              {overview.daily && overview.daily.length > 0 && (
+                <section>
+                  <h2 className="mb-3 text-[12px] font-medium tracking-wider text-white/40 uppercase">
+                    Day by day · {rangeLabel}
+                  </h2>
+                  <div className="overflow-x-auto rounded-2xl border border-white/8">
+                    <table className="w-full min-w-[720px] text-sm">
+                      <thead>
+                        <tr className="border-b border-white/8 bg-[#111] text-left text-[12px] text-white/40 uppercase tracking-wider">
+                          <th className="px-4 py-3 font-medium">Date</th>
+                          <th className="px-4 py-3 font-medium">Signups</th>
+                          <th className="px-4 py-3 font-medium">Projects</th>
+                          <th className="px-4 py-3 font-medium">Clips</th>
+                          <th className="px-4 py-3 font-medium">Exports</th>
+                          <th className="px-4 py-3 font-medium">Credits spent</th>
+                          <th className="px-4 py-3 font-medium">Top-up cr</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {overview.daily.map((d) => (
+                          <tr
+                            key={d.date}
+                            className="border-b border-white/[0.04] hover:bg-white/[0.03]"
+                          >
+                            <td className="px-4 py-2.5 font-mono text-[12px] text-white/70 whitespace-nowrap">
+                              {d.date}
+                            </td>
+                            <td className="px-4 py-2.5 font-mono tabular-nums text-white">
+                              {d.users}
+                            </td>
+                            <td className="px-4 py-2.5 font-mono tabular-nums text-white">
+                              {d.projects}
+                            </td>
+                            <td className="px-4 py-2.5 font-mono tabular-nums text-white/80">
+                              {d.clips}
+                            </td>
+                            <td className="px-4 py-2.5 font-mono tabular-nums text-white/80">
+                              {d.exportsDone}
+                              <span className="text-white/30">/{d.exports}</span>
+                            </td>
+                            <td className="px-4 py-2.5 font-mono tabular-nums text-white/70">
+                              {d.creditsSpent}
+                            </td>
+                            <td className="px-4 py-2.5 font-mono tabular-nums text-white/45">
+                              {d.topupCredits}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
               {sales && (
                 <section>
                   <h2 className="mb-3 text-[12px] font-medium tracking-wider text-white/40 uppercase">
-                    Outreach queue
+                    Outreach queue · {rangeLabel}
                   </h2>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <StatCard
                       label="Total leads"
                       value={sales.totalLeads}
-                      sub="Open Who to message for copy-ready texts"
+                      sub="Based on activity in selected range"
                     />
                     <StatCard
                       label="Upgrade ready"
@@ -990,7 +1116,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           )}
 
           {tab === "people" && (
-            <PeoplePanel onAuthError={onLogout} />
+            <PeoplePanel onAuthError={onLogout} range={range} />
           )}
 
           {tab === "sales" && sales && (
@@ -1002,11 +1128,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             />
           )}
 
+          {tab === "bypass" && (
+            <BypassPanel onAuthError={onLogout} range={range} />
+          )}
+
           {tab === "active" && leaderboards && (
             <div>
               <p className="mb-3 text-sm text-white/45">
-                Top 50 recently active. Last visited = max(last project, last
-                export).
+                Top 50 recently active in {rangeLabel}. Last visited = max(last
+                project, last export) in range.
               </p>
               <UserTable rows={leaderboards.recentlyActive} mode="active" />
             </div>
@@ -1014,19 +1144,25 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
           {tab === "projects" && leaderboards && (
             <div>
-              <p className="mb-3 text-sm text-white/45">Top 50 by project count</p>
+              <p className="mb-3 text-sm text-white/45">
+                Top 50 by project count · {rangeLabel}
+              </p>
               <UserTable rows={leaderboards.topByProjects} mode="projects" />
             </div>
           )}
           {tab === "clips" && leaderboards && (
             <div>
-              <p className="mb-3 text-sm text-white/45">Top 50 by clip count</p>
+              <p className="mb-3 text-sm text-white/45">
+                Top 50 by clip count · {rangeLabel}
+              </p>
               <UserTable rows={leaderboards.topByClips} mode="clips" />
             </div>
           )}
           {tab === "exports" && leaderboards && (
             <div>
-              <p className="mb-3 text-sm text-white/45">Top 50 by exports done</p>
+              <p className="mb-3 text-sm text-white/45">
+                Top 50 by exports done · {rangeLabel}
+              </p>
               <UserTable rows={leaderboards.topByExports} mode="exports" />
             </div>
           )}
