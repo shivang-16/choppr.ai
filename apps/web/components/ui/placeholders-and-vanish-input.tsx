@@ -18,7 +18,8 @@ export function PlaceholdersAndVanishInput({
 }: {
   placeholders: string[];
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onSubmit?: (e: React.FormEvent<HTMLFormElement>) => void;
+  /** Return `false` to cancel the vanish animation (e.g. invalid URL). */
+  onSubmit?: (e: React.FormEvent<HTMLFormElement>) => void | boolean;
   className?: string;
   inputClassName?: string;
   placeholderClassName?: string;
@@ -193,8 +194,13 @@ export function PlaceholdersAndVanishInput({
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const result = onSubmit?.(e);
+    // Parent can cancel vanish/loading UI on validation failure
+    if (result === false) {
+      setAnimating(false);
+      return;
+    }
     vanishAndSubmit();
-    onSubmit?.(e);
   };
 
   return (

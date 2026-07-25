@@ -6,6 +6,8 @@ export interface IProject {
   _id: string;
   userId: string;
   title: string;
+  /** Optional display name (from video metadata or user edit). Falls back to title. */
+  name?: string;
   sourceUrl: string;
   thumbnailUrl?: string;
   videoDuration?: number;
@@ -32,6 +34,7 @@ const ProjectSchema = new Schema<IProject>(
     _id:           { type: String, required: true },
     userId:        { type: String, required: true, index: true },
     title:         { type: String, required: true },
+    name:          { type: String },
     sourceUrl:     { type: String, required: true },
     thumbnailUrl:  { type: String },
     videoDuration: { type: Number },

@@ -1,5 +1,6 @@
 export const URL_PLACEHOLDERS = [
   "Paste a YouTube link…",
+  "Paste an X / Twitter link…",
   "Paste a Google Drive link…",
   "Paste a Loom link…",
   "Paste an Instagram reel…",
@@ -16,6 +17,14 @@ const ALLOWED_PLATFORMS: { name: string; pattern: RegExp }[] = [
     // Any youtube.com or youtu.be URL — live is blocked separately above
     name: "YouTube",
     pattern: /^https?:\/\/((www\.|m\.)?youtube\.com|youtu\.be)\//i,
+  },
+  {
+    // X / Twitter status posts + short links + common embed mirrors
+    // Domains: x.com, twitter.com, mobile/m subdomains, t.co, fxtwitter, vxtwitter, fixupx
+    // Paths: /user/status/ID, /i/status/ID, /i/web/status/ID (+ optional /video/1, /photo/1, query params)
+    name: "X / Twitter",
+    pattern:
+      /^https?:\/\/(((www|mobile|m)\.)?(twitter\.com|x\.com)\/([A-Za-z0-9_]+\/status\/|i\/(web\/)?status\/)|t\.co\/[A-Za-z0-9]+|((www\.)?(fxtwitter|vxtwitter|fixupx)\.com)\/([A-Za-z0-9_]+\/status\/|i\/(web\/)?status\/))/i,
   },
   {
     // Any drive.google.com or docs.google.com URL
@@ -63,6 +72,6 @@ export function validateVideoUrl(raw: string): UrlValidationResult {
   return {
     valid: false,
     error:
-      "Unsupported link. Please paste a YouTube, Google Drive, Loom, or Instagram URL.",
+      "Unsupported link. Please paste a YouTube, X/Twitter, Google Drive, Loom, or Instagram URL.",
   };
 }

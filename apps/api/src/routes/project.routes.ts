@@ -4,6 +4,7 @@ import {
   listProjects,
   getProject,
   getProjectClips,
+  updateProject,
   deleteProject,
   retryProject,
 } from "../controllers/project.controller.js";
@@ -14,6 +15,7 @@ router.use(baseAuth);
 router.get("/",                          listProjects);
 router.get("/:projectId",                getProject);
 router.get("/:projectId/clips",          getProjectClips);
+router.patch("/:projectId",              updateProject);
 router.post("/:projectId/retry",         retryProject);
 router.delete("/:projectId",             deleteProject);
 

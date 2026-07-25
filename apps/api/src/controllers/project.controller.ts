@@ -99,6 +99,36 @@ export async function retryProject(req: Request, res: Response, next: NextFuncti
   }
 }
 
+// ── PATCH /api/projects/:projectId ── update optional display name ───────────
+export async function updateProject(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = (req as any).user?._id;
+    const projectId = req.params.projectId as string;
+    const project = await Project.findById(projectId);
+    if (!project) { res.status(404).json({ error: "Not found" }); return; }
+    if (project.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    if (typeof req.body?.name !== "string") {
+      res.status(400).json({ error: "name must be a string" });
+      return;
+    }
+
+    const trimmed = req.body.name.trim().slice(0, 200);
+    // Empty → remove name so UI falls back to title (safe for older projects)
+    if (!trimmed) {
+      await Project.updateOne({ _id: projectId }, { $unset: { name: 1 } });
+      res.json({ ...project.toObject(), name: null });
+      return;
+    }
+
+    // $set creates the field if missing — no migration needed for existing docs
+    await Project.updateOne({ _id: projectId }, { $set: { name: trimmed } });
+    res.json({ ...project.toObject(), name: trimmed });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ── DELETE /api/projects/:projectId ─────────────────────────────────────────
 export async function deleteProject(req: Request, res: Response, next: NextFunction) {
   try {

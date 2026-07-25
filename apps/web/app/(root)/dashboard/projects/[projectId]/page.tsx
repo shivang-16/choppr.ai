@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
-import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Wand2, Sparkles, ChevronLeft, ChevronRight, RotateCcw, AlertCircle, CheckCircle2, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Wand2, Sparkles, ChevronLeft, ChevronRight, RotateCcw, AlertCircle, CheckCircle2, Trash2, Pencil, Check } from "lucide-react";
 import { useRouter as _useRouter } from "next/navigation";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
@@ -465,13 +465,41 @@ export default function ProjectDetailPage() {
   const [modal, setModal] = useState<{ slides: any[]; startIdx: number } | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting]         = useState(false);
+  const [editingName, setEditingName]   = useState(false);
+  const [nameDraft, setNameDraft]       = useState("");
+  const [savingName, setSavingName]     = useState(false);
   const apiFetch = useApiFetch();
+
+  const displayName = project?.name?.trim() || project?.title || "Project";
 
   const handleRetry = () => {
     if (!project?.sourceUrl) return;
     const params = new URLSearchParams();
     params.set("url", project.sourceUrl);
     router.push(`/dashboard?${params.toString()}`);
+  };
+
+  const startEditName = () => {
+    setNameDraft(project?.name?.trim() || "");
+    setEditingName(true);
+  };
+
+  const saveName = async () => {
+    if (!projectId) return;
+    setSavingName(true);
+    try {
+      const res = await apiFetch(`${API_URL}/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nameDraft }),
+      });
+      if (!res.ok) throw new Error("Failed to rename");
+      const updated = await res.json();
+      setProject((p: any) => (p ? { ...p, name: updated.name ?? undefined } : p));
+      setEditingName(false);
+    } finally {
+      setSavingName(false);
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -535,52 +563,129 @@ export default function ProjectDetailPage() {
   return (
     <div className="flex min-h-screen bg-[#0a0a0a] overflow-x-hidden">
       <Sidebar />
-      <Topbar />
+      <Topbar
+        left={
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/projects")}
+            className="md:hidden cursor-pointer shrink-0 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-white/40 hover:text-white transition-colors"
+            aria-label="Back to projects"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        }
+      />
       <main className="ml-0 md:ml-14 mt-12 flex-1 flex flex-col px-3 sm:px-6 py-5 md:py-10 pb-28 md:pb-10 overflow-x-hidden">
         <div className="max-w-5xl w-full mx-auto flex flex-col gap-4 md:gap-6 flex-1">
 
-          {/* Back + header */}
-          <div className="flex items-center gap-2.5">
+          {/* Back + header — back stays in-page on desktop; on phone it's in the top navbar */}
+          <div className="flex items-start gap-2.5">
             <button
+              type="button"
               onClick={() => router.push("/dashboard/projects")}
-              className="cursor-pointer shrink-0 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-white/40 hover:text-white transition-colors"
+              className="hidden md:flex cursor-pointer shrink-0 h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-white/40 hover:text-white transition-colors"
+              aria-label="Back to projects"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-[15px] md:text-[16px] font-semibold text-white truncate">
-                {loading ? "Loading…" : project?.title ?? "Project"}
-              </h1>
+            <div className="flex-1 min-w-0 overflow-hidden">
+              {editingName ? (
+                <div className="flex w-full md:w-1/2 items-center gap-1.5">
+                  <input
+                    autoFocus
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveName();
+                      if (e.key === "Escape") setEditingName(false);
+                    }}
+                    placeholder={project?.title || "Project name"}
+                    maxLength={200}
+                    disabled={savingName}
+                    className="min-w-0 flex-1 rounded-lg border border-white/15 bg-black/40 px-2.5 py-1.5 text-[13px] md:text-[14px] font-semibold text-white placeholder:text-white/30 outline-none focus:border-white/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={saveName}
+                    disabled={savingName}
+                    title="Save"
+                    aria-label="Save"
+                    className="cursor-pointer shrink-0 flex h-8 w-8 md:w-auto items-center justify-center rounded-lg bg-white md:px-2.5 text-[11px] font-medium text-black hover:bg-white/90 disabled:opacity-40"
+                  >
+                    {savingName ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 md:hidden" />
+                        <span className="hidden md:inline">Save</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingName(false)}
+                    disabled={savingName}
+                    title="Cancel"
+                    aria-label="Cancel"
+                    className="cursor-pointer shrink-0 flex h-8 w-8 md:w-auto items-center justify-center rounded-lg border border-white/10 md:border-0 text-white/50 hover:text-white md:px-1 text-[11px] disabled:opacity-40"
+                  >
+                    <X className="h-4 w-4 md:hidden" />
+                    <span className="hidden md:inline">Cancel</span>
+                  </button>
+                </div>
+              ) : (
+                <h1 className="text-[15px] md:text-[16px] font-semibold text-white truncate">
+                  {loading ? "Loading…" : displayName}
+                </h1>
+              )}
               {project?.sourceUrl && (
                 <p className="text-[10px] md:text-[11px] text-white/25 truncate">{project.sourceUrl}</p>
               )}
             </div>
-            {project && ["done", "failed"].includes(project.status) && (
-              <button
-                onClick={handleRetry}
-                className="shrink-0 cursor-pointer flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] md:text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors"
-              >
-                <RotateCcw className="h-3 w-3 md:h-3.5 md:w-3.5" />
-                <span>Retry</span>
-              </button>
+            {project && (
+              <div className="shrink-0 flex items-center gap-1.5">
+                {["done", "failed"].includes(project.status) && (
+                  <button
+                    type="button"
+                    onClick={handleRetry}
+                    title="Retry"
+                    className="cursor-pointer flex items-center justify-center gap-1.5 h-8 w-8 md:w-auto md:px-2.5 rounded-lg border border-white/10 bg-white/5 text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    <span className="hidden md:inline">Retry</span>
+                  </button>
+                )}
+                {!editingName && (
+                  <button
+                    type="button"
+                    onClick={startEditName}
+                    title="Edit project name"
+                    className="cursor-pointer flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/20 transition-colors"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {(() => {
+                  const isProcessing = !["done", "failed"].includes(project.status);
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => !isProcessing && setShowDeleteModal(true)}
+                      disabled={isProcessing}
+                      title={isProcessing ? "Wait until processing completes" : "Delete project"}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors
+                        ${isProcessing
+                          ? "border-white/6 text-white/15 cursor-not-allowed"
+                          : "cursor-pointer border-white/10 text-white/30 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10"
+                        }`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  );
+                })()}
+              </div>
             )}
-            {project && (() => {
-              const isProcessing = !["done", "failed"].includes(project.status);
-              return (
-                <button
-                  onClick={() => !isProcessing && setShowDeleteModal(true)}
-                  disabled={isProcessing}
-                  title={isProcessing ? "Wait until processing completes" : "Delete project"}
-                  className={`shrink-0 flex items-center justify-center h-8 w-8 rounded-lg border transition-colors
-                    ${isProcessing
-                      ? "border-white/6 text-white/15 cursor-not-allowed"
-                      : "cursor-pointer border-white/10 text-white/30 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10"
-                    }`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              );
-            })()}          </div>
+          </div>
 
           {/* Loading */}
           {loading && (
@@ -674,7 +779,7 @@ export default function ProjectDetailPage() {
             <div className="flex flex-col gap-1">
               <h2 className="text-[15px] font-semibold text-white">Delete project?</h2>
               <p className="text-[13px] text-white/45 leading-snug">
-                <span className="text-white/70 font-medium">&ldquo;{project?.title}&rdquo;</span> and all its clips will be permanently deleted from storage. This cannot be undone.
+                <span className="text-white/70 font-medium">&ldquo;{displayName}&rdquo;</span> and all its clips will be permanently deleted from storage. This cannot be undone.
               </p>
             </div>
             <div className="flex items-center justify-end gap-2">

@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useApiFetch } from "@/lib/apiFetch";
-import { Loader2, Film, Trash2, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Loader2, Film, Trash2, Clock, CheckCircle, XCircle, Pencil } from "lucide-react";
 import Sidebar from "../_components/sidebar";
 import Topbar from "../_components/topbar";
 import posthog from "posthog-js";
@@ -18,9 +17,28 @@ const PLATFORM_STYLES: { match: (url: string) => boolean; name: string; color: s
     icon: <svg viewBox="0 0 24 24" className="w-7 h-7 fill-current"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>,
   },
   {
-    match: (u) => u.includes("x.com") || u.includes("twitter.com"),
+    match: (u) => /(?:^|[/.])(x\.com|twitter\.com|t\.co|fxtwitter\.com|vxtwitter\.com|fixupx\.com)(?:[/?#]|$)/i.test(u),
     name: "X / Twitter", color: "#e5e5e5",
     icon: <svg viewBox="0 0 24 24" className="w-7 h-7 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.742l7.732-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>,
+  },
+  {
+    match: (u) => u.includes("drive.google.com") || u.includes("docs.google.com"),
+    name: "Google Drive", color: "#4285F4",
+    icon: (
+      <svg viewBox="0 0 87.3 78" className="w-8 h-7" aria-hidden>
+        <path fill="#0066da" d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" />
+        <path fill="#00ac47" d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z" />
+        <path fill="#ea4335" d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" />
+        <path fill="#00832d" d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" />
+        <path fill="#2684fc" d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" />
+        <path fill="#ffba00" d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" />
+      </svg>
+    ),
+  },
+  {
+    match: (u) => u.includes("loom.com"),
+    name: "Loom", color: "#625DF5",
+    icon: <svg viewBox="0 0 24 24" className="w-7 h-7 fill-current"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 3.6a8.4 8.4 0 110 16.8 8.4 8.4 0 010-16.8zm0 2.4a6 6 0 100 12 6 6 0 000-12zm0 2.4a3.6 3.6 0 110 7.2 3.6 3.6 0 010-7.2z"/></svg>,
   },
   {
     match: (u) => u.includes("tiktok.com"),
@@ -49,6 +67,10 @@ function getPlatformStyle(url?: string) {
   return PLATFORM_STYLES.find(p => p.match(url)) ?? null;
 }
 
+function projectDisplayName(project: { name?: string; title?: string }) {
+  return project.name?.trim() || project.title || "Project";
+}
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   pending:    { label: "Queued",     color: "text-white/40",  icon: <Clock className="h-3 w-3" /> },
   processing: { label: "Processing", color: "text-blue-400",  icon: <Loader2 className="h-3 w-3 animate-spin" /> },
@@ -74,11 +96,13 @@ function timeAgo(date: string) {
 }
 
 export default function ProjectsPage() {
-  const router = useRouter();
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
   const apiFetch = useApiFetch();
 
   const fetchProjects = async () => {
@@ -98,6 +122,14 @@ export default function ProjectsPage() {
     setDeleteTarget({ id: projectId, title });
   };
 
+  const handleEditClick = (e: React.MouseEvent, project: { _id: string; name?: string; title?: string }) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const current = projectDisplayName(project);
+    setRenameTarget({ id: project._id, name: current });
+    setRenameValue(project.name?.trim() || "");
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -108,6 +140,31 @@ export default function ProjectsPage() {
       setDeleteTarget(null);
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const confirmRename = async () => {
+    if (!renameTarget) return;
+    setRenaming(true);
+    try {
+      const res = await apiFetch(`${API_URL}/api/projects/${renameTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameValue }),
+      });
+      if (!res.ok) throw new Error("Failed to rename");
+      const updated = await res.json();
+      setProjects((list) =>
+        list.map((p) =>
+          p._id === renameTarget.id
+            ? { ...p, name: updated.name ?? undefined }
+            : p
+        )
+      );
+      posthog.capture("project_renamed", { project_id: renameTarget.id });
+      setRenameTarget(null);
+    } finally {
+      setRenaming(false);
     }
   };
 
@@ -158,12 +215,39 @@ export default function ProjectsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {projects.map((project) => {
                 const sc = STATUS_CONFIG[project.status] ?? STATUS_CONFIG.pending!;
+                const displayName = projectDisplayName(project);
+                const isProcessing = !["done", "failed"].includes(project.status);
                 return (
                   <Link
                     key={project._id}
                     href={`/dashboard/projects/${project._id}`}
                     className="group relative flex flex-col gap-3 rounded-2xl border border-white/8 bg-[#111] p-4 hover:border-white/16 transition-all"
                   >
+                    {/* Edit + delete — always on phone, hover on desktop */}
+                    <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={(e) => handleEditClick(e, project)}
+                        title="Edit project name"
+                        className="h-8 w-8 flex items-center justify-center rounded-lg border border-white/15 bg-black/70 text-white/80 hover:text-white hover:border-white/30 hover:bg-black/85 transition-colors cursor-pointer"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => !isProcessing && handleDeleteClick(e, project._id, displayName)}
+                        disabled={isProcessing}
+                        title={isProcessing ? "Wait until processing completes" : "Delete project"}
+                        className={`h-8 w-8 flex items-center justify-center rounded-lg border bg-black/70 transition-colors
+                          ${isProcessing
+                            ? "border-white/8 text-white/25 cursor-not-allowed"
+                            : "border-white/15 text-white/80 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/15 cursor-pointer"
+                          }`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
                     {/* Thumbnail */}
                     {(() => {
                       const platform = getPlatformStyle(project.sourceUrl);
@@ -189,21 +273,18 @@ export default function ProjectsPage() {
 
                     {/* Info */}
                     <div className="flex flex-col gap-1.5">
-                      <p className="text-[14px] font-medium text-white/90 line-clamp-1 leading-snug">
-                        {project.title}
+                      <p className="text-[14px] font-medium text-white/90 line-clamp-1 leading-snug pr-16">
+                        {displayName}
                       </p>
                       <div className="flex items-center gap-2 flex-wrap">
-                        {/* Status */}
                         <span className={`flex items-center gap-1 text-[11px] ${sc.color}`}>
                           {sc.icon} {sc.label}
                         </span>
-                        {/* Clips count */}
                         {project.totalClips > 0 && (
                           <span className="text-[11px] text-white/30">
                             · {project.totalClips} clip{project.totalClips !== 1 ? "s" : ""}
                           </span>
                         )}
-                        {/* Duration */}
                         {project.videoDuration && (
                           <span className="text-[11px] text-white/25">
                             · {formatDuration(project.videoDuration)}
@@ -212,25 +293,6 @@ export default function ProjectsPage() {
                       </div>
                       <p className="text-[11px] text-white/20">{timeAgo(project.createdAt)}</p>
                     </div>
-
-                    {/* Delete button */}
-                    {(() => {
-                      const isProcessing = !["done", "failed"].includes(project.status);
-                      return (
-                        <button
-                          onClick={(e) => !isProcessing && handleDeleteClick(e, project._id, project.title)}
-                          disabled={isProcessing}
-                          title={isProcessing ? "Wait until processing completes" : "Delete project"}
-                          className={`absolute top-3 right-3 h-7 w-7 flex items-center justify-center rounded-lg bg-black/40 opacity-0 group-hover:opacity-100 transition-all
-                            ${isProcessing
-                              ? "text-white/15 cursor-not-allowed"
-                              : "text-white/20 hover:text-red-400 hover:bg-red-400/10 cursor-pointer"
-                            }`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      );
-                    })()}
                   </Link>
                 );
               })}
@@ -238,6 +300,49 @@ export default function ProjectsPage() {
           )}
         </div>
       </main>
+
+      {/* Rename modal */}
+      {renameTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#1a1a1a] p-6 shadow-2xl flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-[15px] font-semibold text-white">Edit project name</h2>
+              <p className="text-[13px] text-white/45 leading-snug">
+                Optional. Leave blank to use the default title.
+              </p>
+            </div>
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmRename();
+                if (e.key === "Escape") setRenameTarget(null);
+              }}
+              placeholder={renameTarget.name}
+              maxLength={200}
+              className="w-full rounded-xl border border-white/12 bg-black/40 px-3 py-2.5 text-[13px] text-white placeholder:text-white/25 outline-none focus:border-white/30"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setRenameTarget(null)}
+                disabled={renaming}
+                className="cursor-pointer px-4 py-2 rounded-xl text-[13px] text-white/50 hover:text-white border border-white/10 hover:border-white/20 transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRename}
+                disabled={renaming}
+                className="cursor-pointer flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium bg-white text-black hover:bg-white/90 transition-colors disabled:opacity-40"
+              >
+                {renaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                {renaming ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation modal */}
       {deleteTarget && (

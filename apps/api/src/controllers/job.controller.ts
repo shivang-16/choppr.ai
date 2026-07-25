@@ -53,6 +53,10 @@ const CreateJobSchema = z.object({
   durationSecs:   z.number().min(0).optional(),
   language:       z.string().optional(),
   editFull:       z.boolean().default(false),
+  /** Optional display name from video metadata (YouTube title, file name, etc.) */
+  name:           z.string().max(200).optional(),
+  /** Optional thumbnail from client metadata fetch */
+  thumbnailUrl:   z.string().url().optional(),
 }).refine(data => data.url || data.s3Key, {
   message: "Either url or s3Key is required",
 });
@@ -72,7 +76,7 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    const { url, s3Key, query, clipModel, genre, clipLength, maxClips, durationSecs, language, editFull } = parsed.data;
+    const { url, s3Key, query, clipModel, genre, clipLength, maxClips, durationSecs, language, editFull, name, thumbnailUrl } = parsed.data;
     const aspectRatio    = "9:16";
     const backgroundFill = "blur";
     const userId = (req as any).user?._id ?? (req as any).auth?.userId;
@@ -80,6 +84,8 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
+    const displayName = name?.trim().slice(0, 200) || undefined;
+    const resolvedThumbnail = (url && thumbnailFromUrl(url)) || thumbnailUrl || undefined;
 
     // Gate: check the user has enough credits to cover the full video duration.
     // If durationSecs is provided, compute the full cost; otherwise fall back to MIN_CREDITS_TO_START.
@@ -113,8 +119,9 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
         _id:            projectId,
         userId,
         title:          url ? titleFromUrl(url) : (s3Key?.split("/").pop() ?? "Uploaded video"),
+        ...(displayName ? { name: displayName } : {}),
         sourceUrl,
-        ...(url && thumbnailFromUrl(url) ? { thumbnailUrl: thumbnailFromUrl(url)! } : {}),
+        ...(resolvedThumbnail ? { thumbnailUrl: resolvedThumbnail } : {}),
         status:         "pending",
         aspectRatio,
         backgroundFill,

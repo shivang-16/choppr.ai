@@ -38,11 +38,37 @@ const PLATFORM_MAP: { match: (h: string, p: string) => boolean; info: PlatformIn
     },
   },
   {
-    match: (h) => h.includes("x.com") || h.includes("twitter.com"),
+    match: (h) =>
+      /(^|\.)(x\.com|twitter\.com|t\.co|fxtwitter\.com|vxtwitter\.com|fixupx\.com)$/i.test(h),
     info: {
       name: "X / Twitter",
       color: "#e5e5e5",
       icon: <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.742l7.732-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>,
+    },
+  },
+  {
+    match: (h) => h.includes("drive.google.com") || h.includes("docs.google.com"),
+    info: {
+      name: "Google Drive",
+      color: "#4285F4",
+      icon: (
+        <svg viewBox="0 0 87.3 78" className="w-9 h-8" aria-hidden>
+          <path fill="#0066da" d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" />
+          <path fill="#00ac47" d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z" />
+          <path fill="#ea4335" d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" />
+          <path fill="#00832d" d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" />
+          <path fill="#2684fc" d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" />
+          <path fill="#ffba00" d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" />
+        </svg>
+      ),
+    },
+  },
+  {
+    match: (h) => h.includes("loom.com"),
+    info: {
+      name: "Loom",
+      color: "#625DF5",
+      icon: <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 3.6a8.4 8.4 0 110 16.8 8.4 8.4 0 010-16.8zm0 2.4a6 6 0 100 12 6 6 0 000-12zm0 2.4a3.6 3.6 0 110 7.2 3.6 3.6 0 010-7.2z"/></svg>,
     },
   },
   {
@@ -259,14 +285,15 @@ function DashboardInner() {
 
   const handleFetch = async (url: string) => {
     const trimmed = url.trim();
-    if (!trimmed) return;
+    if (!trimmed) return false;
     setError(null);
 
     // Validate platform before hitting the API
     const validation = validateVideoUrl(trimmed);
     if (!validation.valid) {
       setError(validation.error ?? "Please enter a valid video URL.");
-      return;
+      setLoading(false);
+      return false;
     }
 
     setLoading(true);
@@ -284,10 +311,11 @@ function DashboardInner() {
         const suggested = mins <= 5 ? 5 : 10;
         setMaxClips(suggested);
       }
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Please enter a valid video URL.");
-      setInputUrl("");
       setVideo(null);
+      return false;
     } finally {
       setLoading(false);
     }
@@ -425,6 +453,8 @@ function DashboardInner() {
       } else {
         body.url = video.url;
       }
+      if (video.title?.trim()) body.name = video.title.trim().slice(0, 200);
+      if (video.thumbnail) body.thumbnailUrl = video.thumbnail;
 
       const res = await apiFetch(`${API_URL}/api/jobs`, {
         method: "POST",
@@ -483,6 +513,8 @@ function DashboardInner() {
       } else {
         body.url = video.url;
       }
+      if (video.title?.trim()) body.name = video.title.trim().slice(0, 200);
+      if (video.thumbnail) body.thumbnailUrl = video.thumbnail;
 
       const res = await apiFetch(`${API_URL}/api/jobs`, {
         method: "POST",
@@ -551,7 +583,7 @@ function DashboardInner() {
       {/* ── URL input card ── */}
       <div className="relative z-10 w-full max-w-2xl">
         <div className="relative rounded-2xl overflow-hidden p-[1.5px]">
-          {/* Border: sweep while typing, fill while uploading, static otherwise */}
+          {/* Border: spin only while loading meta / uploading; static otherwise */}
           {uploadProgress !== null ? (
             <div
               className="absolute"
@@ -564,7 +596,7 @@ function DashboardInner() {
                 transition: "background 0.3s ease-out",
               }}
             />
-          ) : inputUrl && !video ? (
+          ) : loading ? (
             <div
               className="absolute"
               style={{
@@ -594,7 +626,15 @@ function DashboardInner() {
                   e.preventDefault();
                   if (debounceRef.current) clearTimeout(debounceRef.current);
                   const trimmed = inputUrl.trim();
-                  if (trimmed) handleFetch(trimmed);
+                  if (!trimmed) return false;
+                  const validation = validateVideoUrl(trimmed);
+                  if (!validation.valid) {
+                    setError(validation.error ?? "Please enter a valid video URL.");
+                    setLoading(false);
+                    return false;
+                  }
+                  void handleFetch(trimmed);
+                  return true;
                 }}
                 hideSubmitButton
               />
@@ -734,7 +774,7 @@ function DashboardInner() {
                     })()}
                     {/* Info */}
                     <p className="text-[12px] font-medium text-white/80 line-clamp-1 leading-snug">
-                      {project.title}
+                      {project.name?.trim() || project.title}
                     </p>
                     <div className="flex items-center gap-1.5 text-[11px] text-white/30">
                       {project.status === "done"
