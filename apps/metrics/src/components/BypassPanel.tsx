@@ -7,12 +7,19 @@ import { rangeQueryParams, type DateRange } from "@/lib/date-range";
 type BypassSeverity = "soft" | "hard" | "all";
 type BypassThreshold = "30" | "45";
 type BypassView = "projects" | "users";
+type BypassSortDir = "asc" | "desc";
 type BypassSort =
+  | "severity"
   | "duration"
-  | "created"
-  | "credits"
+  | "title"
   | "user"
-  | "overLimitCount";
+  | "email"
+  | "status"
+  | "credits"
+  | "created"
+  | "overLimitCount"
+  | "balance"
+  | "link";
 
 type BypassSummary = {
   totalProjects: number;
@@ -91,6 +98,7 @@ type BypassPayload = {
   threshold: BypassThreshold;
   severity: BypassSeverity;
   sort: BypassSort;
+  sortDir?: BypassSortDir;
   q?: string;
   page: number;
   limit: number;
@@ -234,6 +242,38 @@ function truncateUrl(url: string, max = 56) {
   return `${url.slice(0, max - 1)}…`;
 }
 
+function SortHeader({
+  label,
+  col,
+  sort,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  col: BypassSort;
+  sort: BypassSort;
+  sortDir: BypassSortDir;
+  onSort: (col: BypassSort) => void;
+}) {
+  const active = sort === col;
+  return (
+    <th className="px-4 py-3 font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        className={`inline-flex items-center gap-1.5 uppercase tracking-wider transition ${
+          active ? "text-white" : "text-white/40 hover:text-white/70"
+        }`}
+      >
+        {label}
+        <span className="font-mono text-[10px] leading-none" aria-hidden>
+          {active ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 export function BypassPanel({
   onAuthError,
   range,
@@ -245,6 +285,7 @@ export function BypassPanel({
   const [threshold, setThreshold] = useState<BypassThreshold>("30");
   const [severity, setSeverity] = useState<BypassSeverity>("all");
   const [sort, setSort] = useState<BypassSort>("duration");
+  const [sortDir, setSortDir] = useState<BypassSortDir>("desc");
   const [query, setQuery] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(1);
@@ -252,6 +293,16 @@ export function BypassPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+
+  function onSort(col: BypassSort) {
+    if (sort === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSort(col);
+      setSortDir("desc");
+    }
+    setPage(1);
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(query.trim()), 300);
@@ -275,6 +326,7 @@ export function BypassPanel({
           threshold,
           severity,
           sort,
+          sortDir,
           fresh: page === 1 ? "1" : "0",
         });
         const rq = new URLSearchParams(rangeQueryParams(range));
@@ -300,7 +352,18 @@ export function BypassPanel({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, threshold, severity, sort, debouncedQ, page, range.preset, range.from, range.to]);
+  }, [
+    view,
+    threshold,
+    severity,
+    sort,
+    sortDir,
+    debouncedQ,
+    page,
+    range.preset,
+    range.from,
+    range.to,
+  ]);
 
   async function copyText(key: string, text: string) {
     if (!text) return;
@@ -418,6 +481,7 @@ export function BypassPanel({
                 setView(opt.id);
                 setPage(1);
                 setSort(opt.id === "users" ? "overLimitCount" : "duration");
+                setSortDir("desc");
               }}
               className={`rounded-full border px-3 py-1.5 text-[12px] ${
                 view === opt.id
@@ -462,35 +526,6 @@ export function BypassPanel({
             </select>
           </label>
 
-          <label className="flex items-center gap-2">
-            <span className="text-[12px] text-white/40">Sort</span>
-            <select
-              value={sort}
-              onChange={(e) => {
-                setSort(e.target.value as BypassSort);
-                setPage(1);
-              }}
-              className="rounded-xl border border-white/10 bg-[#141414] px-3 py-2 text-sm text-white outline-none focus:border-white/25"
-            >
-              {view === "users" ? (
-                <>
-                  <option value="overLimitCount">Bypass count</option>
-                  <option value="duration">Longest video</option>
-                  <option value="credits">Credits</option>
-                  <option value="created">Most recent</option>
-                  <option value="user">Name</option>
-                </>
-              ) : (
-                <>
-                  <option value="duration">Duration</option>
-                  <option value="credits">Credits</option>
-                  <option value="created">Created</option>
-                  <option value="user">User</option>
-                </>
-              )}
-            </select>
-          </label>
-
           <label className="relative block min-w-[200px] flex-1">
             <span className="sr-only">Search</span>
             <input
@@ -529,15 +564,15 @@ export function BypassPanel({
           <div className="overflow-x-auto rounded-2xl border border-white/8">
             <table className="w-full min-w-[960px] text-sm">
               <thead>
-                <tr className="border-b border-white/8 bg-[#111] text-left text-[12px] text-white/40 uppercase tracking-wider">
-                  <th className="px-4 py-3 font-medium">User</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Bypasses</th>
-                  <th className="px-4 py-3 font-medium">Longest</th>
-                  <th className="px-4 py-3 font-medium">Est. credits</th>
-                  <th className="px-4 py-3 font-medium">Balance / spent</th>
-                  <th className="px-4 py-3 font-medium">Longest link</th>
-                  <th className="px-4 py-3 font-medium">Last</th>
+                <tr className="border-b border-white/8 bg-[#111] text-left text-[12px]">
+                  <SortHeader label="User" col="user" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Email" col="email" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Bypasses" col="overLimitCount" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Longest" col="duration" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Est. credits" col="credits" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Balance / spent" col="balance" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Longest link" col="link" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Last" col="created" sort={sort} sortDir={sortDir} onSort={onSort} />
                 </tr>
               </thead>
               <tbody>
@@ -651,14 +686,14 @@ export function BypassPanel({
           <div className="overflow-x-auto rounded-2xl border border-white/8">
             <table className="w-full min-w-[1100px] text-sm">
               <thead>
-                <tr className="border-b border-white/8 bg-[#111] text-left text-[12px] text-white/40 uppercase tracking-wider">
-                  <th className="px-4 py-3 font-medium">Severity</th>
-                  <th className="px-4 py-3 font-medium">Duration</th>
-                  <th className="px-4 py-3 font-medium">Project / link</th>
-                  <th className="px-4 py-3 font-medium">User</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Credits</th>
-                  <th className="px-4 py-3 font-medium">Created</th>
+                <tr className="border-b border-white/8 bg-[#111] text-left text-[12px]">
+                  <SortHeader label="Severity" col="severity" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Duration" col="duration" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Project / link" col="title" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="User" col="user" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Status" col="status" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Credits" col="credits" sort={sort} sortDir={sortDir} onSort={onSort} />
+                  <SortHeader label="Created" col="created" sort={sort} sortDir={sortDir} onSort={onSort} />
                 </tr>
               </thead>
               <tbody>

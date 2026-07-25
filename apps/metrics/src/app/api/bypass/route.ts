@@ -5,8 +5,9 @@ import { requireMetricsAuth } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import {
   getFreePlanBypasses,
+  parseBypassSort,
+  parseBypassSortDir,
   type BypassSeverity,
-  type BypassSort,
   type BypassThreshold,
   type BypassView,
 } from "@/lib/bypass";
@@ -25,19 +26,6 @@ function parseView(v: string | null): BypassView {
   return v === "users" ? "users" : "projects";
 }
 
-function parseSort(v: string | null): BypassSort {
-  if (
-    v === "duration" ||
-    v === "created" ||
-    v === "credits" ||
-    v === "user" ||
-    v === "overLimitCount"
-  ) {
-    return v;
-  }
-  return "duration";
-}
-
 export async function GET(req: NextRequest) {
   const auth = requireMetricsAuth(req);
   if (!auth.ok) {
@@ -52,7 +40,8 @@ export async function GET(req: NextRequest) {
       limit: Number(sp.get("limit") ?? 50),
       threshold: parseThreshold(sp.get("threshold")),
       view: parseView(sp.get("view")),
-      sort: parseSort(sp.get("sort")),
+      sort: parseBypassSort(sp.get("sort")),
+      sortDir: parseBypassSortDir(sp.get("sortDir")),
       severity: parseSeverity(sp.get("severity")),
       q: sp.get("q") ?? undefined,
       fresh: sp.get("fresh") === "1",

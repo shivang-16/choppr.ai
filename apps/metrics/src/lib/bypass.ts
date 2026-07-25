@@ -94,12 +94,50 @@ export type BypassSummary = {
 
 export type BypassThreshold = "30" | "45";
 export type BypassView = "projects" | "users";
+export type BypassSortDir = "asc" | "desc";
 export type BypassSort =
+  | "severity"
   | "duration"
-  | "created"
-  | "credits"
+  | "title"
   | "user"
-  | "overLimitCount";
+  | "email"
+  | "status"
+  | "credits"
+  | "created"
+  | "overLimitCount"
+  | "balance"
+  | "link";
+
+const SORT_KEYS = new Set<BypassSort>([
+  "severity",
+  "duration",
+  "title",
+  "user",
+  "email",
+  "status",
+  "credits",
+  "created",
+  "overLimitCount",
+  "balance",
+  "link",
+]);
+
+export function parseBypassSort(v?: string | null): BypassSort {
+  if (v && SORT_KEYS.has(v as BypassSort)) return v as BypassSort;
+  return "duration";
+}
+
+export function parseBypassSortDir(v?: string | null): BypassSortDir {
+  return v === "asc" ? "asc" : "desc";
+}
+
+function cmpStr(a: string, b: string) {
+  return a.localeCompare(b, undefined, { sensitivity: "base" });
+}
+
+function cmpNum(a: number, b: number) {
+  return a - b;
+}
 
 type BypassCache = {
   at: number;
@@ -405,6 +443,7 @@ export async function getFreePlanBypasses(opts?: {
   threshold?: BypassThreshold;
   view?: BypassView;
   sort?: BypassSort;
+  sortDir?: BypassSortDir;
   severity?: BypassSeverity | "all";
   q?: string;
   fresh?: boolean;
@@ -416,6 +455,8 @@ export async function getFreePlanBypasses(opts?: {
   const view = opts?.view === "users" ? "users" : "projects";
   const severity = opts?.severity ?? "all";
   const q = opts?.q?.trim() ?? "";
+  const sortDir = opts?.sortDir ?? "desc";
+  const dirMul = sortDir === "asc" ? 1 : -1;
   const cache = await getBypassCache(opts?.fresh ?? false);
   const range = opts?.range;
 
@@ -445,27 +486,68 @@ export async function getFreePlanBypasses(opts?: {
     projects = projects.filter((p) => matchesSearch(q, p));
   }
 
-  const sort = opts?.sort ?? "duration";
+  const sort = parseBypassSort(opts?.sort);
   projects = [...projects].sort((a, b) => {
+    let raw = 0;
     switch (sort) {
+      case "severity":
+        raw = cmpNum(
+          a.severity === "hard" ? 1 : 0,
+          b.severity === "hard" ? 1 : 0
+        );
+        if (raw === 0) raw = cmpNum(a.videoDurationSecs, b.videoDurationSecs);
+        break;
       case "created":
-        return (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
+        raw = cmpStr(a.createdAt ?? "", b.createdAt ?? "");
+        break;
       case "credits":
-        return b.estimatedCredits - a.estimatedCredits;
-      case "user": {
-        const an = `${a.firstName ?? ""} ${a.lastName ?? ""}`.trim();
-        const bn = `${b.firstName ?? ""} ${b.lastName ?? ""}`.trim();
-        return an.localeCompare(bn);
-      }
+        raw = cmpNum(a.estimatedCredits, b.estimatedCredits);
+        break;
+      case "user":
+        raw = cmpStr(
+          `${a.firstName ?? ""} ${a.lastName ?? ""}`.trim(),
+          `${b.firstName ?? ""} ${b.lastName ?? ""}`.trim()
+        );
+        break;
+      case "email":
+        raw = cmpStr(
+          (a.email || a.username || "").toLowerCase(),
+          (b.email || b.username || "").toLowerCase()
+        );
+        break;
+      case "status":
+        raw = cmpStr(a.status, b.status);
+        break;
+      case "title":
+        raw = cmpStr(
+          (a.name || a.title || "").toLowerCase(),
+          (b.name || b.title || "").toLowerCase()
+        );
+        if (raw === 0) {
+          raw = cmpStr(
+            (a.sourceUrl || "").toLowerCase(),
+            (b.sourceUrl || "").toLowerCase()
+          );
+        }
+        break;
+      case "link":
+        raw = cmpStr(
+          (a.sourceUrl || "").toLowerCase(),
+          (b.sourceUrl || "").toLowerCase()
+        );
+        break;
       case "duration":
       default:
-        return b.videoDurationSecs - a.videoDurationSecs;
+        raw = cmpNum(a.videoDurationSecs, b.videoDurationSecs);
+        break;
     }
+    return raw * dirMul;
   });
 
   // Rebuild user rollup from filtered projects when filtering
   let users = cache.users;
-  if (threshold === "45" || severity !== "all" || q) {
+  const rangeFiltered = Boolean(range?.from || range?.to);
+  if (threshold === "45" || severity !== "all" || q || rangeFiltered) {
     const map = new Map<string, BypassUserRow>();
     for (const p of projects) {
       let row = map.get(p.userId);
@@ -512,28 +594,55 @@ export async function getFreePlanBypasses(opts?: {
     users = users.filter((u) => matchesUserSearch(q, u));
   }
 
-  const userSort = opts?.sort ?? "overLimitCount";
+  const userSort =
+    opts?.sort && SORT_KEYS.has(opts.sort) ? opts.sort : "overLimitCount";
   users = [...users].sort((a, b) => {
+    let raw = 0;
     switch (userSort) {
       case "duration":
-        return b.maxDurationMins - a.maxDurationMins;
+        raw = cmpNum(a.maxDurationMins, b.maxDurationMins);
+        break;
       case "credits":
-        return b.totalEstimatedCredits - a.totalEstimatedCredits;
-      case "user": {
-        const an = `${a.firstName ?? ""} ${a.lastName ?? ""}`.trim();
-        const bn = `${b.firstName ?? ""} ${b.lastName ?? ""}`.trim();
-        return an.localeCompare(bn);
-      }
+        raw = cmpNum(a.totalEstimatedCredits, b.totalEstimatedCredits);
+        break;
+      case "user":
+        raw = cmpStr(
+          `${a.firstName ?? ""} ${a.lastName ?? ""}`.trim(),
+          `${b.firstName ?? ""} ${b.lastName ?? ""}`.trim()
+        );
+        break;
+      case "email":
+        raw = cmpStr(
+          (a.email || a.username || "").toLowerCase(),
+          (b.email || b.username || "").toLowerCase()
+        );
+        break;
       case "created":
-        return (b.lastBypassAt ?? "").localeCompare(a.lastBypassAt ?? "");
+        raw = cmpStr(a.lastBypassAt ?? "", b.lastBypassAt ?? "");
+        break;
+      case "balance":
+        raw = cmpNum(a.lifetimeSpent, b.lifetimeSpent);
+        if (raw === 0) raw = cmpNum(a.totalCredits, b.totalCredits);
+        break;
+      case "link":
+        raw = cmpStr(
+          (a.longestSourceUrl || "").toLowerCase(),
+          (b.longestSourceUrl || "").toLowerCase()
+        );
+        break;
+      case "severity":
+        raw = cmpNum(a.hardBypassCount, b.hardBypassCount);
+        if (raw === 0) raw = cmpNum(a.overLimitCount, b.overLimitCount);
+        break;
       case "overLimitCount":
       default:
-        return (
-          b.hardBypassCount - a.hardBypassCount ||
-          b.overLimitCount - a.overLimitCount ||
-          b.maxDurationMins - a.maxDurationMins
-        );
+        raw =
+          cmpNum(a.hardBypassCount, b.hardBypassCount) ||
+          cmpNum(a.overLimitCount, b.overLimitCount) ||
+          cmpNum(a.maxDurationMins, b.maxDurationMins);
+        break;
     }
+    return raw * dirMul;
   });
 
   // Filtered summary (respects threshold + severity + search on projects)
@@ -592,6 +701,7 @@ export async function getFreePlanBypasses(opts?: {
       threshold,
       severity,
       sort: userSort,
+      sortDir,
       q: q || undefined,
       page: safePage,
       limit,
@@ -621,6 +731,7 @@ export async function getFreePlanBypasses(opts?: {
     threshold,
     severity,
     sort,
+    sortDir,
     q: q || undefined,
     page: safePage,
     limit,
