@@ -633,7 +633,7 @@ function DashboardInner() {
               ) : (
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 transition-colors"
+                  className="cursor-pointer flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 transition-colors"
                 >
                   <Upload className="h-3.5 w-3.5" /> Upload
                 </button>
@@ -672,7 +672,7 @@ function DashboardInner() {
               setInputUrl(SAMPLE_PROJECT_URL);
               handleFetch(SAMPLE_PROJECT_URL);
             }}
-            className="mt-4 w-full text-center text-[13px] text-white/40 hover:text-white/70 transition-colors"
+            className="cursor-pointer mt-4 w-full text-center text-[13px] text-white/40 hover:text-white/70 transition-colors"
           >
             Click here to try a sample project
           </button>

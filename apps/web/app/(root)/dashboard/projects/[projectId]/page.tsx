@@ -345,6 +345,29 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
   );
 }
 
+// ── Skeleton card shown while more clips are still processing ────────────────
+function ClipSkeletonCard({ aspectRatio = "9:16" }: { aspectRatio?: string }) {
+  const aspectCss = ASPECT_CSS[aspectRatio] ?? "9/16";
+  return (
+    <div className="flex flex-col gap-2" aria-hidden>
+      <div
+        className="relative w-full rounded-2xl border border-white/8 bg-[#111] overflow-hidden"
+        style={{ aspectRatio: aspectCss }}
+      >
+        <div className="absolute inset-0 animate-pulse bg-white/[0.04]" />
+        <div className="absolute top-2 left-2 h-5 w-8 rounded-full bg-white/8 animate-pulse" />
+        <div className="absolute bottom-0 left-0 right-0 px-2.5 pt-8 pb-2.5">
+          <div className="flex items-center justify-between mb-2">
+            <div className="h-2 w-10 rounded bg-white/8 animate-pulse" />
+            <div className="h-3 w-6 rounded bg-white/8 animate-pulse" />
+          </div>
+          <div className="h-8 w-full rounded-xl bg-white/10 animate-pulse" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Processing stages animation ─────────────────────────────────────────────
 
 const STAGES = [
@@ -532,12 +555,7 @@ export default function ProjectDetailPage() {
                 <p className="text-[10px] md:text-[11px] text-white/25 truncate">{project.sourceUrl}</p>
               )}
             </div>
-            {project && !["done", "failed"].includes(project.status) ? (
-              <div className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] md:text-[12px] text-white/40">
-                <Loader2 className="h-3 w-3 md:h-3.5 md:w-3.5 animate-spin" />
-                <span className="hidden sm:inline">Processing…</span>
-              </div>
-            ) : (
+            {project && ["done", "failed"].includes(project.status) && (
               <button
                 onClick={handleRetry}
                 className="shrink-0 cursor-pointer flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] md:text-[12px] text-white/50 hover:text-white hover:border-white/20 transition-colors"
@@ -583,9 +601,10 @@ export default function ProjectDetailPage() {
             </p>
           )}
 
-          {/* Clips grid */}
+          {/* Clips grid — while processing, show one skeleton card for the next clip */}
           {originalClips.length > 0 && (() => {
             const displayAspect = project?.aspectRatio ?? "9:16";
+            const isProcessing = !!project?.status && !["done", "failed"].includes(project.status);
             const gridCols = displayAspect === "9:16"
               ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
               : displayAspect === "1:1"
@@ -610,6 +629,7 @@ export default function ProjectDetailPage() {
                     />
                   );
                 })}
+                {isProcessing && <ClipSkeletonCard aspectRatio={displayAspect} />}
               </div>
             );
           })()}
