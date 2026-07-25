@@ -4,21 +4,14 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useApiFetch } from "@/lib/apiFetch";
-import { Link2, Upload, Zap, Scissors, Captions, Crop, AudioLines, Film, Sparkles, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
+import { Link2, Upload, Scissors, Film, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { URL_PLACEHOLDERS, validateVideoUrl } from "@/lib/url-placeholders";
 import posthog from "posthog-js";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-
-const TOOLS = [
-  { icon: Sparkles,  label: "Long to shorts" },
-  { icon: Scissors,  label: "Video editor" },
-  { icon: Crop,      label: "AI reframe" },
-  { icon: Captions,  label: "AI captioning" },
-];
-
+const SAMPLE_PROJECT_URL = "https://youtu.be/M2nz0pkmUf8?si=_zMXPnTLAfnG29ks";
 
 type VideoMeta = {
   url: string;
@@ -516,11 +509,27 @@ function DashboardInner() {
   };
 
   return (
-    <div className="flex flex-col items-center w-full px-6 py-10">
+    <div className="relative flex flex-col items-center w-full px-6 pt-16 pb-10 sm:pt-32">
+      {/* Background brand watermark — brighter on top, fades out below.
+          Phone: sit behind the input; desktop top position unchanged. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-2 z-0 flex justify-center select-none overflow-hidden sm:top-0"
+      >
+        <span
+          className="whitespace-nowrap text-[clamp(4.25rem,20vw,14rem)] font-bold leading-none tracking-[-0.03em] bg-clip-text text-transparent sm:text-[clamp(5.5rem,22vw,14rem)]"
+          style={{
+            backgroundImage:
+              "linear-gradient(to bottom, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.05) 45%, rgba(255,255,255,0) 100%)",
+          }}
+        >
+          Choppr pro
+        </span>
+      </div>
 
       {/* ── Payment banner ── */}
       {paymentPending && (
-        <div className="w-full max-w-2xl mb-6 flex items-center gap-3 rounded-2xl border border-yellow-500/30 bg-yellow-500/10 px-5 py-4">
+        <div className="relative z-10 w-full max-w-2xl mb-6 flex items-center gap-3 rounded-2xl border border-yellow-500/30 bg-yellow-500/10 px-5 py-4">
           <div>
             <p className="text-[13px] font-semibold text-yellow-300">Confirming your payment…</p>
             <p className="text-[12px] text-yellow-400/70">Refresh the page if your plan has already been updated.</p>
@@ -528,7 +537,7 @@ function DashboardInner() {
         </div>
       )}
       {paymentSuccess && (
-        <div className="w-full max-w-2xl mb-6 flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/10 px-5 py-4">
+        <div className="relative z-10 w-full max-w-2xl mb-6 flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/10 px-5 py-4">
           <CheckCircle className="h-5 w-5 text-green-400 shrink-0" />
           <div>
             <p className="text-[13px] font-semibold text-green-300">
@@ -540,7 +549,7 @@ function DashboardInner() {
       )}
 
       {/* ── URL input card ── */}
-      <div className="w-full max-w-2xl">
+      <div className="relative z-10 w-full max-w-2xl">
         <div className="relative rounded-2xl overflow-hidden p-[1.5px]">
           {/* Border: sweep while typing, fill while uploading, static otherwise */}
           {uploadProgress !== null ? (
@@ -655,27 +664,24 @@ function DashboardInner() {
         {error && (
           <p className="mt-2 text-[12px] text-red-400 text-center">{error}</p>
         )}
+
+        {!video && !loading && (
+          <button
+            type="button"
+            onClick={() => {
+              setInputUrl(SAMPLE_PROJECT_URL);
+              handleFetch(SAMPLE_PROJECT_URL);
+            }}
+            className="mt-4 w-full text-center text-[13px] text-white/40 hover:text-white/70 transition-colors"
+          >
+            Click here to try a sample project
+          </button>
+        )}
       </div>
 
       {/* ── Empty state ── */}
       {!video && !loading && (
-        <div className="flex flex-col items-center gap-10 mt-16 w-full max-w-3xl">
-          {/* Tool icons — always one row */}
-          <div className="flex w-full items-start justify-center gap-2 sm:gap-6 flex-nowrap px-1">
-            {TOOLS.map(({ icon: Icon, label }) => (
-              <button
-                key={label}
-                type="button"
-                className="group flex min-w-0 flex-1 flex-col items-center gap-1.5 sm:flex-none sm:gap-2"
-              >
-                <div className="relative flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl border border-white/8 bg-[#141414] group-hover:bg-white/8 transition-colors">
-                  <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-white/60 group-hover:text-white transition-colors" />
-                </div>
-                <span className="w-full text-[9px] sm:text-[12px] text-white/45 group-hover:text-white/70 transition-colors text-center leading-tight">{label}</span>
-              </button>
-            ))}
-          </div>
-
+        <div className="relative z-10 flex flex-col items-center gap-6 mt-10 w-full max-w-3xl">
           {/* Projects section */}
           <div className="w-full">
             <div className="flex items-center justify-between mb-4">
