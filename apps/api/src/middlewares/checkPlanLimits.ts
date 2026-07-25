@@ -11,6 +11,13 @@ export async function checkVideoLengthLimit(req: Request, res: Response, next: N
   try {
     const durationSecs = Number(req.body?.durationSecs);
     if (!Number.isFinite(durationSecs) || durationSecs <= 0) {
+      const userId = (req as any).user?._id ?? (req as any).auth?.userId;
+      logger.warn("Job rejected: duration_required", {
+        userId: userId ?? null,
+        durationSecs: req.body?.durationSecs ?? null,
+        hasUrl: !!req.body?.url,
+        hasS3Key: !!req.body?.s3Key,
+      });
       res.status(400).json({
         error: "duration_required",
         message: "Unable to get the video duration. Please try again.",

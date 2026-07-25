@@ -91,6 +91,10 @@ export async function fetchDurationViaDownload(url: string): Promise<VideoMetaRe
     const files = await readdir(workDir);
     const videoFile = files.find((f) => /\.(mp4|mkv|webm|mov|m4a)$/i.test(f));
     if (!videoFile) {
+      logger.warn("video duration download fallback: no media file in output", {
+        url,
+        files,
+      });
       return {
         durationSecs: null,
         thumbnail: null,
@@ -102,6 +106,10 @@ export async function fetchDurationViaDownload(url: string): Promise<VideoMetaRe
     const localPath = join(workDir, videoFile);
     const durationSecs = await probeDurationSecs(localPath, 120_000);
     if (!durationSecs) {
+      logger.warn("video duration download fallback: ffprobe returned no duration", {
+        url,
+        videoFile,
+      });
       return {
         durationSecs: null,
         thumbnail: null,

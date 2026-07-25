@@ -60,6 +60,11 @@ router.get("/", async (req: Request, res: Response) => {
   }
 
   if (durationSecs && durationSecs > 0) {
+    logger.info("video-meta: light meta succeeded", {
+      url,
+      durationSecs,
+      title: title?.slice(0, 80) ?? null,
+    });
     res.json({ durationSecs, thumbnail, title });
     return;
   }
@@ -68,6 +73,10 @@ router.get("/", async (req: Request, res: Response) => {
   logger.info("video-meta: no duration from light meta, downloading for ffprobe", { url });
   const deep = await fetchDurationViaDownload(url);
   if (deep.durationSecs && deep.durationSecs > 0) {
+    logger.info("video-meta: download+ffprobe succeeded", {
+      url,
+      durationSecs: deep.durationSecs,
+    });
     res.json({
       durationSecs: deep.durationSecs,
       thumbnail: thumbnail ?? deep.thumbnail,
@@ -76,6 +85,11 @@ router.get("/", async (req: Request, res: Response) => {
     return;
   }
 
+  logger.warn("video-meta: unable to get video duration", {
+    url,
+    error: deep.error ?? "Unable to get the video.",
+    hadLightTitle: !!title,
+  });
   res.status(422).json({
     durationSecs: null,
     thumbnail,

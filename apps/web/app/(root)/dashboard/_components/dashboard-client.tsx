@@ -374,7 +374,13 @@ function DashboardInner() {
       }
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Please enter a valid video URL.");
+      const message = e instanceof Error ? e.message : "Please enter a valid video URL.";
+      posthog.capture("video_duration_failed", {
+        source: "url_meta",
+        url: trimmed,
+        error: message,
+      });
+      setError(message);
       setVideo(null);
       return false;
     } finally {
@@ -440,6 +446,11 @@ function DashboardInner() {
       maxVideoLengthMins != null &&
       localDuration > maxVideoLengthMins * 60
     ) {
+      posthog.capture("video_length_limit_blocked", {
+        source: "local_before_upload",
+        duration_secs: localDuration,
+        max_video_length_mins: maxVideoLengthMins,
+      });
       setError(
         `Your plan allows videos up to ${maxVideoLengthMins} minutes. Upgrade to process longer videos.`,
       );
@@ -496,11 +507,21 @@ function DashboardInner() {
 
       if (!durationSecs || durationSecs <= 0) {
         setUploadedS3Key(null);
+        posthog.capture("video_duration_failed", {
+          source: "upload_probe",
+          s3_key: s3Key,
+          error: probeJson.error ?? "Unable to determine video duration.",
+        });
         throw new Error(probeJson.error ?? "Unable to determine video duration.");
       }
 
       if (maxVideoLengthMins != null && durationSecs > maxVideoLengthMins * 60) {
         setUploadedS3Key(null);
+        posthog.capture("video_length_limit_blocked", {
+          source: "upload_after_probe",
+          duration_secs: durationSecs,
+          max_video_length_mins: maxVideoLengthMins,
+        });
         setError(
           `Your plan allows videos up to ${maxVideoLengthMins} minutes. Upgrade to process longer videos.`,
         );
@@ -550,6 +571,11 @@ function DashboardInner() {
 
     // Client-side plan limit — show upgrade CTA under Get clips (not top red line)
     if (maxVideoLengthMins != null && video.durationSecs > maxVideoLengthMins * 60) {
+      posthog.capture("video_length_limit_blocked", {
+        source: "get_clips_client",
+        duration_secs: video.durationSecs,
+        max_video_length_mins: maxVideoLengthMins,
+      });
       setUpgradePrompt(
         `Your plan allows videos up to ${maxVideoLengthMins} minutes. Upgrade to process longer videos.`,
       );
@@ -592,6 +618,13 @@ function DashboardInner() {
           data.error === "video_too_long" ||
           /plan allows videos|video_too_long|upgrade to process/i.test(msg)
         ) {
+          posthog.capture("video_length_limit_blocked", {
+            source: "create_job_api",
+            duration_secs: video.durationSecs,
+            max_video_length_mins: data.maxVideoLengthMins ?? maxVideoLengthMins,
+            plan_slug: data.planSlug ?? null,
+            error: data.error ?? null,
+          });
           setUpgradePrompt(
             data.message ??
               `Your plan allows videos up to ${data.maxVideoLengthMins ?? maxVideoLengthMins ?? "your plan"} minutes. Upgrade to process longer videos.`,

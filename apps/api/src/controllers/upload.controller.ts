@@ -67,6 +67,10 @@ export async function probeUpload(req: Request, res: Response, next: NextFunctio
 
     const durationSecs = await probeDurationSecs(signedGetUrl, 120_000);
     if (!durationSecs || durationSecs <= 0) {
+      logger.warn("Upload probe: unable to determine duration", {
+        userId,
+        s3Key,
+      });
       res.status(422).json({
         durationSecs: null,
         error: "Unable to determine video duration.",
@@ -74,9 +78,14 @@ export async function probeUpload(req: Request, res: Response, next: NextFunctio
       return;
     }
 
+    logger.info("Upload probe succeeded", { userId, s3Key, durationSecs });
     res.json({ durationSecs });
   } catch (err) {
-    logger.error("Upload probe failed", { error: err });
+    logger.error("Upload probe failed", {
+      error: err instanceof Error ? err.message : String(err),
+      userId: (req as any).user?._id ?? null,
+      s3Key: req.body?.s3Key ?? null,
+    });
     next(err);
   }
 }
