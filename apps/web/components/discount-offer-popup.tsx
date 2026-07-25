@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import confetti from "canvas-confetti";
 import { Gift, Sparkles, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -53,23 +54,29 @@ function fireConfetti() {
  */
 export function DiscountOfferPopup() {
   const apiFetch = useApiFetch();
+  const { isLoaded, isSignedIn } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<"complete" | "later" | null>(null);
   const confettiFired = useRef(false);
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
 
     (async () => {
       try {
         const res = await apiFetch(`${API_URL}/api/users/me/popups`);
-        if (!res.ok) return;
+        if (!res.ok || cancelled) return;
         const data = await res.json();
         if (!cancelled && data?.discount?.show) {
-          setTimeout(() => {
-            if (!cancelled) setOpen(true);
-          }, 800);
+          // Let new users settle into the dashboard before interrupting
+          timers.push(
+            setTimeout(() => {
+              if (!cancelled) setOpen(true);
+            }, 25_000)
+          );
         }
       } catch {
         /* ignore — popup is non-critical */
@@ -78,8 +85,9 @@ export function DiscountOfferPopup() {
 
     return () => {
       cancelled = true;
+      timers.forEach(clearTimeout);
     };
-  }, [apiFetch]);
+  }, [apiFetch, isLoaded, isSignedIn]);
 
   useEffect(() => {
     if (!open || confettiFired.current) return;

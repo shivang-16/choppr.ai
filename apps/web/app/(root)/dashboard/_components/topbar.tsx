@@ -3,6 +3,7 @@
 import { Zap } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import { useApiFetch } from "@/lib/apiFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -10,13 +11,15 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 export default function Topbar({ left }: { left?: ReactNode } = {}) {
   const [balance, setBalance] = useState<number | null>(null);
   const apiFetch = useApiFetch();
+  const { isLoaded, isSignedIn } = useAuth();
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     apiFetch(`${API_URL}/api/credits`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => { if (data) setBalance(data.balance); })
       .catch(() => {});
-  }, []);
+  }, [apiFetch, isLoaded, isSignedIn]);
 
   return (
     <header className="fixed top-0 left-0 md:left-14 right-0 z-30 flex items-center justify-between gap-3 border-b border-white/6 bg-[#0a0a0a] px-4 sm:px-6 h-12">

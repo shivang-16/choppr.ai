@@ -104,10 +104,6 @@ export const baseAuth = async (
       let user = await User.findById(userId);
 
       if (!user) {
-        logger.warn(
-          `User not found in DB for clerkId: ${userId}. Creating new user.`
-        );
-
         // Only call Clerk API when we need to create a new user
         let clerkUser;
         try {
@@ -172,28 +168,45 @@ export const baseAuth = async (
           subscriptionStartDate: new Date(),
         };
 
-        user = await createUser(userData);
-        logger.info(
-          `New user created with username: ${user.username} and free subscription plan`
-        );
+        try {
+          user = await createUser(userData);
+          logger.info(
+            `New user created with username: ${user.username} and free subscription plan`
+          );
 
-        // Grant free signup credits from Plan.credits (idempotent)
-        grantSignupCredits(user!._id).catch((err) => {
-          logger.error(`Failed to grant signup credits to ${user!._id}: ${err}`);
-        });
+          // Await so /api/credits (parallel) doesn't race and return 0
+          try {
+            await grantSignupCredits(user!._id);
+          } catch (err) {
+            logger.error(`Failed to grant signup credits to ${user!._id}: ${err}`);
+          }
 
-        // [LOG_REDUCED]
-        // logger.info("Scheduling welcome email for new user", {
-        //   userId: user._id,
-        //   email: user.email,
-        // });
-
-        sendWelcomeEmail({
-          to: user.email,
-          firstName: user.firstName,
-        }).catch((err) => {
-          logger.error(`Failed to send welcome email to ${user!.email}: ${err}`);
-        });
+          sendWelcomeEmail({
+            to: user.email,
+            firstName: user.firstName,
+          }).catch((err) => {
+            logger.error(`Failed to send welcome email to ${user!.email}: ${err}`);
+          });
+        } catch (createErr: any) {
+          // Race: dashboard fires /credits, /plans, /projects, /popups in parallel on signup.
+          // Several requests see "user missing" and try createUser; only one wins.
+          // Duplicate-key → re-load the user that the winning request just created.
+          const isDup =
+            createErr?.code === 11000 ||
+            createErr?.code === "E11000" ||
+            /duplicate key/i.test(String(createErr?.message ?? createErr));
+          if (isDup) {
+            // Parallel dashboard requests all tried createUser; winner already logged.
+            user = await User.findById(userId);
+            if (!user) {
+              await new Promise((r) => setTimeout(r, 50));
+              user = await User.findById(userId);
+            }
+            if (!user) throw createErr;
+          } else {
+            throw createErr;
+          }
+        }
       } else {
         // [LOG_REDUCED] logger.info(`User found in DB: ${user.username}`);
       }
@@ -201,21 +214,22 @@ export const baseAuth = async (
       req.user = user; // attach full user object for downstream handlers
       attachUserToRequestContext(req);
 
-      // [LOG_REDUCED]
-      // logger.info("User authenticated", {
-      //   username: user.username,
-      //   ssoProvider: user.ssoProvider,
-      // });
       return next();
     }
+
+    logger.warn("Clerk auth: no userId on request", {
+      hasAuthorization: !!req.headers.authorization,
+      path: req.path,
+    });
   } catch (err) {
     logger.warn("Clerk auth failed", {
       error: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
+      path: req.path,
     });
   }
 
-  logger.error("Authentication failed: no valid credentials");
+  logger.error("Authentication failed: no valid credentials", { path: req.path });
   res.status(401).json({ message: "Unauthorized" });
 };
 

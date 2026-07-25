@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import { useApiFetch } from "@/lib/apiFetch";
 import { Link2, Upload, Scissors, Film, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -216,6 +217,7 @@ function DashboardInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const apiFetch = useApiFetch();
+  const { isLoaded, isSignedIn } = useAuth();
   const didRedirectFromCheckout = searchParams.get("success") === "1";
   const paidPlan = searchParams.get("plan");
 
@@ -226,7 +228,7 @@ function DashboardInner() {
   const [paymentPending, setPaymentPending] = useState(didRedirectFromCheckout);
 
   useEffect(() => {
-    if (!didRedirectFromCheckout || !paidPlan) return;
+    if (!isLoaded || !isSignedIn || !didRedirectFromCheckout || !paidPlan) return;
 
     let attempts = 0;
     const MAX_ATTEMPTS = 10;
@@ -256,7 +258,7 @@ function DashboardInner() {
     }, INTERVAL_MS);
 
     return () => clearInterval(poll);
-  }, []);
+  }, [apiFetch, didRedirectFromCheckout, isLoaded, isSignedIn, paidPlan]);
   const [inputUrl, setInputUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState("Loading preview…");
@@ -276,6 +278,7 @@ function DashboardInner() {
   const [uploadedS3Key, setUploadedS3Key] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     apiFetch(`${API_URL}/api/projects`)
       .then((r) => r.ok ? r.json() : [])
       .then(setProjects)
@@ -284,7 +287,7 @@ function DashboardInner() {
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (d?.balance != null) setUserBalance(d.balance); })
       .catch(() => {});
-  }, []);
+  }, [apiFetch, isLoaded, isSignedIn]);
 
   // "thumbnail" = show thumbnail + two buttons; "clips" = expand clip settings
   const [videoMode, setVideoMode] = useState<"thumbnail" | "clips">("thumbnail");
@@ -312,6 +315,7 @@ function DashboardInner() {
   const [maxVideoLengthMins, setMaxVideoLengthMins] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     apiFetch(`${API_URL}/api/plans/me`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => {
@@ -320,7 +324,7 @@ function DashboardInner() {
         if (currentPlan?.maxVideoLengthMins != null) setMaxVideoLengthMins(currentPlan.maxVideoLengthMins);
       })
       .catch(() => {});
-  }, []);
+  }, [apiFetch, isLoaded, isSignedIn]);
 
   useEffect(() => () => {
     loadingStatusTimerRef.current.forEach(clearTimeout);

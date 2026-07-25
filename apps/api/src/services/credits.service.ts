@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { UserCredits, IUserCredits } from "../model/user-credits.model.js";
 import { CreditLedger, LedgerType, CreditBucket } from "../model/credit-ledger.model.js";
 import { Plan } from "../model/plan.model.js";
+import { logger } from "../utils/logger.js";
 
 // Cost per minute of source video for AI clipping — matches plan.creditCostPerMin
 export const CREDITS_PER_MINUTE = 2;
@@ -111,43 +112,99 @@ async function claimIdempotencyInTxn(
 /**
  * Grant free signup credits to a brand-new user.
  * Credit amount comes from the "free" Plan document in MongoDB.
- * Idempotent — safe to re-call; setOnInsert means it only writes on true insert.
+ * Idempotent — safe to re-call (ledger + idempotencyKey).
+ *
+ * Uses a non-transactional upsert so this works on standalone Mongo
+ * (local dev) as well as replica sets. Previously fire-and-forget
+ * + transactions meant /api/credits often returned 0 on signup.
  */
 export async function grantSignupCredits(userId: string): Promise<void> {
   const freePlan = await getPlanOrThrow("free");
-  const amount   = freePlan.credits;
-  const now      = new Date();
-  const end      = cycleEnd(now);
+  const amount = Number(freePlan.credits) || 0;
+  if (amount <= 0) {
+    throw new Error(
+      `Free plan has invalid credits (${freePlan.credits}). Run npm run seed:plans.`
+    );
+  }
 
-  const session = await mongoose.startSession();
+  const idempotencyKey = `signup:${userId}`;
+  const already = await CreditLedger.exists({
+    $or: [{ userId, type: "grant_free_signup" }, { idempotencyKey }],
+  });
+  if (already) return;
+
+  const now = new Date();
+  const end = cycleEnd(now);
+
+  const result = await UserCredits.updateOne(
+    { _id: userId },
+    {
+      $setOnInsert: {
+        _id: userId,
+        subscriptionCredits: amount,
+        topupCredits: 0,
+        totalCredits: amount,
+        plan: "free",
+        cycleStart: now,
+        cycleEnd: end,
+        lifetimeEarned: amount,
+        lifetimeSpent: 0,
+      },
+    },
+    { upsert: true }
+  );
+
+  // Fresh insert — write ledger
+  if (result.upsertedCount === 1) {
+    try {
+      await CreditLedger.create({
+        userId,
+        amount,
+        bucket: "subscription",
+        type: "grant_free_signup",
+        balanceAfter: amount,
+        note: `${freePlan.name} plan signup — ${amount} credits`,
+        idempotencyKey,
+      });
+      logger.info("Granted signup credits", { userId, amount });
+    } catch (err) {
+      if (!isDuplicateKeyError(err)) throw err;
+    }
+    return;
+  }
+
+  // Doc already existed with no signup ledger (broken prior signup / race).
+  // Heal only never-used free accounts stuck at 0 — never re-grant spenders.
+  const existing = await UserCredits.findById(userId);
+  if (
+    !existing ||
+    existing.lifetimeSpent > 0 ||
+    existing.lifetimeEarned > 0 ||
+    existing.totalCredits > 0
+  ) {
+    return;
+  }
+
+  existing.subscriptionCredits = amount;
+  existing.totalCredits = amount;
+  existing.lifetimeEarned = amount;
+  if (!existing.cycleStart) existing.cycleStart = now;
+  if (!existing.cycleEnd) existing.cycleEnd = end;
+  await existing.save();
+
   try {
-    await session.withTransaction(async () => {
-      const result = await UserCredits.updateOne(
-        { _id: userId },
-        {
-          $setOnInsert: {
-            _id:                 userId,
-            subscriptionCredits: amount,
-            topupCredits:        0,
-            totalCredits:        amount,
-            plan:                "free",
-            cycleStart:          now,
-            cycleEnd:            end,
-            lifetimeEarned:      amount,
-            lifetimeSpent:       0,
-          },
-        },
-        { upsert: true, session }
-      );
-
-      if (result.upsertedCount === 1) {
-        await writeLedger(session, userId, amount, "subscription", "grant_free_signup", amount, {
-          note: `${freePlan.name} plan signup — ${amount} credits`,
-        });
-      }
+    await CreditLedger.create({
+      userId,
+      amount,
+      bucket: "subscription",
+      type: "grant_free_signup",
+      balanceAfter: amount,
+      note: `${freePlan.name} plan signup — ${amount} credits (healed)`,
+      idempotencyKey,
     });
-  } finally {
-    await session.endSession();
+    logger.info("Healed missing signup credits", { userId, amount });
+  } catch (err) {
+    if (!isDuplicateKeyError(err)) throw err;
   }
 }
 
@@ -487,12 +544,22 @@ export async function refundFailedJob(
 
 /**
  * Fetch credit balance + recent ledger history for the frontend.
+ * Ensures signup credits exist so a race on first login can't stick at 0.
  */
 export async function getBalance(userId: string) {
-  const [credits, history] = await Promise.all([
-    UserCredits.findById(userId).lean(),
-    CreditLedger.find({ userId }).sort({ createdAt: -1 }).limit(20).lean(),
-  ]);
+  let credits = await UserCredits.findById(userId).lean();
+
+  // New users (or broken prior signups) may not have a credits doc yet
+  if (!credits || (credits.totalCredits === 0 && credits.lifetimeEarned === 0 && credits.lifetimeSpent === 0)) {
+    try {
+      await grantSignupCredits(userId);
+      credits = await UserCredits.findById(userId).lean();
+    } catch (err) {
+      logger.error(`ensure signup credits failed for ${userId}: ${err}`);
+    }
+  }
+
+  const history = await CreditLedger.find({ userId }).sort({ createdAt: -1 }).limit(20).lean();
 
   return {
     balance:             credits?.totalCredits ?? 0,
