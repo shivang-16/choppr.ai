@@ -308,6 +308,93 @@ export async function grantSubscriptionCredits(
 }
 
 /**
+ * Renewal payment failed (subscription.on_hold): revoke paid access.
+ *
+ * - Paid plan → plan "free", subscriptionCredits → 0 (purchased top-ups kept)
+ * - Already free / missing → no-op, and do NOT claim the idempotency key
+ *   (so a later real paid revoke is not blocked by an earlier skip)
+ * - clearIdempotencyKeys: remove period-grant / active markers so same-month
+ *   reactivation can grant credits again
+ */
+export async function revokeSubscriptionOnRenewalFailure(
+  userId: string,
+  opts?: { idempotencyKey?: string; clearIdempotencyKeys?: string[] }
+): Promise<{ revoked: boolean; skipped: "already_free" | "missing" | "duplicate" | null }> {
+  const session = await mongoose.startSession();
+  try {
+    let revoked = false;
+    let skipped: "already_free" | "missing" | "duplicate" | null = null;
+
+    await session.withTransaction(async () => {
+      const existing = await UserCredits.findById(userId).session(session);
+      if (!existing) {
+        skipped = "missing";
+        return;
+      }
+      if (existing.plan === "free") {
+        skipped = "already_free";
+        return;
+      }
+
+      // Claim only when we are about to revoke a paid plan.
+      if (opts?.idempotencyKey) {
+        await claimIdempotencyInTxn(
+          session, userId, opts.idempotencyKey, "subscription", "grant_subscription"
+        );
+      }
+
+      // Drop this cycle's grant markers so a same-month reactivation can re-grant.
+      const keysToClear = (opts?.clearIdempotencyKeys ?? []).filter(Boolean);
+      if (keysToClear.length > 0) {
+        await CreditLedger.deleteMany(
+          {
+            $or: [
+              { idempotencyKey: { $in: keysToClear } },
+              { note: { $in: keysToClear } },
+            ],
+          },
+          { session },
+        );
+      }
+
+      const prevPlan = existing.plan;
+      const oldSub = existing.subscriptionCredits;
+      const topup = existing.topupCredits;
+      const now = new Date();
+
+      existing.plan = "free";
+      existing.subscriptionCredits = 0;
+      existing.totalCredits = topup;
+      existing.cycleStart = now;
+      existing.cycleEnd = cycleEnd(now);
+      await existing.save({ session });
+
+      await writeLedger(
+        session,
+        userId,
+        -oldSub,
+        "subscription",
+        "grant_subscription",
+        topup,
+        {
+          note: `Renewal payment failed — revoked ${prevPlan} plan, cleared ${oldSub} subscription credits`,
+        },
+      );
+      revoked = true;
+    });
+
+    return { revoked, skipped };
+  } catch (err) {
+    if (opts?.idempotencyKey && isDuplicateKeyError(err)) {
+      return { revoked: false, skipped: "duplicate" };
+    }
+    throw err;
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
  * Add one-time top-up credits after a purchase.
  * Pass idempotencyKey from webhooks so claim + credit grant commit together.
  */

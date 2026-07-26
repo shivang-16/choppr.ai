@@ -2,7 +2,10 @@ import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { UserCredits } from "../model/user-credits.model.js";
 import { CreditLedger } from "../model/credit-ledger.model.js";
-import { grantSubscriptionCredits } from "../services/credits.service.js";
+import {
+  grantSubscriptionCredits,
+  revokeSubscriptionOnRenewalFailure,
+} from "../services/credits.service.js";
 import { logger } from "../utils/logger.js";
 import User from "../model/user.model.js";
 
@@ -397,23 +400,66 @@ async function routeWebhookEvent(eventType: string, event: any, webhookId: strin
       break;
     }
 
-    // ── Subscription on hold (failed payment) ───────────────────────────────
+    // ── Subscription on hold (failed RENEWAL on an already-active sub) ──────
+    // Case 1: paid user → downgrade to free + clear subscription credits.
+    // Top-ups are kept. Free users are a no-op on credits (should not hit this).
+    // Idempotency is keyed by webhookId so:
+    //   - exact redeliveries of the same event are no-ops
+    //   - a later same-month failure after reactivation can revoke again
     case "subscription.on_hold": {
-      const sub    = event.data ?? event;
-      const userId = sub.metadata?.userId ?? sub.customer?.metadata?.userId;
+      const sub            = event.data ?? event;
+      const userId         = sub.metadata?.userId ?? sub.customer?.metadata?.userId;
+      const subscriptionId = sub.subscription_id ?? sub.id;
       if (!userId) break;
 
+      // Dedup exact redeliveries; each distinct on_hold delivery may revoke if paid.
+      const holdKey = subscriptionIdempotencyKey(
+        subscriptionId,
+        `subscription.on_hold:wh:${webhookId}`,
+      );
+      // Clear this month's grant markers so same-month reactivation can credit again.
+      const period = billingPeriod();
+      const clearIdempotencyKeys = [
+        periodGrantKey(subscriptionId, period),
+        legacyRenewedPeriodKey(subscriptionId, period),
+        // lifetime active marker would otherwise skip the whole reactivation handler
+        subscriptionIdempotencyKey(subscriptionId, "subscription.active"),
+      ];
+      const { revoked, skipped } = await revokeSubscriptionOnRenewalFailure(userId, {
+        idempotencyKey: holdKey,
+        clearIdempotencyKeys,
+      });
+
+      // Status after revoke settles — avoids inactive + still-paid credits if revoke throws.
       await User.updateOne(
         { _id: userId },
         { $set: { subscriptionStatus: "inactive" } }
       );
 
-      await CreditLedger.create({
-        userId, amount: 0, bucket: "subscription", type: "grant_subscription",
-        balanceAfter: 0, note: `webhook:${webhookId}`,
-      });
+      const balance = (await UserCredits.findById(userId).lean())?.totalCredits ?? 0;
+      await recordWebhookMarker(userId, webhookId, balance);
 
-      logger.info(`subscription.on_hold: user ${userId} payment failed`);
+      if (revoked) {
+        logger.info(
+          `subscription.on_hold: revoked paid plan for user ${userId} (sub=${subscriptionId}) — subscription credits cleared`
+        );
+      } else {
+        logger.info(
+          `subscription.on_hold: user ${userId} (sub=${subscriptionId}) — credits unchanged (${skipped ?? "noop"})`
+        );
+      }
+      break;
+    }
+
+    // ── Subscription failed (FIRST checkout / mandate failed) ───────────────
+    // Case 2: free user tried to subscribe and payment failed.
+    // Do NOT touch plan or credits — signup free credits must stay.
+    case "subscription.failed": {
+      const sub    = event.data ?? event;
+      const userId = sub.metadata?.userId ?? sub.customer?.metadata?.userId;
+      logger.info(
+        `subscription.failed: first checkout failed for user ${userId ?? "unknown"} — credits unchanged`
+      );
       break;
     }
 
