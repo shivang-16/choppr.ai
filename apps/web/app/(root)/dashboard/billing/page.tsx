@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { useApiFetch } from "@/lib/apiFetch";
 import { Check, Zap, Loader2, CheckCircle, XCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -63,17 +64,19 @@ function BillingContent() {
   const paymentCancelled = searchParams.get("cancelled") === "1";
   const topupSuccess = searchParams.get("topup");
   const apiFetch = useApiFetch();
+  const { isLoaded, isSignedIn } = useAuth();
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     apiFetch(`${API_URL}/api/plans/me`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
     apiFetch(`${API_URL}/api/payments/topup-packs`)
       .then((r) => r.ok ? r.json() : [])
-      .then(setTopupPacks)
+      .then((packs) => setTopupPacks(Array.isArray(packs) ? packs : []))
       .catch(() => {});
-  }, []);
+  }, [apiFetch, isLoaded, isSignedIn]);
 
   async function handleUpgrade(planId: string) {
     setCheckingOut(planId);

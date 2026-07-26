@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { useApiFetch } from "@/lib/apiFetch";
 import { ArrowLeft, Loader2, Volume2, VolumeX, Download, X, Play, Wand2, Sparkles, ChevronLeft, ChevronRight, RotateCcw, AlertCircle, CheckCircle2, Trash2, Pencil, Check } from "lucide-react";
-import { useRouter as _useRouter } from "next/navigation";
 import Sidebar from "../../_components/sidebar";
 import Topbar from "../../_components/topbar";
 
@@ -21,13 +21,19 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
   slides: any[]; startIdx: number; onClose: () => void; onUse: (clip: any) => void; aspectRatio?: string;
 }) {
   const videoRef        = useRef<HTMLVideoElement>(null);
-  const [idx, setIdx]   = useState(startIdx);
+  const [idx, setIdx]   = useState(() => Math.min(Math.max(0, startIdx), Math.max(0, slides.length - 1)));
   const [playing, setPlaying] = useState(true);
   const [muted, setMuted]     = useState(false);
 
-  const current  = slides[idx];
+  // Keep index in range if slides shrink (poll / deletes)
+  const safeIdx  = slides.length === 0 ? 0 : Math.min(idx, slides.length - 1);
+  const current  = slides[safeIdx];
   const isEdited = !!current?.originalClipId;
   const hasMany  = slides.length > 1;
+
+  useEffect(() => {
+    if (idx !== safeIdx) setIdx(safeIdx);
+  }, [idx, safeIdx]);
   const aspectCss = ASPECT_CSS[aspectRatio] ?? "9/16";
   const modalMaxW = aspectRatio === "16:9" ? "min(780px, 92vw)" : aspectRatio === "1:1" ? "min(480px, 92vw)" : "min(360px, 92vw)";
 
@@ -35,21 +41,23 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      if (e.key === "ArrowRight" && idx < slides.length - 1) setIdx(i => i + 1);
-      if (e.key === "ArrowLeft"  && idx > 0)                 setIdx(i => i - 1);
+      if (e.key === "ArrowRight" && safeIdx < slides.length - 1) setIdx(i => i + 1);
+      if (e.key === "ArrowLeft"  && safeIdx > 0)                 setIdx(i => i - 1);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose, idx, slides.length]);
+  }, [onClose, safeIdx, slides.length]);
 
   // Reload + autoplay when slide changes
   useEffect(() => {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || !slides[safeIdx]) return;
     v.load();
     v.play().catch(() => setPlaying(false));
     setPlaying(true);
-  }, [idx]);
+    // Intentionally depend on safeIdx only — slides identity changes on every poll
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeIdx]);
 
   // Release video on unmount
   useEffect(() => {
@@ -65,6 +73,8 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
     if (v.paused) { v.play().catch(() => {}); setPlaying(true); }
     else          { v.pause(); setPlaying(false); }
   };
+
+  if (!current) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center" onClick={onClose}>
@@ -86,7 +96,7 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
           <div className="absolute inset-0 rounded-2xl overflow-hidden cursor-pointer" onClick={togglePlay}>
             <video
               ref={videoRef}
-              src={current?.s3Url}
+              src={current.s3Url}
               muted={muted}
               loop
               playsInline
@@ -155,14 +165,14 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
               <button
                 onClick={(e) => { e.stopPropagation(); setIdx(i => i - 1); }}
                 style={{ pointerEvents: "auto" }}
-                className={`h-9 w-9 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${idx === 0 ? "invisible" : ""}`}
+                className={`h-9 w-9 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${safeIdx === 0 ? "invisible" : ""}`}
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); setIdx(i => i + 1); }}
                 style={{ pointerEvents: "auto" }}
-                className={`h-9 w-9 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${idx === slides.length - 1 ? "invisible" : ""}`}
+                className={`h-9 w-9 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${safeIdx === slides.length - 1 ? "invisible" : ""}`}
               >
                 <ChevronRight className="h-5 w-5" />
               </button>
@@ -177,14 +187,14 @@ function VideoModal({ slides, startIdx, onClose, onUse, aspectRatio = "9:16" }: 
               <button
                 key={i}
                 onClick={() => setIdx(i)}
-                className={`rounded-full transition-all duration-200 ${i === idx ? "w-4 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/30 hover:bg-white/50"}`}
+                className={`rounded-full transition-all duration-200 ${i === safeIdx ? "w-4 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/30 hover:bg-white/50"}`}
               />
             ))}
           </div>
         )}
 
         {/* Reason text */}
-        {current?.reason && !isEdited && (
+        {current.reason && !isEdited && (
           <p className="text-[12px] text-white/45 text-center leading-relaxed px-2">
             {current.reason}
           </p>
@@ -206,16 +216,22 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
   const slides   = [clip, ...editedClips];
   const hasMany  = slides.length > 1;
   const [idx, setIdx] = useState(0);
-  const current  = slides[idx];
-  const isEdited = idx > 0;
+  // Keep index in range if edited clips shrink after a poll
+  const safeIdx  = slides.length === 0 ? 0 : Math.min(idx, slides.length - 1);
+  const current  = slides[safeIdx];
+  const isEdited = safeIdx > 0;
   const aspectCss = ASPECT_CSS[aspectRatio] ?? "9/16";
+
+  useEffect(() => {
+    if (idx !== safeIdx) setIdx(safeIdx);
+  }, [idx, safeIdx]);
 
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
     v.load();
     if (hovered) v.play().catch(() => {});
-  }, [idx]);
+  }, [safeIdx]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -231,6 +247,8 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
       if (v) { v.pause(); v.removeAttribute("src"); v.load(); }
     };
   }, []);
+
+  if (!current) return null;
 
   return (
     <div
@@ -314,14 +332,14 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
             <button
               onClick={(e) => { e.stopPropagation(); setIdx(i => i - 1); }}
               style={{ pointerEvents: "auto" }}
-              className={`h-7 w-7 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${idx === 0 ? "invisible" : ""}`}
+              className={`h-7 w-7 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${safeIdx === 0 ? "invisible" : ""}`}
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setIdx(i => i + 1); }}
               style={{ pointerEvents: "auto" }}
-              className={`h-7 w-7 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${idx === slides.length - 1 ? "invisible" : ""}`}
+              className={`h-7 w-7 flex items-center justify-center rounded-full bg-black/70 backdrop-blur-sm hover:bg-black/90 text-white transition-all cursor-pointer ${safeIdx === slides.length - 1 ? "invisible" : ""}`}
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -336,7 +354,7 @@ function ClipCard({ clip, editedClips, onExpand, onUse, aspectRatio = "9:16" }: 
             <button
               key={i}
               onClick={() => setIdx(i)}
-              className={`rounded-full transition-all duration-200 ${i === idx ? "w-4 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/30 hover:bg-white/50"}`}
+              className={`rounded-full transition-all duration-200 ${i === safeIdx ? "w-4 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/30 hover:bg-white/50"}`}
             />
           ))}
         </div>
@@ -458,10 +476,11 @@ function ProcessingView({ jobStatus, editFull }: { jobStatus?: string | null; ed
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const router = useRouter();
-  const nav    = _useRouter();
+  const { isLoaded, isSignedIn } = useAuth();
   const [project, setProject]           = useState<any>(null);
   const [clips, setClips]               = useState<any[]>([]);
   const [loading, setLoading]           = useState(true);
+  const [fetchError, setFetchError]     = useState<string | null>(null);
   const [modal, setModal] = useState<{ slides: any[]; startIdx: number } | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting]         = useState(false);
@@ -514,7 +533,7 @@ export default function ProjectDetailPage() {
   };
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !isLoaded || !isSignedIn) return;
     let stopped = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -525,10 +544,26 @@ export default function ProjectDetailPage() {
           apiFetch(`${API_URL}/api/projects/${projectId}/clips`),
         ]);
         if (stopped) return null;
+
         let proj = null;
-        if (projRes.ok)  { proj = await projRes.json(); setProject(proj); }
-        if (clipsRes.ok) setClips(await clipsRes.json());
+        if (projRes.ok) {
+          proj = await projRes.json();
+          setProject(proj);
+          setFetchError(null);
+        } else if (projRes.status === 404) {
+          setFetchError("Project not found.");
+        } else {
+          setFetchError((prev) => prev ?? "Could not load this project. Please try again.");
+        }
+
+        if (clipsRes.ok) {
+          const data = await clipsRes.json();
+          setClips(Array.isArray(data) ? data : []);
+        }
         return proj;
+      } catch {
+        if (!stopped) setFetchError("Could not load this project. Please try again.");
+        return null;
       } finally {
         if (!stopped) setLoading(false);
       }
@@ -551,12 +586,13 @@ export default function ProjectDetailPage() {
       stopped = true;
       if (intervalId) clearInterval(intervalId);
     };
-  }, [projectId]);
+  }, [projectId, isLoaded, isSignedIn, apiFetch]);
 
   // Separate original clips from edited exports, group by parent
-  const originalClips = clips.filter((c: any) => !c.originalClipId);
+  const safeClips = Array.isArray(clips) ? clips : [];
+  const originalClips = safeClips.filter((c: any) => !c.originalClipId);
   const editedByParent: Record<string, any[]> = {};
-  clips.filter((c: any) => c.originalClipId).forEach((c: any) => {
+  safeClips.filter((c: any) => c.originalClipId).forEach((c: any) => {
     (editedByParent[c.originalClipId] ??= []).push(c);
   });
 
@@ -688,9 +724,26 @@ export default function ProjectDetailPage() {
           </div>
 
           {/* Loading */}
-          {loading && (
+          {(loading || !isLoaded) && (
             <div className="flex items-center gap-2 text-[13px] text-white/30">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading clips…
+            </div>
+          )}
+
+          {/* Load error */}
+          {!loading && isLoaded && fetchError && !project && (
+            <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/8 px-4 py-3">
+              <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-2">
+                <p className="text-[13px] font-medium text-red-300">{fetchError}</p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/dashboard/projects")}
+                  className="cursor-pointer w-fit text-[12px] text-white/50 hover:text-white underline underline-offset-2"
+                >
+                  Back to projects
+                </button>
+              </div>
             </div>
           )}
 
@@ -730,7 +783,7 @@ export default function ProjectDetailPage() {
                         const startIdx = slides.findIndex(s => s._id === c._id);
                         setModal({ slides, startIdx: startIdx >= 0 ? startIdx : 0 });
                       }}
-                      onUse={() => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
+                      onUse={() => router.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url ?? "")}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
                     />
                   );
                 })}
@@ -768,7 +821,7 @@ export default function ProjectDetailPage() {
           startIdx={modal.startIdx}
           aspectRatio={project?.aspectRatio ?? "9:16"}
           onClose={() => setModal(null)}
-          onUse={(clip) => nav.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url)}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
+          onUse={(clip) => router.push(`/dashboard/clips/${clip._id}?src=${encodeURIComponent(clip.s3Url ?? "")}&score=${clip.score}&index=${clip.index}&projectId=${projectId}`)}
         />
       )}
 

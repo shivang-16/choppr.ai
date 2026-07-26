@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import { useApiFetch } from "@/lib/apiFetch";
 import { Loader2, Film, Trash2, Clock, CheckCircle, XCircle, Pencil } from "lucide-react";
 import Sidebar from "../_components/sidebar";
@@ -104,17 +105,24 @@ export default function ProjectsPage() {
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
   const apiFetch = useApiFetch();
+  const { isLoaded, isSignedIn } = useAuth();
 
-  const fetchProjects = async () => {
-    try {
-      const res = await apiFetch(`${API_URL}/api/projects`);
-      if (res.ok) setProjects(await res.json());
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchProjects(); }, []);
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(`${API_URL}/api/projects`);
+        if (!cancelled && res.ok) {
+          const data = await res.json();
+          setProjects(Array.isArray(data) ? data : []);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [apiFetch, isLoaded, isSignedIn]);
 
   const handleDeleteClick = (e: React.MouseEvent, projectId: string, title: string) => {
     e.preventDefault();

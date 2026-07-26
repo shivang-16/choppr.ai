@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { useApiFetch } from "@/lib/apiFetch";
 import { randomUUID } from "crypto";
 import EditorTopbar from "./_components/editor-topbar";
@@ -55,6 +56,7 @@ interface HistoryEntry {
 export default function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const apiFetch = useApiFetch();
+  const { isLoaded, isSignedIn } = useAuth();
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [project, setProject]       = useState<any>(null);
@@ -81,6 +83,7 @@ export default function EditorPage() {
 
   // ── Plan (free users capped at 5 min export) ───────────────────────────────
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     apiFetch(`${API_URL}/api/plans/me`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -93,17 +96,19 @@ export default function EditorPage() {
         setIsFreePlan(!plan || plan.slug === "free" || planId === "free");
       })
       .catch(() => setIsFreePlan(true));
-  }, []);
+  }, [apiFetch, isLoaded, isSignedIn]);
 
   // ── Fetch project + clips → build initial tracks ──────────────────────────
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !isLoaded || !isSignedIn) return;
     Promise.all([
-      apiFetch(`${API_URL}/api/projects/${projectId}`).then(r => r.json()),
-      apiFetch(`${API_URL}/api/projects/${projectId}/clips`).then(r => r.json()),
+      apiFetch(`${API_URL}/api/projects/${projectId}`).then(r => r.ok ? r.json() : null),
+      apiFetch(`${API_URL}/api/projects/${projectId}/clips`).then(r => r.ok ? r.json() : []),
     ]).then(([proj, clips]) => {
+      if (!proj) return;
+      const list = Array.isArray(clips) ? clips : [];
       setProject(proj);
-      setDbClips(clips);
+      setDbClips(list);
 
       // Build default 3 empty tracks — user drags clips from media panel
       const initialTracks: Track[] = [
@@ -116,13 +121,13 @@ export default function EditorPage() {
       setTotalDuration(30); // default 30s visible
 
       // Don't auto-load preview — only plays when on timeline
-      if (clips.length > 0) {
-        setActiveMediaClip(clips[0]._id);
+      if (list.length > 0) {
+        setActiveMediaClip(list[0]._id);
       }
 
       pushHistory(initialTracks);
     }).catch(() => {});
-  }, [projectId]);
+  }, [projectId, isLoaded, isSignedIn, apiFetch]);
 
   // ── History ───────────────────────────────────────────────────────────────
   const pushHistory = useCallback((newTracks: Track[]) => {

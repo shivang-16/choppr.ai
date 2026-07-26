@@ -5,42 +5,62 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function unauthorizedResponse() {
+  return new Response(JSON.stringify({ message: "Unauthorized" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 /**
  * Authenticated fetch for the Choppr API.
- * After signup, the dashboard fires many parallel requests while Clerk's token
- * and our user-create path settle — retry getToken briefly and once on 401.
+ * Waits for a Clerk JWT before hitting the network, never sends without
+ * Authorization, and retries once on 401 (stale token / signup race).
  */
 export function useApiFetch() {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
 
   return useCallback(async (input: string, init: RequestInit = {}): Promise<Response> => {
+    // Clerk finished loading and there is no session — don't call the API
+    if (isLoaded && !isSignedIn) {
+      return unauthorizedResponse();
+    }
+
     let token = await getToken();
 
-    // Brief retry — token often arrives just after signup redirect
+    // Wait for JWT — common right after hydration / signup redirect
     if (!token) {
-      for (let i = 0; i < 8 && !token; i++) {
-        await sleep(150);
+      for (let i = 0; i < 30 && !token; i++) {
+        await sleep(100);
         token = await getToken();
       }
     }
 
-    const buildHeaders = (authToken: string | null): HeadersInit => ({
+    // Still no token: fail locally (no Authorization header → noisy API 401s)
+    if (!token) {
+      return unauthorizedResponse();
+    }
+
+    const buildHeaders = (authToken: string): HeadersInit => ({
       ...(init.headers ?? {}),
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      Authorization: `Bearer ${authToken}`,
       "Cache-Control": "no-store",
       ...(init.body && !(init.headers as Record<string, string> | undefined)?.["Content-Type"]
         ? { "Content-Type": "application/json" }
         : {}),
     });
 
-    const res = await fetch(input, {
-      ...init,
-      cache: "no-store",
-      headers: buildHeaders(token),
-    });
+    const doFetch = (authToken: string) =>
+      fetch(input, {
+        ...init,
+        cache: "no-store",
+        headers: buildHeaders(authToken),
+      });
 
-    // Retry once on 401: signup race (parallel user create) or stale token
-    if (res.status === 401 && token) {
+    let res = await doFetch(token);
+
+    // Retry once on 401: stale JWT or parallel user-create race on the API
+    if (res.status === 401) {
       await sleep(300);
       let fresh: string | null = null;
       try {
@@ -48,13 +68,11 @@ export function useApiFetch() {
       } catch {
         fresh = await getToken();
       }
-      return fetch(input, {
-        ...init,
-        cache: "no-store",
-        headers: buildHeaders(fresh || token),
-      });
+      if (fresh) {
+        res = await doFetch(fresh);
+      }
     }
 
     return res;
-  }, [getToken]);
+  }, [getToken, isLoaded, isSignedIn]);
 }

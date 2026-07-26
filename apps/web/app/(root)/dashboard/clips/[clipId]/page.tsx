@@ -2399,7 +2399,7 @@ export default function ClipRefinePage() {
         else if (data?.editFull) setAspectRatio("16:9");
       })
       .catch(() => {});
-  }, [projectId]);
+  }, [projectId, apiFetch]);
 
   useEffect(() => {
     apiFetch(`${API_URL}/api/plans/me`)
@@ -2414,7 +2414,7 @@ export default function ClipRefinePage() {
         setIsFreePlan(!plan || plan.slug === "free" || planId === "free");
       })
       .catch(() => setIsFreePlan(true));
-  }, []);
+  }, [apiFetch]);
 
   // Close AR dropdown on outside click
   useEffect(() => {
@@ -2494,7 +2494,9 @@ export default function ClipRefinePage() {
 
   // Debounced auto-save edit settings
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settingsReadyRef = useRef(false);
   const saveSettings = useCallback((settings: object) => {
+    if (!clipId) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       apiFetch(`${API_URL}/api/clips/${clipId}/settings`, {
@@ -2503,13 +2505,27 @@ export default function ClipRefinePage() {
         body: JSON.stringify(settings),
       }).catch(() => {});
     }, 800);
+  }, [clipId, apiFetch]);
+
+  // On clip switch: re-arm the first-run skip and drop any pending PATCH for the old clip
+  useEffect(() => {
+    settingsReadyRef.current = false;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
   }, [clipId]);
 
-  // Auto-save whenever any setting changes (captionWords saved too so translation persists)
+  // Auto-save whenever any setting changes (captionWords saved too so translation persists).
+  // Skip the first run per clipId so mount/defaults don't PATCH the wrong clip.
   useEffect(() => {
     if (!clipId) return;
+    if (!settingsReadyRef.current) {
+      settingsReadyRef.current = true;
+      return;
+    }
     saveSettings({ captionStyle, captionFontSize, captionPosY, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation });
-  }, [captionStyle, captionFontSize, captionPosY, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation]);
+  }, [clipId, captionStyle, captionFontSize, captionPosY, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, saveSettings]);
 
   const buildExportSnapshot = useCallback(() => JSON.stringify({
     aspectRatio, backgroundFill, captionStyle, captionFontSize, captionPosY, captionPosX,

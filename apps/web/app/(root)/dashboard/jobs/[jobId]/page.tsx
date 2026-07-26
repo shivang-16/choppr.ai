@@ -180,6 +180,7 @@ export default function JobPage() {
         const res = await apiFetchRef.current(`${API_URL}/api/clips?jobId=${jobId}`);
         if (!res.ok) return;
         const data = await res.json();
+        if (!Array.isArray(data)) return;
         clipsRef.current = data;
         setClips([...data]); // new array ref forces re-render
       } catch {}
