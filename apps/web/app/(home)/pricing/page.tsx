@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Choppr AI Pricing - Start Free, Clip More",
     description:
-      "Simple credit-based pricing. AI video clipping, captions, and reframe. Start for free — no credit card required.",
+      "Simple credit-based pricing. AI video clipping, captions, and reframe. Start for free - no credit card required.",
     url: "/pricing",
     type: "website",
   },

@@ -39,11 +39,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
   title: {
-    default: "Choppr AI — Turn Long Videos into Viral Short Clips",
+    default: "Choppr AI - Turn Long Videos into Viral Short Clips",
     template: "%s | Choppr AI",
   },
   description:
-    "Choppr AI automatically finds the best moments in any video, cuts clips, adds captions, and reframes for TikTok, Reels, and YouTube Shorts. Start free — no credit card required.",
+    "Choppr AI automatically finds the best moments in any video, cuts clips, adds captions, and reframes for TikTok, Reels, and YouTube Shorts. Start free - no credit card required.",
   keywords: [
     "choppr ai",
     "choppr",
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
     type: "website",
     url: BASE_URL,
     siteName: "Choppr AI",
-    title: "Choppr AI — Turn Long Videos into Viral Short Clips",
+    title: "Choppr AI - Turn Long Videos into Viral Short Clips",
     description:
       "Drop a video. Choppr AI finds the hooks, cuts clips, adds captions, and hands you content that stops the scroll.",
     images: [
@@ -72,7 +72,7 @@ export const metadata: Metadata = {
         url: "/opengraph-image.png",
         width: 3182,
         height: 1900,
-        alt: "Choppr AI — AI Video Clipper",
+        alt: "Choppr AI - AI Video Clipper",
       },
     ],
     locale: "en_US",
@@ -81,7 +81,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     site: "@choppr_pro",
     creator: "@choppr_pro",
-    title: "Choppr AI — Turn Long Videos into Viral Short Clips",
+    title: "Choppr AI - Turn Long Videos into Viral Short Clips",
     description:
       "Drop a video. Choppr AI finds the hooks, cuts clips, adds captions, and hands you content that stops the scroll.",
     images: ["/opengraph-image.png"],

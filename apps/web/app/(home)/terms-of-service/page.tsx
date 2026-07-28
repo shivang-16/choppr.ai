@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
-  description: "Terms of Service for Choppr AI — AI video clipping, captions, and export.",
+  description: "Terms of Service for Choppr AI - AI video clipping, captions, and export.",
   alternates: {
     canonical: "/terms-of-service",
   },
@@ -30,7 +30,7 @@ export default function TermsOfServicePage() {
           short-form clips. Our Service may include, among other features:
         </p>
         <ul className="list-disc pl-5 flex flex-col gap-1.5">
-          <li>AI clipping — automatically finding and cutting highlight moments</li>
+          <li>AI clipping - automatically finding and cutting highlight moments</li>
           <li>AI captions and transcription</li>
           <li>Video reframing and aspect-ratio adjustments</li>
           <li>Visual enhancements, stickers, and export tools</li>
@@ -113,8 +113,8 @@ export default function TermsOfServicePage() {
 
       <Section title="7. AI Output & Disclaimer">
         <p>
-          Choppr uses automated and AI-assisted tools. Results — including clip selections, captions,
-          timing, and visual edits — may be inaccurate or require manual review. You are solely
+          Choppr uses automated and AI-assisted tools. Results - including clip selections, captions,
+          timing, and visual edits - may be inaccurate or require manual review. You are solely
           responsible for reviewing exported content before publishing it.
         </p>
         <p>

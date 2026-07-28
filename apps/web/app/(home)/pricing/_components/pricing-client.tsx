@@ -220,7 +220,7 @@ export function PricingClient() {
                 },
                 {
                   q: "What happens if a job fails?",
-                  a: "Failed jobs cost nothing — credits are automatically refunded in full.",
+                  a: "Failed jobs cost nothing - credits are automatically refunded in full.",
                 },
                 {
                   q: "Can I cancel anytime?",
