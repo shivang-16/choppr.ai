@@ -1,8 +1,12 @@
 import LegalLayout, { Section } from "../_components/legal-layout";
+import type { Metadata } from "next";
 
-export const metadata = {
-  title: "Terms of Service | Choppr",
-  description: "Terms of Service for Choppr — AI video clipping, captions, and export.",
+export const metadata: Metadata = {
+  title: "Terms of Service",
+  description: "Terms of Service for Choppr AI — AI video clipping, captions, and export.",
+  alternates: {
+    canonical: "/terms-of-service",
+  },
 };
 
 export default function TermsOfServicePage() {

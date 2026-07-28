@@ -1,8 +1,12 @@
 import LegalLayout, { Section } from "../_components/legal-layout";
+import type { Metadata } from "next";
 
-export const metadata = {
-  title: "Privacy Policy | Choppr",
-  description: "Privacy Policy for Choppr — how we collect, use, and protect your data.",
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description: "Privacy Policy for Choppr AI — how we collect, use, and protect your data.",
+  alternates: {
+    canonical: "/privacy-policy",
+  },
 };
 
 export default function PrivacyPolicyPage() {

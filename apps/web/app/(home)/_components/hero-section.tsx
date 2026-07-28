@@ -84,13 +84,13 @@ export default function HeroSection() {
 
         {/* Headline */}
         <div className="flex flex-col items-center gap-4 text-center">
-          <h2 className="max-w-4xl text-[clamp(1.8rem,4vw,4rem)] font-normal leading-[1.1] tracking-[-0.01em] text-white text-center">
+          <h1 className="max-w-4xl text-[clamp(1.8rem,4vw,4rem)] font-normal leading-[1.1] tracking-[-0.01em] text-white text-center">
             Your best moments deserve<br />
             <span className="text-white">to go viral.</span>
-          </h2>
+          </h1>
 
           <p className="max-w-xl text-balance text-[clamp(0.95rem,2vw,1.1rem)] font-normal leading-relaxed text-white/60">
-            Drop a video. Choppr's AI finds the hooks, cuts the clips, adds captions
+            Drop a video. <strong className="font-medium text-white/80">Choppr AI</strong> finds the hooks, cuts the clips, adds captions
             and hands you content that actually stops the scroll.
           </p>
         </div>

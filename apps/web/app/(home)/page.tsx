@@ -1,7 +1,26 @@
+import type { Metadata } from "next";
 import Navbar from "./_components/navbar";
 import HeroSection from "./_components/hero-section";
 import AiModelsSection from "./_components/ai-models-section";
 import Footer from "./_components/footer";
+
+export const metadata: Metadata = {
+  title: {
+    absolute: "Choppr AI — Turn Long Videos into Viral Short Clips",
+  },
+  description:
+    "Choppr AI automatically finds the best moments in any video, cuts clips, adds captions, and reframes for TikTok, Reels, and YouTube Shorts. Start free — no credit card required.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "Choppr AI — Turn Long Videos into Viral Short Clips",
+    description:
+      "Drop a video. Choppr AI finds the hooks, cuts clips, adds captions, and hands you content that stops the scroll.",
+    url: "/",
+    type: "website",
+  },
+};
 
 export default function Home() {
   return (
