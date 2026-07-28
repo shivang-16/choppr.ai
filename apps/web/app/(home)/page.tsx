@@ -6,7 +6,7 @@ import Footer from "./_components/footer";
 
 export const metadata: Metadata = {
   title: {
-    absolute: "Choppr AI - Turn Long Videos into Viral Short Clips",
+    absolute: "Choppr AI - Turn Long Videos into Viral Clips with AI",
   },
   description:
     "Choppr AI automatically finds the best moments in any video, cuts clips, adds captions, and reframes for TikTok, Reels, and YouTube Shorts. Start free - no credit card required.",
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   openGraph: {
-    title: "Choppr AI - Turn Long Videos into Viral Short Clips",
+    title: "Choppr AI - Turn Long Videos into Viral Clips with AI",
     description:
       "Drop a video. Choppr AI finds the hooks, cuts clips, adds captions, and hands you content that stops the scroll.",
     url: "/",

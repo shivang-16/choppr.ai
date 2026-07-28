@@ -3,17 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { Link2, Upload, Scissors, Zap, Play } from "lucide-react";
+import { Link2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { URL_PLACEHOLDERS, validateVideoUrl } from "@/lib/url-placeholders";
 import HeroDemoCarousel from "./hero-demo-carousel";
 
-const BADGES = [
-  { icon: Zap, label: "10x faster editing" },
-  { icon: Scissors, label: "AI-powered clips" },
-  { icon: Play, label: "Auto captions" },
-];
+// const BADGES = [
+//   { icon: Zap, label: "10x faster editing" },
+//   { icon: Scissors, label: "AI-powered clips" },
+//   { icon: Play, label: "Auto captions" },
+// ];
 
 export default function HeroSection() {
   const [url, setUrl] = useState("");
@@ -62,15 +62,15 @@ export default function HeroSection() {
   };
 
   return (
-    <section className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 pt-24 pb-12">
+    <section className="relative flex min-h-screen flex-col items-center justify-start overflow-hidden px-4 pt-36 sm:pt-42 md:pt-46 pb-12">
       {/* Subtle radial glow */}
       <div className="pointer-events-none absolute inset-0 z-0" aria-hidden>
         <div className="absolute left-1/2 top-1/3 h-[600px] w-[900px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.015] blur-[120px]" />
       </div>
 
-      <div className="relative z-10 flex w-full max-w-6xl flex-col items-center gap-8 mt-10">
+      <div className="relative z-10 flex w-full max-w-6xl flex-col items-center gap-8">
         {/* Badge row */}
-        <div className="flex flex-wrap items-center justify-center gap-2">
+        {/* <div className="flex flex-wrap items-center justify-center gap-2">
           {BADGES.map(({ icon: Icon, label }) => (
             <span
               key={label}
@@ -80,18 +80,23 @@ export default function HeroSection() {
               {label}
             </span>
           ))}
-        </div>
+        </div> */}
 
         {/* Headline */}
         <div className="flex flex-col items-center gap-4 text-center">
-          <h1 className="max-w-4xl text-[clamp(1.8rem,4vw,4rem)] font-normal leading-[1.1] tracking-[-0.01em] text-white text-center">
-            Your best moments deserve<br />
-            <span className="text-white">to go viral.</span>
+          {/* Line 1 — small label */}
+          <p className="text-[14px] font-semibold tracking-[0.18em] uppercase text-white/70">
+            AI Video Clipping Tool
+          </p>
+
+          {/* Line 2 — big H1: smaller on mobile, single line on desktop */}
+          <h1 className="max-w-[380px] sm:max-w-full text-[2.2rem] sm:text-[clamp(2.4rem,4.2vw,4.2rem)] lg:sm:text-[clamp(2.2rem,3.9vw,3.8rem)] leading-[1.1] tracking-[-0.02em] text-white text-center sm:whitespace-nowrap">
+            Turn long videos into viral short clips with AI.
           </h1>
 
-          <p className="max-w-xl text-balance text-[clamp(0.95rem,2vw,1.1rem)] font-normal leading-relaxed text-white/60">
-            Drop a video. <strong className="font-medium text-white/80">Choppr AI</strong> finds the hooks, cuts the clips, adds captions
-            and hands you content that actually stops the scroll.
+          {/* Line 3 — short subline: wraps on mobile, full width on desktop */}
+          <p className="max-w-[330px] sm:max-w-full text-[clamp(0.9rem,1.8vw,1rem)] font-normal leading-relaxed text-white/50">
+            Drop a video. <strong className="font-medium text-white/75">Choppr AI</strong> clips, captions, and reframes it for TikTok, Reels, and Shorts.
           </p>
         </div>
 
