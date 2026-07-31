@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import { PricingClient } from "./_components/pricing-client";
+import { PricingClient, type Plan } from "./_components/pricing-client";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -17,6 +19,19 @@ export const metadata: Metadata = {
   },
 };
 
-export default function PricingPage() {
-  return <PricingClient />;
+async function getPlans(): Promise<Plan[]> {
+  try {
+    const res = await fetch(`${API_URL}/api/plans`, {
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export default async function PricingPage() {
+  const plans = await getPlans();
+  return <PricingClient initialPlans={plans} />;
 }

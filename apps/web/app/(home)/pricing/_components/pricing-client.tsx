@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import { Check, Zap, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Navbar from "../../_components/navbar";
@@ -11,7 +12,7 @@ import { CouponBadge } from "@/components/coupon-badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-type Plan = {
+export type Plan = {
   slug: string;
   name: string;
   description: string;
@@ -28,16 +29,36 @@ function formatPrice(cents: number) {
   return cents === 0 ? 0 : cents / 100;
 }
 
-export function PricingClient() {
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(true);
+function usePlanCtaHref(kind: "free" | "paid") {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  if (!isLoaded) {
+    return kind === "free" ? "/sign-up" : "/sign-up?redirect_url=%2Fdashboard%2Fbilling";
+  }
+
+  if (isSignedIn) {
+    return kind === "free" ? "/dashboard" : "/dashboard/billing";
+  }
+
+  return kind === "free"
+    ? "/sign-up"
+    : `/sign-up?redirect_url=${encodeURIComponent("/dashboard/billing")}`;
+}
+
+export function PricingClient({ initialPlans = [] }: { initialPlans?: Plan[] }) {
+  const [plans, setPlans] = useState<Plan[]>(initialPlans);
+  const [loading, setLoading] = useState(initialPlans.length === 0);
+  const freeCtaHref = usePlanCtaHref("free");
+  const paidCtaHref = usePlanCtaHref("paid");
 
   useEffect(() => {
+    if (initialPlans.length > 0) return;
+
     fetch(`${API_URL}/api/plans`)
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => { setPlans(d); setLoading(false); })
       .catch(() => setLoading(false));
-  }, []);
+  }, [initialPlans.length]);
 
   const freePlan  = plans.find((p) => p.slug === "free");
   const paidPlans = plans.filter((p) => p.slug !== "free");
@@ -157,7 +178,7 @@ export function PricingClient() {
                       </a>
                     ) : (
                       <Link
-                        href="/sign-in"
+                        href={paidCtaHref}
                         className={cn(
                           "w-full rounded-xl py-2.5 text-[13px] font-semibold transition-all flex items-center justify-center gap-2",
                           plan.popular
@@ -197,7 +218,7 @@ export function PricingClient() {
               <div className="flex items-center gap-3 shrink-0">
                 <span className="text-[22px] font-bold text-white/50">$0</span>
                 <Link
-                  href="/sign-in"
+                  href={freeCtaHref}
                   className="rounded-lg border border-white/12 bg-white/6 px-3 py-1.5 text-[12px] font-medium text-white/70 hover:bg-white/10 transition-colors"
                 >
                   Get started free
