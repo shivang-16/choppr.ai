@@ -169,7 +169,7 @@ const STYLE_CFG: Record<LegacyCaptionId, StyleCfg> = {
     bg: "#FFE600", showAll: false, glow: null, outline: "none", activeScale: 1.6,
   },
   "outline-black": {
-    font: PF_SPACE, activeColor: "#fff", inactiveColor: "rgba(255,255,255,0.3)",
+    font: PF_SPACE, activeColor: "#fff", inactiveColor: "rgba(255,255,255,0.8)",
     bg: null, showAll: true, glow: null, outline: OUTLINE_HEAVY, activeScale: 1,
   },
   glitch: {

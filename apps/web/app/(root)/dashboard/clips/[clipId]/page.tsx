@@ -313,17 +313,17 @@ const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
     category: "Classic",
     styles: [
       { id: "subtitle",       label: "Subtitle",    desc: "", preview: null, previewClass: "",
-        renderPreview: () => <div className="flex items-end w-full h-full px-1 pb-1.5"><div className="w-full bg-black/70 text-white text-[9px] font-semibold text-center py-0.5 rounded" style={{ fontFamily: PF_DEFAULT }}>just be kind</div></div> },
+        renderPreview: () => <div className="flex items-end justify-center w-full h-full px-1 pb-1.5"><span className="bg-black/70 text-white text-[9px] font-semibold text-center px-1.5 py-0.5 rounded" style={{ fontFamily: PF_DEFAULT }}>just <span className="text-white/70">be kind</span></span></div> },
       { id: "shadow",         label: "Shadow",      desc: "", preview: null, previewClass: "",
-        renderPreview: () => <span className="text-white font-black text-[14px] [text-shadow:2px_2px_6px_black,2px_2px_12px_black]" style={{ fontFamily: PF_DEFAULT }}>SHADOW</span> },
+        renderPreview: () => <span className="text-white font-black text-[14px] [text-shadow:0_1px_4px_rgba(0,0,0,0.95),0_1px_9px_rgba(0,0,0,0.95)]" style={{ fontFamily: PF_DEFAULT }}>SHADOW</span> },
       { id: "outline-black",  label: "Impact",      desc: "", preview: null, previewClass: "",
-        renderPreview: () => <span className="text-white font-black text-[14px] [text-shadow:-1px_-1px_0_black,1px_-1px_0_black,-1px_1px_0_black,1px_1px_0_black]" style={{ fontFamily: PF_SPACE }}>IMPACT</span> },
+        renderPreview: () => <span className="text-white font-black text-[14px] [paint-order:stroke_fill] [-webkit-text-stroke:2px_black] [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]" style={{ fontFamily: PF_SPACE }}>IMPACT</span> },
       { id: "outline-white",  label: "Outline",     desc: "", preview: null, previewClass: "",
-        renderPreview: () => <span className="font-black text-[14px] text-transparent" style={{ WebkitTextStroke: "1.5px white", fontFamily: PF_SPACE }}>OUTLINE</span> },
+        renderPreview: () => <span className="font-black text-[14px] text-transparent [text-shadow:0_1px_4px_rgba(0,0,0,0.9)]" style={{ WebkitTextStroke: "1px white", fontFamily: PF_SPACE }}>OUTLINE</span> },
       { id: "bold-center",    label: "Bold Center", desc: "", preview: null, previewClass: "",
-        renderPreview: () => <span className="bg-white text-black font-black text-[14px] px-2 py-0.5 rounded-lg" style={{ fontFamily: PF_ANTON }}>BOLD</span> },
+        renderPreview: () => <span className="bg-black/65 text-white font-black text-[14px] px-2 py-0.5 rounded-lg" style={{ fontFamily: PF_ANTON }}>BOLD</span> },
       { id: "clean-mid",      label: "Clean Mid",   desc: "", preview: null, previewClass: "",
-        renderPreview: () => <span className="bg-black/60 text-white font-bold text-[12px] px-2 py-0.5 rounded-lg" style={{ fontFamily: PF_SPACE }}>Clean</span> },
+        renderPreview: () => <span className="bg-black/60 text-white font-bold text-[12px] px-2 py-0.5 rounded-lg" style={{ fontFamily: PF_SPACE }}>Clean <span className="text-white/70">mid</span></span> },
     ],
   },
   {
@@ -331,9 +331,9 @@ const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
     styles: [
       { id: "full-line",     label: "Full Line",  desc: "", preview: null, previewClass: "",
         renderPreview: () => (
-          <div className="flex flex-col items-center justify-center gap-0.5 px-1 w-full" style={{ fontFamily: PF_DEFAULT }}>
-            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">just be kind</span>
-            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">to others</span>
+          <div className="flex flex-col items-center justify-center gap-0.5 px-1 w-full [paint-order:stroke_fill] [-webkit-text-stroke:0.6px_black]" style={{ fontFamily: PF_DEFAULT }}>
+            <span className="text-white text-[9px] font-semibold text-center leading-tight [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">just be kind</span>
+            <span className="text-white text-[9px] font-semibold text-center leading-tight [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">to others</span>
           </div>
         ) },
     ],
@@ -1762,7 +1762,7 @@ function EditPanelContent({
       {askCaptionApplyMode && captionApplyMenu && captionApplyStyle && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
             onClick={() => setCaptionApplyMenu(null)}
           />
           <div
@@ -1770,19 +1770,19 @@ function EditPanelContent({
             role="dialog"
             aria-modal="true"
             aria-label={`Apply ${captionApplyStyle.label} caption`}
-            className="relative z-10 w-full max-w-[280px] overflow-hidden rounded-2xl border border-white/15 bg-[#141414] shadow-[0_24px_80px_rgba(0,0,0,0.65)]"
+            className="relative z-10 w-full max-w-[300px] overflow-hidden rounded-2xl border border-white/12 bg-black/55 shadow-[0_28px_90px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
           >
             <button
               type="button"
               onClick={() => setCaptionApplyMenu(null)}
-              className="absolute right-2.5 top-2.5 z-10 rounded-full p-1 text-white/40 hover:bg-white/10 hover:text-white/80 transition-colors"
+              className="absolute top-2.5 right-2.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/55 hover:bg-white/18 hover:text-white transition-colors"
               aria-label="Close"
             >
               <X className="h-3.5 w-3.5" />
             </button>
 
-            <div className="flex h-28 items-center justify-center bg-[#0c0c0c] border-b border-white/8">
-              <div className="scale-[1.35]">
+            <div className="flex h-[100px] items-center justify-center pt-2">
+              <div className="scale-[1.3]">
                 {captionApplyStyle.renderPreview
                   ? captionApplyStyle.renderPreview()
                   : captionApplyStyle.preview
@@ -1791,23 +1791,12 @@ function EditPanelContent({
               </div>
             </div>
 
-            <div className="px-4 pt-3 pb-1.5">
-              <p className="text-[13px] font-semibold text-white truncate">{captionApplyStyle.label}</p>
-              <p className="text-[11px] text-white/40 mt-0.5">How do you want to apply this style?</p>
+            <div className="px-4 pt-1 pb-1">
+              <p className="text-[14px] font-semibold tracking-tight text-white truncate">{captionApplyStyle.label}</p>
+              <p className="text-[12px] text-white/50 mt-1 leading-snug">Apply this style to your captions</p>
             </div>
 
-            <div className="flex flex-col gap-2 p-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setCaptionStyle(captionApplyMenu);
-                  onAddCaptionSegment(captionApplyMenu, "add");
-                  setCaptionApplyMenu(null);
-                }}
-                className="w-full rounded-xl bg-white px-3 py-2.5 text-[12px] font-semibold text-black hover:bg-white/90 active:scale-[0.98] transition-all"
-              >
-                Add to timeline
-              </button>
+            <div className="flex flex-col gap-2 p-3.5 pt-3">
               <button
                 type="button"
                 onClick={() => {
@@ -1815,9 +1804,20 @@ function EditPanelContent({
                   onAddCaptionSegment(captionApplyMenu, "replace");
                   setCaptionApplyMenu(null);
                 }}
-                className="w-full rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2.5 text-[12px] font-semibold text-white/85 hover:bg-white/10 active:scale-[0.98] transition-all"
+                className="w-full rounded-xl bg-white px-3 py-2.5 text-[12.5px] font-semibold text-black hover:bg-white/90 active:scale-[0.98] transition-all"
               >
                 Replace current
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCaptionStyle(captionApplyMenu);
+                  onAddCaptionSegment(captionApplyMenu, "add");
+                  setCaptionApplyMenu(null);
+                }}
+                className="w-full rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-[12.5px] font-medium text-white/80 hover:bg-white/12 hover:text-white active:scale-[0.98] transition-all"
+              >
+                Add to timeline
               </button>
             </div>
           </div>

@@ -167,7 +167,7 @@ const W: Record<string, string> = {
 };
 const fw = (f: string): string => W[f] ?? "bold";
 
-const CFG: Record<LegacyCaptionStyle, {
+interface StyleCfg {
   weight: string;
   font: string;
   activeColor: string | "gradient";
@@ -177,13 +177,15 @@ const CFG: Record<LegacyCaptionStyle, {
   yRatio: number;
   glow: string | null;
   outline: { color: string; width: number } | null;
-}> = {
+}
+
+const CFG: Record<LegacyCaptionStyle, StyleCfg> = {
   // ── Noto / system default ─────────────────────────────────────────────────
   none:            { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"transparent",           bg:null,                showAll:false, yRatio:0.80, glow:null,        outline:null },
-  subtitle:        { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.6)",  bg:"rgba(0,0,0,0.7)",   showAll:true,  yRatio:0.88, glow:null,        outline:null },
-  "full-line":     { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.45)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:2} },
-  shadow:          { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.4)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:null },
-  "clean-mid":     { weight:fw(F_SPACE),   font:F_SPACE,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.5)",  bg:"rgba(0,0,0,0.5)",   showAll:true,  yRatio:0.50, glow:null,        outline:null },
+  subtitle:        { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.72)", bg:"rgba(0,0,0,0.72)",  showAll:true,  yRatio:0.86, glow:null,        outline:null },
+  "full-line":     { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.72)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:2} },
+  shadow:          { weight:fw(F_DEFAULT), font:F_DEFAULT, activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.7)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:null },
+  "clean-mid":     { weight:fw(F_SPACE),   font:F_SPACE,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.72)", bg:"rgba(0,0,0,0.62)",  showAll:true,  yRatio:0.50, glow:null,        outline:null },
 
   // ── Anton (condensed impact — single-weight 400, inherently bold) ─────────
   "word-pop":      { weight:fw(F_ANTON),   font:F_ANTON,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.35)", bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:3} },
@@ -222,7 +224,7 @@ const CFG: Record<LegacyCaptionStyle, {
 
   // ── Space Grotesk (geometric modern) ─────────────────────────────────────
   "outline-white": { weight:fw(F_SPACE),   font:F_SPACE,   activeColor:"transparent",inactiveColor:"transparent",          bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#fff",width:2} },
-  "outline-black": { weight:fw(F_SPACE),   font:F_SPACE,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.3)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:4} },
+  "outline-black": { weight:fw(F_SPACE),   font:F_SPACE,   activeColor:"#fff",      inactiveColor:"rgba(255,255,255,0.8)",  bg:null,                showAll:true,  yRatio:0.80, glow:null,        outline:{color:"#000",width:4} },
   "solo-box":      { weight:fw(F_SPACE),   font:F_SPACE,   activeColor:"#000",      inactiveColor:"transparent",           bg:"#FFE600",           showAll:false, yRatio:0.50, glow:null,        outline:null },
 
   // ── UnifrakturCook (gothic blackletter — weight 700) ──────────────────────
@@ -262,6 +264,154 @@ const ST_FONTS = [
   { font: F_SPACE,   weight: "400" },
   { font: F_DEFAULT, weight: "400" },
 ];
+
+// ── Clean line styles (Classic + Full Line) ──────────────────────────────────
+// These read as plain, legible subtitles: the whole phrase is laid out at one
+// size so nothing reflows, and the block stays on screen through the silent
+// gaps between words instead of blinking off every time nobody is speaking.
+// Mirror of the same block in apps/api/src/services/caption-renderer.ts.
+
+const LINE_STYLES = new Set<string>([
+  "full-line", "subtitle", "shadow", "outline-black", "outline-white", "clean-mid",
+]);
+
+interface LineOpts {
+  /** Words per block before it splits. */
+  maxWords: number;
+  /** One rounded bar behind the whole block instead of a pill per word. */
+  bar: boolean;
+  /** Dim the words that aren't being spoken right now. */
+  emphasis: boolean;
+  /** Outline width as a fraction of the font size (0 = none). */
+  stroke: number;
+  /** Outline only, no fill. */
+  strokeOnly?: boolean;
+  /** Dark halo radius as a fraction of the font size (0 = none). */
+  shadow: number;
+  /** Repeat the halo to deepen it without widening the blur. */
+  halos?: number;
+}
+
+const LINE_OPTS: Record<string, LineOpts> = {
+  "full-line":     { maxWords: 8, bar: false, emphasis: false, stroke: 0.060, shadow: 0.13 },
+  "subtitle":      { maxWords: 8, bar: true,  emphasis: true,  stroke: 0,     shadow: 0    },
+  "shadow":        { maxWords: 7, bar: false, emphasis: true,  stroke: 0,     shadow: 0.20, halos: 3 },
+  "outline-black": { maxWords: 6, bar: false, emphasis: true,  stroke: 0.140, shadow: 0.06 },
+  "outline-white": { maxWords: 6, bar: false, emphasis: false, stroke: 0.038, shadow: 0.12, strokeOnly: true },
+  "clean-mid":     { maxWords: 6, bar: true,  emphasis: true,  stroke: 0,     shadow: 0    },
+};
+
+interface LineBlock { words: CaptionWord[]; start: number; end: number }
+
+/** Group words into blocks that swap as a unit, each held until the next one starts. */
+function buildLineBlocks(words: CaptionWord[], maxWords: number): LineBlock[] {
+  const GAP = 0.6;
+  const blocks: LineBlock[] = [];
+  let s = 0;
+  while (s < words.length) {
+    let e = s;
+    while (
+      e < words.length - 1 &&
+      e - s < maxWords - 1 &&
+      words[e + 1]!.start - words[e]!.end < GAP
+    ) e++;
+    blocks.push({ words: words.slice(s, e + 1), start: words[s]!.start, end: words[e]!.end });
+    s = e + 1;
+  }
+  // Extending each block to the next one's onset is what removes the flicker:
+  // without it the line vanishes during every pause between words.
+  for (let i = 0; i < blocks.length; i++) {
+    const next = blocks[i + 1];
+    blocks[i]!.end = next ? next.start : blocks[i]!.end + 0.6;
+  }
+  return blocks;
+}
+
+/** Render the block of words that belongs on screen at `t`, wrapped and centred on `cy`. */
+function drawLineStyle(
+  ctx: CanvasRenderingContext2D, cfg: StyleCfg, style: string, words: CaptionWord[],
+  t: number, cx: number, cy: number, fs: number, canvasW: number,
+): void {
+  const opts = LINE_OPTS[style];
+  if (!opts) return;
+  const block = buildLineBlocks(words, opts.maxWords).find(b => t >= b.start && t < b.end);
+  if (!block) return;
+
+  ctx.font = `${cfg.weight} ${fs}px ${cfg.font}`;
+  const spaceW  = ctx.measureText(" ").width;
+  const maxRowW = canvasW * 0.86;
+
+  const items = block.words.map(w => ({ ...w, w: ctx.measureText(w.word).width }));
+
+  const rows: (typeof items)[] = [];
+  let row: typeof items = [];
+  let rowW = 0;
+  for (const it of items) {
+    const add = row.length ? spaceW + it.w : it.w;
+    if (row.length && rowW + add > maxRowW) { rows.push(row); row = []; rowW = 0; }
+    rowW += row.length ? spaceW + it.w : it.w;
+    row.push(it);
+  }
+  if (row.length) rows.push(row);
+
+  const lineH  = fs * 1.28;
+  const totalH = rows.length * lineH;
+  const topY   = cy - totalH / 2;
+
+  if (opts.bar && cfg.bg) {
+    const widest = Math.max(
+      ...rows.map(r => r.reduce((a, it) => a + it.w, 0) + spaceW * (r.length - 1)),
+    );
+    const padX = fs * 0.46, padY = fs * 0.24;
+    ctx.fillStyle = cfg.bg;
+    roundRect(ctx, cx - widest / 2 - padX, topY - padY, widest + padX * 2, totalH + padY * 2, fs * 0.2);
+    ctx.fill();
+  }
+
+  const strokeColor = opts.strokeOnly ? (cfg.outline?.color ?? "#fff") : "#000";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin     = "round";
+  ctx.miterLimit   = 2;
+
+  for (let ri = 0; ri < rows.length; ri++) {
+    const r  = rows[ri]!;
+    const rw = r.reduce((a, it) => a + it.w, 0) + spaceW * (r.length - 1);
+    let x    = cx - rw / 2;
+    const y  = topY + ri * lineH + lineH / 2;
+
+    for (const it of r) {
+      const dim = opts.emphasis && !(t >= it.start && t < it.end);
+
+      // Pass 1: a dark halo so the text survives bright footage. Cast from a
+      // stroke rather than the fill so it sits just outside the glyph edge.
+      if (opts.shadow > 0) {
+        ctx.shadowColor   = "rgba(0,0,0,0.92)";
+        ctx.shadowBlur    = fs * opts.shadow;
+        ctx.shadowOffsetY = fs * opts.shadow * 0.22;
+        ctx.strokeStyle   = "rgba(0,0,0,0.9)";
+        ctx.lineWidth     = Math.max(fs * opts.stroke, fs * 0.045);
+        for (let p = opts.halos ?? 1; p > 0; p--) ctx.strokeText(it.word, x, y);
+        ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      }
+
+      // Pass 2: the outline itself, crisp — no blur bleeding into it.
+      if (opts.stroke > 0) {
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth   = fs * opts.stroke;
+        ctx.strokeText(it.word, x, y);
+      }
+
+      // Pass 3: the fill, dimmed on the words that aren't being spoken.
+      if (!opts.strokeOnly) {
+        ctx.fillStyle = dim ? cfg.inactiveColor : (cfg.activeColor as string);
+        ctx.fillText(it.word, x, y);
+      }
+      x += it.w + spaceW;
+    }
+  }
+
+  ctx.textBaseline = "alphabetic";
+}
 
 export default function CaptionRenderer({
   videoRef, words, style, fontSize = 50, aspectRatio = "9:16", posOffset = 0, hOffset = 0, language,
@@ -400,10 +550,6 @@ export default function CaptionRenderer({
         ? { ...frameCfgBase, font: F_DEVA, weight: DEVA_WEIGHT[frameStyle] ?? "700" }
         : frameCfgBase;
 
-      const activeIdx = frameWords.findIndex(w => t >= w.start && t < w.end);
-      if (activeIdx === -1) { rafRef.current = requestAnimationFrame(draw); return; }
-
-      const active = frameWords[activeIdx]!;
       // Scale font relative to canvas width — 9:16 reference is 1080px, 16:9 is 1920px
       const baseRef  = aspectRatio === "16:9" ? 1920 : 1080;
       const fs       = fontSize * (cw / baseRef);
@@ -420,27 +566,22 @@ export default function CaptionRenderer({
         : base + (framePosOffset / 100) * (base - SAFE_TOP);
       const cy       = ch * frac;
 
+      // Line styles resolve their own block from the clock, so they run before the
+      // "is a word active right now" check that every other style depends on.
+      if (LINE_STYLES.has(frameStyle)) {
+        drawLineStyle(ctx, frameCfg, frameStyle, frameWords, t, cx, cy, fs, cw);
+        rafRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
+      const activeIdx = frameWords.findIndex(w => t >= w.start && t < w.end);
+      if (activeIdx === -1) { rafRef.current = requestAnimationFrame(draw); return; }
+
+      const active = frameWords[activeIdx]!;
+
       // Window of words to display
       const windowWords = frameCfg.showAll
-        ? frameStyle === "full-line"
-          // Full-line: scan blocks from the start to find the one containing activeIdx
-          ? (() => {
-              const GAP   = 0.5;
-              const MAX_W = 7;
-              let s = 0;
-              while (s < frameWords.length) {
-                let e = s;
-                while (
-                  e < frameWords.length - 1 &&
-                  (e - s) < MAX_W - 1 &&
-                  (frameWords[e + 1]!.start - frameWords[e]!.end) < GAP
-                ) e++;
-                if (activeIdx >= s && activeIdx <= e) return frameWords.slice(s, e + 1);
-                s = e + 1;
-              }
-              return [active];
-            })()
-          : frameWords.slice(Math.max(0, activeIdx - 2), Math.min(frameWords.length, activeIdx + 3))
+        ? frameWords.slice(Math.max(0, activeIdx - 2), Math.min(frameWords.length, activeIdx + 3))
         : [active];
 
       // Measure each word at the font size it will actually be rendered at so the
@@ -469,52 +610,6 @@ export default function CaptionRenderer({
           width: ctx.measureText(w.word + " ").width,
         };
       });
-
-      // Full-line: wrap words into rows that fit within 88% of canvas width
-      // All words in the block render at full brightness — no active/inactive distinction
-      if (frameStyle === "full-line") {
-        const maxLineW = cw * 0.88;
-        const lineH    = fs * 1.5;
-        // Split into rows
-        const rows: typeof measured[] = [];
-        let row: typeof measured = [];
-        let rowW = 0;
-        for (const m of measured) {
-          if (row.length > 0 && rowW + m.width > maxLineW) {
-            rows.push(row);
-            row = [];
-            rowW = 0;
-          }
-          row.push(m);
-          rowW += m.width;
-        }
-        if (row.length > 0) rows.push(row);
-
-        // Draw rows centered vertically around cy
-        const totalH = rows.length * lineH;
-        const startY = cy - totalH / 2 + fs;
-
-        rows.forEach((rowWords, ri) => {
-          const rowTotalW = rowWords.reduce((s, m) => s + m.width, 0);
-          let rx = cx - rowTotalW / 2;
-          const ry = startY + ri * lineH;
-
-          rowWords.forEach((m) => {
-            if (frameCfg.outline) {
-              ctx.strokeStyle = frameCfg.outline.color;
-              ctx.lineWidth   = frameCfg.outline.width;
-              ctx.lineJoin    = "round";
-              ctx.strokeText(m.word, rx, ry);
-            }
-            ctx.fillStyle = frameCfg.activeColor as string;
-            ctx.fillText(m.word, rx, ry);
-            rx += m.width;
-          });
-        });
-
-        rafRef.current = requestAnimationFrame(draw);
-        return;
-      }
 
       // ── Font Cycle: solo word, cycling font per word index (white only) ─
       if (frameStyle === "font-cycle") {
@@ -622,12 +717,6 @@ export default function CaptionRenderer({
           ctx.fill();
         }
 
-        // Shadow (shadow style)
-        if (frameStyle === "shadow") {
-          ctx.shadowColor = "rgba(0,0,0,0.95)"; ctx.shadowBlur = 10;
-          ctx.shadowOffsetX = 3; ctx.shadowOffsetY = 3;
-        }
-
         // Glow
         if (frameCfg.glow && isA) {
           ctx.shadowColor = frameCfg.glow; ctx.shadowBlur = 24;
@@ -659,10 +748,6 @@ export default function CaptionRenderer({
           const grd   = ctx.createLinearGradient(x, drawY - wfs, x + ctx.measureText(m.word).width, drawY);
           pal.forEach((c, i) => grd.addColorStop(i / (pal.length - 1), c));
           ctx.fillStyle = isA ? grd : frameCfg.inactiveColor;
-        } else if (frameStyle === "outline-white" && isA) {
-          // Outline-only — no fill, just stroke was applied above
-          ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
-          x += m.width * rowScale; return;
         } else {
           ctx.fillStyle = isA ? color : frameCfg.inactiveColor;
         }
