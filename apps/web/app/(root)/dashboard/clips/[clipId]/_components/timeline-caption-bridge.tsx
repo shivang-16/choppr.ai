@@ -189,6 +189,17 @@ const STYLE_COLORS: Record<string, string> = {
   "stack-gold": "#78350f",
   "stack-sunny": "#78350f",
   "font-cycle": "#581c87",
+  // Pro animated styles — brighter track colours so they stand out on the timeline
+  "pro-spring": "#a16207",
+  "pro-slide-box": "#3f6212",
+  "pro-liquid": "#0e7490",
+  "pro-focus": "#334155",
+  "pro-rise": "#15803d",
+  "pro-tilt": "#b45309",
+  "pro-chroma": "#be123c",
+  "pro-shimmer": "#0369a1",
+  "pro-depth": "#6d28d9",
+  "pro-glass": "#475569",
 };
 
 function colorForStyle(style: CaptionStyle): string {

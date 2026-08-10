@@ -63,11 +63,19 @@ function computeExportCostEstimate(
   captionStyle: string,
   stickers: { stickerId: string }[],
   tracks: { items: { type: string }[] }[],
+  captionSegments: Array<{ style: string }> = [],
 ): number {
   const BASE = 2;
   const MAX  = 6;
   let cost = BASE;
-  if (captionStyle && captionStyle !== "none") cost += 1;
+  const styles = [
+    captionStyle,
+    ...captionSegments.map(s => s.style),
+  ].filter(s => s && s !== "none");
+  if (styles.length > 0) {
+    // Pro animated captions cost +2; regular captions cost +1
+    cost += styles.some(s => s.startsWith("pro-")) ? 2 : 1;
+  }
   if (stickers.length > 0) cost += 1;
   const videoItems = tracks.flatMap(t => t.items.filter(i => i.type === "video"));
   if (videoItems.length > 1) cost += 1;
@@ -175,7 +183,7 @@ type CaptionStyleEntry = {
   previewClass: string;
   renderPreview?: () => React.ReactNode;
 };
-type CaptionStyleCategory = { category: string; styles: CaptionStyleEntry[] };
+type CaptionStyleCategory = { category: string; styles: CaptionStyleEntry[]; isNew?: boolean };
 
 // Font-family strings mirroring the server CFG
 const PF_DEFAULT   = "system-ui, sans-serif";
@@ -188,6 +196,11 @@ const PF_PIXEL     = "'Press Start 2P', monospace";
 const PF_SPACE     = "'Space Grotesk', sans-serif";
 const PF_GOTHIC    = "'UnifrakturCook', cursive";
 const PF_NUNITO    = "'Nunito', sans-serif";
+const PF_MONT      = "'Montserrat', sans-serif";
+const PF_POPPINS   = "'Poppins', sans-serif";
+
+// Thick black outline used by most of the Pro previews.
+const PRO_STROKE = "[text-shadow:-1.5px_-1.5px_0_black,1.5px_-1.5px_0_black,-1.5px_1.5px_0_black,1.5px_1.5px_0_black]";
 
 // Helper: 3-row stacked preview
 function stackPreview(
@@ -208,10 +221,97 @@ function stackPreview(
 
 const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
   {
+    category: "Pro Animated",
+    isNew: true,
+    styles: [
+      { id: "pro-spring", label: "Spring Pop", desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <div className="flex flex-col items-center gap-0.5" style={{ fontFamily: PF_MONT }}>
+            <span className={cn("text-white font-black text-[15px] leading-none", PRO_STROKE)}>SPRING</span>
+            <div className="h-[3px] w-8 rounded-full bg-[#FFE900]" />
+          </div>
+        ) },
+      { id: "pro-slide-box", label: "Slide Box", desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <div className="flex items-center gap-1" style={{ fontFamily: PF_POPPINS }}>
+            <span className="text-white/90 font-extrabold text-[10px]">the</span>
+            <span className="bg-[#C6FF00] text-black font-extrabold text-[11px] px-1.5 py-0.5 rounded-md">box</span>
+            <span className="text-white/90 font-extrabold text-[10px]">slides</span>
+          </div>
+        ) },
+      { id: "pro-liquid", label: "Liquid Fill", desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <span
+            className={cn("font-black text-[15px] bg-clip-text text-transparent", PRO_STROKE)}
+            style={{
+              fontFamily: PF_MONT,
+              backgroundImage: "linear-gradient(90deg,#22D3EE 0%,#A5F3FC 52%,rgba(255,255,255,0.4) 52%,rgba(255,255,255,0.4) 100%)",
+            }}
+          >LIQUID</span>
+        ) },
+      { id: "pro-focus", label: "Focus Blur", desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <div className="flex items-center gap-1" style={{ fontFamily: PF_POPPINS }}>
+            <span className="text-white/50 font-extrabold text-[11px] blur-[1.5px]">into</span>
+            <span className="text-white font-extrabold text-[13px] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">focus</span>
+          </div>
+        ) },
+      { id: "pro-rise", label: "Rise Mask", desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <div className="flex items-stretch gap-1.5" style={{ fontFamily: PF_MONT }}>
+            <div className="w-[3px] rounded-full bg-[#4ADE80]" />
+            <div className="flex flex-col items-start leading-none gap-0.5">
+              <span className={cn("text-white/45 font-black text-[10px]", PRO_STROKE)}>WORDS</span>
+              <span className={cn("text-white font-black text-[12px]", PRO_STROKE)}>RISE</span>
+            </div>
+          </div>
+        ) },
+      { id: "pro-tilt", label: "Tilt Drop", desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <div className="flex items-center gap-1" style={{ fontFamily: PF_POPPINS }}>
+            <span className={cn("text-white/70 font-extrabold text-[11px] -rotate-6 inline-block", PRO_STROKE)}>TIP</span>
+            <span className={cn("text-[#FFD166] font-extrabold text-[14px] rotate-6 inline-block", PRO_STROKE)}>TILT</span>
+          </div>
+        ) },
+      { id: "pro-chroma", label: "Chroma Split", desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <span className="relative inline-block font-black text-[15px]" style={{ fontFamily: PF_MONT }}>
+            <span className="absolute inset-0 text-[#FF0033] -translate-x-[3px]">SPLIT</span>
+            <span className="absolute inset-0 text-[#00E5FF] translate-x-[3px]">SPLIT</span>
+            <span className={cn("relative text-white", PRO_STROKE)}>SPLIT</span>
+          </span>
+        ) },
+      { id: "pro-shimmer", label: "Shimmer", desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <span
+            className="font-black text-[15px] bg-clip-text text-transparent drop-shadow-[0_0_8px_#A7F3FF]"
+            style={{
+              fontFamily: PF_MONT,
+              backgroundImage: "linear-gradient(100deg,#FFFFFF 20%,#67E8F9 40%,#FFFFFF 50%,#F472B6 60%,#FFFFFF 80%)",
+            }}
+          >SHINE</span>
+        ) },
+      { id: "pro-depth", label: "Depth Pop", desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <span
+            className="font-black text-[15px] text-white"
+            style={{
+              fontFamily: PF_POPPINS,
+              textShadow: "1px 1px 0 #7C3AED,2px 2px 0 #6D28D9,3px 3px 0 #5B21B6,4px 4px 0 #4C1D95,5px 5px 0 #3B1478,6px 6px 0 #2E1065",
+            }}
+          >DEPTH</span>
+        ) },
+      { id: "pro-glass", label: "Glass Panel", desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <div className="rounded-lg border border-white/35 bg-white/12 px-2 py-1 backdrop-blur-sm">
+            <span className="text-white font-extrabold text-[10px]" style={{ fontFamily: PF_POPPINS }}>frosted glass</span>
+          </div>
+        ) },
+    ],
+  },
+  {
     category: "Classic",
     styles: [
-      { id: "none",           label: "None",        desc: "", preview: null, previewClass: "",
-        renderPreview: () => <span className="text-white/20 text-[11px]">⊘</span> },
       { id: "subtitle",       label: "Subtitle",    desc: "", preview: null, previewClass: "",
         renderPreview: () => <div className="flex items-end w-full h-full px-1 pb-1.5"><div className="w-full bg-black/70 text-white text-[9px] font-semibold text-center py-0.5 rounded" style={{ fontFamily: PF_DEFAULT }}>just be kind</div></div> },
       { id: "shadow",         label: "Shadow",      desc: "", preview: null, previewClass: "",
@@ -224,6 +324,18 @@ const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
         renderPreview: () => <span className="bg-white text-black font-black text-[14px] px-2 py-0.5 rounded-lg" style={{ fontFamily: PF_ANTON }}>BOLD</span> },
       { id: "clean-mid",      label: "Clean Mid",   desc: "", preview: null, previewClass: "",
         renderPreview: () => <span className="bg-black/60 text-white font-bold text-[12px] px-2 py-0.5 rounded-lg" style={{ fontFamily: PF_SPACE }}>Clean</span> },
+    ],
+  },
+  {
+    category: "Full Line",
+    styles: [
+      { id: "full-line",     label: "Full Line",  desc: "", preview: null, previewClass: "",
+        renderPreview: () => (
+          <div className="flex flex-col items-center justify-center gap-0.5 px-1 w-full" style={{ fontFamily: PF_DEFAULT }}>
+            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">just be kind</span>
+            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">to others</span>
+          </div>
+        ) },
     ],
   },
   {
@@ -241,18 +353,6 @@ const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
         renderPreview: () => <div className="flex items-center gap-1" style={{ fontFamily: PF_BANGERS }}><span className="text-white/50 font-black text-[8px]">just</span><span className="bg-yellow-400 text-black font-black text-[11px] px-1 rounded">BE</span><span className="text-white/50 font-black text-[8px]">kind</span></div> },
       { id: "comic",         label: "Comic",      desc: "", preview: null, previewClass: "",
         renderPreview: () => <span className="bg-blue-800 text-white font-black text-[15px] px-2 py-0.5 rounded [text-shadow:-1px_-1px_0_black]" style={{ fontFamily: PF_BANGERS }}>POW!</span> },
-    ],
-  },
-  {
-    category: "Full Line",
-    styles: [
-      { id: "full-line",     label: "Full Line",  desc: "", preview: null, previewClass: "",
-        renderPreview: () => (
-          <div className="flex flex-col items-center justify-center gap-0.5 px-1 w-full" style={{ fontFamily: PF_DEFAULT }}>
-            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">just be kind</span>
-            <span className="text-white text-[8px] font-semibold [text-shadow:-1px_-1px_0_black] text-center leading-tight">to others</span>
-          </div>
-        ) },
     ],
   },
   {
@@ -1127,8 +1227,15 @@ function EditPanelContent({
       if (captionApplyMenuRef.current?.contains(e.target as Node)) return;
       setCaptionApplyMenu(null);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCaptionApplyMenu(null);
+    };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [captionApplyMenu]);
 
   useEffect(() => {
@@ -1138,6 +1245,10 @@ function EditPanelContent({
   useEffect(() => {
     if (hideTranscript && captionSubTab === "transcript") setCaptionSubTab("styles");
   }, [hideTranscript, captionSubTab]);
+
+  const captionApplyStyle = captionApplyMenu
+    ? CAPTION_STYLE_GROUPS.flatMap(g => g.styles).find(s => s.id === captionApplyMenu) ?? null
+    : null;
 
   const CAPTION_SUB_TABS = [
     { id: "styles" as const, label: "Styles" },
@@ -1192,7 +1303,17 @@ function EditPanelContent({
                 <div className="flex flex-col gap-4 pr-0.5">
                   {CAPTION_STYLE_GROUPS.map(group => (
                     <div key={group.category}>
-                      <p className="text-[9px] font-semibold text-white/30 uppercase tracking-widest mb-1.5">{group.category}</p>
+                      <div className="mb-1.5 flex items-center gap-1.5">
+                        <p className={cn(
+                          "text-[9px] font-semibold uppercase tracking-widest",
+                          group.isNew ? "text-white/70" : "text-white/30",
+                        )}>{group.category}</p>
+                        {group.isNew && (
+                          <span className="rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 px-1.5 py-[1px] text-[8px] font-bold uppercase tracking-wider text-white">
+                            New
+                          </span>
+                        )}
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         {group.styles.map(s => {
                           const onTimeline = captionSegments.some(seg => seg.style === s.id);
@@ -1200,11 +1321,10 @@ function EditPanelContent({
                           return (
                             <div
                               key={s.id}
-                              ref={menuOpen ? captionApplyMenuRef : undefined}
                               className={cn(
                                 "relative rounded-xl border transition-all overflow-hidden",
                                 menuOpen
-                                  ? "border-white ring-2 ring-white/40 shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_8px_24px_rgba(0,0,0,0.55)] z-10 scale-[1.02]"
+                                  ? "border-white ring-2 ring-white/40"
                                   : onTimeline
                                     ? "border-white/50 ring-1 ring-white/20"
                                     : "border-white/8 bg-white/3 hover:border-white/20",
@@ -1213,12 +1333,6 @@ function EditPanelContent({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  // "None" clears captions — never add a None block to the timeline
-                                  if (s.id === "none") {
-                                    setCaptionApplyMenu(null);
-                                    onAddCaptionSegment("none");
-                                    return;
-                                  }
                                   if (onTimeline) {
                                     // Toggle off: remove from timeline AND clear preview style
                                     // (otherwise CaptionRenderer falls back to captionStyle and
@@ -1256,34 +1370,6 @@ function EditPanelContent({
                                   {onTimeline && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shrink-0 ml-1" />}
                                 </div>
                               </button>
-
-                              {menuOpen && (
-                                <div className="absolute inset-0 z-20 flex flex-col bg-black/90 backdrop-blur-sm ring-1 ring-inset ring-white/25">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setCaptionStyle(s.id);
-                                      onAddCaptionSegment(s.id, "replace");
-                                      setCaptionApplyMenu(null);
-                                    }}
-                                    className="flex-1 px-2 text-[11px] font-semibold text-white hover:bg-white/15 active:bg-white/20 transition-colors"
-                                  >
-                                    Replace current
-                                  </button>
-                                  <div className="h-px bg-white/20 shrink-0" />
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setCaptionStyle(s.id);
-                                      onAddCaptionSegment(s.id, "add");
-                                      setCaptionApplyMenu(null);
-                                    }}
-                                    className="flex-1 px-2 text-[11px] font-semibold text-white hover:bg-white/15 active:bg-white/20 transition-colors"
-                                  >
-                                    Add to timeline
-                                  </button>
-                                </div>
-                              )}
                             </div>
                           );
                         })}
@@ -1669,6 +1755,72 @@ function EditPanelContent({
           >
             Reset to default
           </button>
+        </div>
+      )}
+
+      {/* Desktop: centered caption apply popup (replace vs add) */}
+      {askCaptionApplyMode && captionApplyMenu && captionApplyStyle && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/55 backdrop-blur-[2px]"
+            onClick={() => setCaptionApplyMenu(null)}
+          />
+          <div
+            ref={captionApplyMenuRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Apply ${captionApplyStyle.label} caption`}
+            className="relative z-10 w-full max-w-[280px] overflow-hidden rounded-2xl border border-white/15 bg-[#141414] shadow-[0_24px_80px_rgba(0,0,0,0.65)]"
+          >
+            <button
+              type="button"
+              onClick={() => setCaptionApplyMenu(null)}
+              className="absolute right-2.5 top-2.5 z-10 rounded-full p-1 text-white/40 hover:bg-white/10 hover:text-white/80 transition-colors"
+              aria-label="Close"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+
+            <div className="flex h-28 items-center justify-center bg-[#0c0c0c] border-b border-white/8">
+              <div className="scale-[1.35]">
+                {captionApplyStyle.renderPreview
+                  ? captionApplyStyle.renderPreview()
+                  : captionApplyStyle.preview
+                    ? <span className={cn("leading-none text-center block px-1", captionApplyStyle.previewClass)}>{captionApplyStyle.preview}</span>
+                    : <span className="text-white/20 text-[11px]">⊘</span>}
+              </div>
+            </div>
+
+            <div className="px-4 pt-3 pb-1.5">
+              <p className="text-[13px] font-semibold text-white truncate">{captionApplyStyle.label}</p>
+              <p className="text-[11px] text-white/40 mt-0.5">How do you want to apply this style?</p>
+            </div>
+
+            <div className="flex flex-col gap-2 p-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCaptionStyle(captionApplyMenu);
+                  onAddCaptionSegment(captionApplyMenu, "add");
+                  setCaptionApplyMenu(null);
+                }}
+                className="w-full rounded-xl bg-white px-3 py-2.5 text-[12px] font-semibold text-black hover:bg-white/90 active:scale-[0.98] transition-all"
+              >
+                Add to timeline
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCaptionStyle(captionApplyMenu);
+                  onAddCaptionSegment(captionApplyMenu, "replace");
+                  setCaptionApplyMenu(null);
+                }}
+                className="w-full rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2.5 text-[12px] font-semibold text-white/85 hover:bg-white/10 active:scale-[0.98] transition-all"
+              >
+                Replace current
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -3299,6 +3451,7 @@ export default function ClipRefinePage() {
     captionStyle,
     placedStickers,
     exportTracksRef.current ?? [],
+    captionSegments,
   );
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const FONT_URL =
-  "https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Oswald:wght@400;700;900&family=Permanent+Marker&family=Press+Start+2P&family=Space+Grotesk:wght@400;700;900&display=swap";
+  "https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Montserrat:wght@900&family=Oswald:wght@400;700;900&family=Permanent+Marker&family=Poppins:wght@800&family=Press+Start+2P&family=Space+Grotesk:wght@400;700;900&display=swap";
 
 function ensureFonts() {
   if (typeof document === "undefined") return;
@@ -23,11 +23,15 @@ const PF_BEBAS = "'Bebas Neue', 'Anton', sans-serif";
 const PF_MARKER = "'Permanent Marker', cursive";
 const PF_SPACE = "'Space Grotesk', sans-serif";
 const PF_PIXEL = "'Press Start 2P', monospace";
+const PF_MONT = "'Montserrat', sans-serif";
+const PF_POPPINS = "'Poppins', sans-serif";
 
 const OUTLINE =
   "-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, -2px 0 0 #000, 2px 0 0 #000, 0 -2px 0 #000, 0 2px 0 #000";
 const OUTLINE_HEAVY =
   "-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, -3px 0 0 #000, 3px 0 0 #000, 0 -3px 0 #000, 0 3px 0 #000";
+const PRO_STROKE =
+  "-1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000";
 
 const RAINBOW = ["#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#8B00FF"];
 
@@ -41,7 +45,19 @@ const CAPTION_LINES: string[][] = [
   ["Your", "story", "is", "what", "makes", "people", "care"],
 ];
 
-type CaptionId =
+type ProCaptionId =
+  | "pro-spring"
+  | "pro-slide-box"
+  | "pro-liquid"
+  | "pro-focus"
+  | "pro-rise"
+  | "pro-tilt"
+  | "pro-chroma"
+  | "pro-shimmer"
+  | "pro-depth"
+  | "pro-glass";
+
+type LegacyCaptionId =
   | "karaoke"
   | "mr-beast"
   | "word-pop"
@@ -62,6 +78,8 @@ type CaptionId =
   | "outline-black"
   | "glitch";
 
+type CaptionId = ProCaptionId | LegacyCaptionId;
+
 type StyleCfg = {
   font: string;
   activeColor: string;
@@ -80,8 +98,8 @@ type StyleCfg = {
   glitch?: boolean;
 };
 
-/** Mirrors caption-renderer.tsx CFG for demo styles */
-const STYLE_CFG: Record<CaptionId, StyleCfg> = {
+/** Mirrors caption-renderer.tsx CFG for legacy demo styles */
+const STYLE_CFG: Record<LegacyCaptionId, StyleCfg> = {
   karaoke: {
     font: PF_MARKER, activeColor: "#FFE600", inactiveColor: "rgba(255,255,255,0.5)",
     bg: null, showAll: true, glow: null, outline: OUTLINE, activeScale: 1,
@@ -160,13 +178,140 @@ const STYLE_CFG: Record<CaptionId, StyleCfg> = {
   },
 };
 
+function isProCaptionId(id: CaptionId): id is ProCaptionId {
+  return id.startsWith("pro-");
+}
+
 type CaptionPreset = {
   id: CaptionId;
   label: string;
   preview: ReactNode;
+  isNew?: boolean;
 };
 
-const PRESETS: CaptionPreset[] = [
+const PRO_PRESETS: CaptionPreset[] = [
+  {
+    id: "pro-spring",
+    label: "Spring Pop",
+    isNew: true,
+    preview: (
+      <div className="flex flex-col items-center gap-0.5" style={{ fontFamily: PF_MONT }}>
+        <span className="text-white font-black text-[13px] leading-none" style={{ textShadow: PRO_STROKE }}>SPRING</span>
+        <div className="h-[3px] w-7 rounded-full bg-[#FFE900]" />
+      </div>
+    ),
+  },
+  {
+    id: "pro-slide-box",
+    label: "Slide Box",
+    isNew: true,
+    preview: (
+      <div className="flex items-center gap-1" style={{ fontFamily: PF_POPPINS }}>
+        <span className="text-white/90 font-extrabold text-[9px]">the</span>
+        <span className="bg-[#C6FF00] text-black font-extrabold text-[10px] px-1 py-0.5 rounded-md">box</span>
+      </div>
+    ),
+  },
+  {
+    id: "pro-liquid",
+    label: "Liquid Fill",
+    isNew: true,
+    preview: (
+      <span
+        className="font-black text-[13px] bg-clip-text text-transparent"
+        style={{
+          fontFamily: PF_MONT,
+          backgroundImage: "linear-gradient(90deg,#22D3EE 0%,#A5F3FC 52%,rgba(255,255,255,0.4) 52%)",
+          textShadow: PRO_STROKE,
+        }}
+      >LIQUID</span>
+    ),
+  },
+  {
+    id: "pro-focus",
+    label: "Focus Blur",
+    isNew: true,
+    preview: (
+      <div className="flex items-center gap-1" style={{ fontFamily: PF_POPPINS }}>
+        <span className="text-white/50 font-extrabold text-[10px] blur-[1.5px]">into</span>
+        <span className="text-white font-extrabold text-[12px] drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">focus</span>
+      </div>
+    ),
+  },
+  {
+    id: "pro-rise",
+    label: "Rise Mask",
+    isNew: true,
+    preview: (
+      <div className="flex items-stretch gap-1" style={{ fontFamily: PF_MONT }}>
+        <div className="w-[3px] rounded-full bg-[#4ADE80]" />
+        <span className="text-white font-black text-[12px]" style={{ textShadow: PRO_STROKE }}>RISE</span>
+      </div>
+    ),
+  },
+  {
+    id: "pro-tilt",
+    label: "Tilt Drop",
+    isNew: true,
+    preview: (
+      <div className="flex items-center gap-1" style={{ fontFamily: PF_POPPINS }}>
+        <span className="text-[#FFD166] font-extrabold text-[13px] rotate-6 inline-block" style={{ textShadow: PRO_STROKE }}>TILT</span>
+      </div>
+    ),
+  },
+  {
+    id: "pro-chroma",
+    label: "Chroma Split",
+    isNew: true,
+    preview: (
+      <span className="relative inline-block font-black text-[13px]" style={{ fontFamily: PF_MONT }}>
+        <span className="absolute inset-0 text-[#FF0033] -translate-x-[2px]">SPLIT</span>
+        <span className="absolute inset-0 text-[#00E5FF] translate-x-[2px]">SPLIT</span>
+        <span className="relative text-white" style={{ textShadow: PRO_STROKE }}>SPLIT</span>
+      </span>
+    ),
+  },
+  {
+    id: "pro-shimmer",
+    label: "Shimmer",
+    isNew: true,
+    preview: (
+      <span
+        className="font-black text-[13px] bg-clip-text text-transparent drop-shadow-[0_0_8px_#A7F3FF]"
+        style={{
+          fontFamily: PF_MONT,
+          backgroundImage: "linear-gradient(100deg,#FFFFFF 20%,#67E8F9 40%,#FFFFFF 50%,#F472B6 60%,#FFFFFF 80%)",
+        }}
+      >SHINE</span>
+    ),
+  },
+  {
+    id: "pro-depth",
+    label: "Depth Pop",
+    isNew: true,
+    preview: (
+      <span
+        className="font-black text-[13px] text-white"
+        style={{
+          fontFamily: PF_POPPINS,
+          textShadow: "1px 1px 0 #7C3AED,2px 2px 0 #6D28D9,3px 3px 0 #5B21B6,4px 4px 0 #4C1D95",
+        }}
+      >DEPTH</span>
+    ),
+  },
+  {
+    id: "pro-glass",
+    label: "Glass Panel",
+    isNew: true,
+    preview: (
+      <div className="rounded-md border border-white/35 bg-white/12 px-1.5 py-0.5">
+        <span className="text-white font-extrabold text-[9px]" style={{ fontFamily: PF_POPPINS }}>glass</span>
+      </div>
+    ),
+  },
+];
+
+const LEGACY_PRESETS: CaptionPreset[] = [
   {
     id: "karaoke",
     label: "Karaoke",
@@ -355,6 +500,288 @@ const PRESETS: CaptionPreset[] = [
   },
 ];
 
+/** Pro styles first (top of the left rail), then the classic presets. */
+const PRESETS: CaptionPreset[] = [...PRO_PRESETS, ...LEGACY_PRESETS];
+
+function LiveProCaptionLine({
+  words,
+  activeWord,
+  styleId,
+}: {
+  words: string[];
+  activeWord: number;
+  styleId: ProCaptionId;
+}) {
+  const upper = !["pro-slide-box", "pro-focus", "pro-glass"].includes(styleId);
+  const display = words.map(w => (upper ? w.toUpperCase() : w));
+  const font = ["pro-slide-box", "pro-focus", "pro-tilt", "pro-depth", "pro-glass"].includes(styleId)
+    ? PF_POPPINS
+    : PF_MONT;
+
+  if (styleId === "pro-glass") {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`glass-${words.join("-")}`}
+          className="mx-auto rounded-2xl border border-white/35 bg-black/45 px-5 py-3 backdrop-blur-sm"
+          initial={{ opacity: 0, scale: 0.92 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.96 }}
+          transition={{ duration: 0.25 }}
+        >
+          <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1" style={{ fontFamily: font }}>
+            {display.map((word, i) => (
+              <span
+                key={`${word}-${i}`}
+                className="font-extrabold leading-none"
+                style={{
+                  fontSize: i === activeWord ? 24 : 20,
+                  color: i === activeWord ? "#fff" : "rgba(255,255,255,0.55)",
+                }}
+              >
+                {word}
+              </span>
+            ))}
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  if (styleId === "pro-rise") {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`rise-${activeWord}`}
+          className="flex items-stretch gap-3"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+        >
+          <div className="w-[4px] rounded-full bg-[#4ADE80]" />
+          <div className="flex flex-col items-start gap-1" style={{ fontFamily: font }}>
+            {display.map((word, i) => {
+              const on = i === activeWord;
+              const past = i < activeWord;
+              if (i > activeWord) return null;
+              return (
+                <motion.span
+                  key={`${word}-${i}`}
+                  className="font-black uppercase leading-none"
+                  initial={{ y: 18, opacity: 0 }}
+                  animate={{ y: past ? -2 : 0, opacity: past ? 0.4 : 1 }}
+                  style={{
+                    fontSize: on ? 32 : 18,
+                    color: "#fff",
+                    textShadow: PRO_STROKE,
+                  }}
+                >
+                  {word}
+                </motion.span>
+              );
+            })}
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={`${styleId}-${words.join("-")}`}
+        className="flex flex-wrap items-end justify-center gap-x-2.5 gap-y-1 px-1"
+        style={{ fontFamily: font }}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      >
+        {display.map((word, i) => {
+          const on = i === activeWord;
+          const past = i < activeWord;
+
+          if (styleId === "pro-spring") {
+            return (
+              <motion.span
+                key={`${word}-${i}`}
+                className="relative inline-flex flex-col items-center font-black uppercase leading-none"
+                animate={on ? { scale: [0.82, 1.08, 1] } : { scale: 1 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+                style={{
+                  fontSize: on ? 30 : 22,
+                  color: "#fff",
+                  textShadow: PRO_STROKE,
+                }}
+              >
+                {word}
+                {on && (
+                  <motion.span
+                    className="mt-1 h-[4px] rounded-full bg-[#FFE900]"
+                    initial={{ width: 0 }}
+                    animate={{ width: "100%" }}
+                    transition={{ duration: 0.28 }}
+                  />
+                )}
+              </motion.span>
+            );
+          }
+
+          if (styleId === "pro-slide-box") {
+            return (
+              <motion.span
+                key={`${word}-${i}`}
+                className="font-extrabold leading-none inline-block rounded-lg"
+                layout
+                style={{
+                  fontSize: on ? 26 : 20,
+                  color: on ? "#0A0A0A" : "rgba(255,255,255,0.9)",
+                  background: on ? "#C6FF00" : "transparent",
+                  padding: on ? "4px 10px" : undefined,
+                }}
+              >
+                {word}
+              </motion.span>
+            );
+          }
+
+          if (styleId === "pro-liquid") {
+            const fill = past || on;
+            return (
+              <span
+                key={`${word}-${i}`}
+                className="font-black uppercase leading-none"
+                style={{
+                  fontSize: 24,
+                  color: fill ? "#22D3EE" : "rgba(255,255,255,0.35)",
+                  textShadow: PRO_STROKE,
+                }}
+              >
+                {word}
+              </span>
+            );
+          }
+
+          if (styleId === "pro-focus") {
+            return (
+              <motion.span
+                key={`${word}-${i}`}
+                className="font-extrabold leading-none"
+                animate={{
+                  filter: on ? "blur(0px)" : "blur(2.5px)",
+                  opacity: on ? 1 : 0.45,
+                  scale: on ? 1.12 : 1,
+                }}
+                transition={{ duration: 0.25 }}
+                style={{
+                  fontSize: 24,
+                  color: "#fff",
+                  textShadow: on ? "0 4px 18px rgba(0,0,0,0.85)" : undefined,
+                }}
+              >
+                {word}
+              </motion.span>
+            );
+          }
+
+          if (styleId === "pro-tilt") {
+            return (
+              <motion.span
+                key={`${word}-${i}`}
+                className="font-extrabold uppercase leading-none inline-block"
+                animate={
+                  on
+                    ? { rotate: [-12, 4, 0], y: [-10, 0], scale: [1.12, 1] }
+                    : { rotate: i % 2 === 0 ? -4 : 4, y: 0, scale: 1 }
+                }
+                transition={{ duration: 0.4, ease: "easeOut" }}
+                style={{
+                  fontSize: on ? 30 : 20,
+                  color: on ? "#FFD166" : "rgba(255,255,255,0.55)",
+                  textShadow: PRO_STROKE,
+                }}
+              >
+                {word}
+              </motion.span>
+            );
+          }
+
+          if (styleId === "pro-chroma") {
+            return (
+              <motion.span
+                key={`${word}-${i}`}
+                className="relative font-black uppercase leading-none inline-block"
+                animate={on ? { scale: [1.14, 1] } : { scale: 1 }}
+                transition={{ duration: 0.28 }}
+                style={{
+                  fontSize: on ? 32 : 20,
+                  color: on ? "#fff" : "rgba(255,255,255,0.45)",
+                  textShadow: PRO_STROKE,
+                }}
+              >
+                {on && (
+                  <>
+                    <span className="absolute inset-0 text-[#FF0033] -translate-x-[4px] opacity-80" aria-hidden>{word}</span>
+                    <span className="absolute inset-0 text-[#00E5FF] translate-x-[4px] opacity-80" aria-hidden>{word}</span>
+                  </>
+                )}
+                <span className="relative">{word}</span>
+              </motion.span>
+            );
+          }
+
+          if (styleId === "pro-shimmer") {
+            return (
+              <span
+                key={`${word}-${i}`}
+                className="font-black uppercase leading-none bg-clip-text text-transparent"
+                style={{
+                  fontSize: on ? 28 : 20,
+                  backgroundImage: on
+                    ? "linear-gradient(100deg,#FFFFFF 15%,#67E8F9 40%,#FFFFFF 50%,#F472B6 65%,#FFFFFF 85%)"
+                    : "linear-gradient(#fff,#fff)",
+                  WebkitTextStroke: "1px rgba(0,0,0,0.7)",
+                  filter: on ? "drop-shadow(0 0 10px #A7F3FF)" : undefined,
+                  opacity: on ? 1 : 0.5,
+                }}
+              >
+                {word}
+              </span>
+            );
+          }
+
+          if (styleId === "pro-depth") {
+            return (
+              <motion.span
+                key={`${word}-${i}`}
+                className="font-extrabold uppercase leading-none"
+                animate={on ? { y: [6, 0], scale: [0.9, 1.05, 1] } : { y: 0, scale: 1 }}
+                transition={{ duration: 0.3 }}
+                style={{
+                  fontSize: on ? 32 : 20,
+                  color: "#fff",
+                  textShadow: on
+                    ? "2px 2px 0 #7C3AED,4px 4px 0 #6D28D9,6px 6px 0 #5B21B6,8px 8px 0 #4C1D95"
+                    : "1px 1px 0 #4C1D95",
+                  opacity: on ? 1 : 0.55,
+                }}
+              >
+                {word}
+              </motion.span>
+            );
+          }
+
+          return (
+            <span key={`${word}-${i}`} className="font-black text-white" style={{ fontSize: 22, textShadow: PRO_STROKE }}>
+              {word}
+            </span>
+          );
+        })}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 function LiveCaptionLine({
   words,
   activeWord,
@@ -364,6 +791,10 @@ function LiveCaptionLine({
   activeWord: number;
   styleId: CaptionId;
 }) {
+  if (isProCaptionId(styleId)) {
+    return <LiveProCaptionLine words={words} activeWord={activeWord} styleId={styleId} />;
+  }
+
   const cfg = STYLE_CFG[styleId];
 
   // Stack: prev / active / next (3-row), matching product stack-reveal feel
@@ -681,6 +1112,11 @@ export default function HeroCaptionDemo({ active = true }: Props) {
                           : "border-white/8 bg-white/[0.03]"
                       }`}
                     >
+                      {p.isNew && (
+                        <span className="absolute top-1 right-1 z-10 rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 px-1 py-[1px] text-[7px] font-bold uppercase tracking-wider text-white">
+                          New
+                        </span>
+                      )}
                       <div className="h-12 bg-[#0a0a0a] flex items-center justify-center px-1">
                         {p.preview}
                       </div>

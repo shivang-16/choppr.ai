@@ -3,6 +3,7 @@ import { UserCredits, IUserCredits } from "../model/user-credits.model.js";
 import { CreditLedger, LedgerType, CreditBucket } from "../model/credit-ledger.model.js";
 import { Plan } from "../model/plan.model.js";
 import { logger } from "../utils/logger.js";
+import { isProCaptionStyle } from "./pro-captions.js";
 
 // Cost per minute of source video for AI clipping — matches plan.creditCostPerMin
 export const CREDITS_PER_MINUTE = 2;
@@ -21,20 +22,32 @@ export interface ExportCostPayload {
   captionStyle: string;
   stickers: { stickerId: string }[];
   tracks: { items: { type: string }[] }[];
+  /** Per-segment styles from the editor — used to detect Pro captions on the timeline. */
+  captionSegments?: Array<{ style: string }>;
 }
 
 /**
  * Compute the credit cost for an export.
  *
  * Base: 2 credits
- * +1 if captions are enabled (captionStyle !== "none")
+ * +1 if regular captions are enabled
+ * +2 if any Pro animated caption style is used (instead of +1)
  * +1 if stickers are placed
  * +1 if more than 1 video item exists across all tracks (multi-clip)
  * Maximum: 6 credits
  */
 export function computeExportCost(p: ExportCostPayload): number {
   let cost = CREDITS_PER_EXPORT_BASE;
-  if (p.captionStyle && p.captionStyle !== "none") cost += 1;
+
+  const styles = [
+    p.captionStyle,
+    ...(p.captionSegments ?? []).map(s => s.style),
+  ].filter((s): s is string => !!s && s !== "none");
+
+  if (styles.length > 0) {
+    cost += styles.some(isProCaptionStyle) ? 2 : 1;
+  }
+
   if (p.stickers.length > 0) cost += 1;
   const videoItems = p.tracks.flatMap(t => t.items.filter(i => i.type === "video"));
   if (videoItems.length > 1) cost += 1;

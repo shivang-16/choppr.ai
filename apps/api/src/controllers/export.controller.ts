@@ -141,9 +141,10 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
 
     // Compute the credit cost for this specific export based on features used
     const creditCost = computeExportCost({
-      captionStyle: req.body.captionStyle ?? "none",
-      stickers:     req.body.stickers    ?? [],
-      tracks:       req.body.tracks      ?? [],
+      captionStyle:    req.body.captionStyle ?? "none",
+      stickers:        req.body.stickers    ?? [],
+      tracks:          req.body.tracks      ?? [],
+      captionSegments: req.body.captionSegments ?? [],
     });
 
     // Gate: user must have enough credits for the export

@@ -2,11 +2,16 @@
 
 import { useEffect, useRef } from "react";
 import type { CaptionSegment } from "./timeline-caption-bridge";
+import {
+  isProCaptionStyle,
+  renderProCaptionFrame,
+  type ProCaptionStyle,
+} from "./pro-captions";
 
 // Google Fonts loaded via a <link> injected once — provides the display fonts
 // that match the server-side TTFs in assets/fonts/.
 const GFONTS_URL =
-  "https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Nunito:ital,wght@0,400;0,700;0,900;1,400;1,700;1,900&family=Oswald:wght@400;700;900&family=Permanent+Marker&family=Press+Start+2P&family=Space+Grotesk:wght@400;700;900&family=UnifrakturCook:wght@700&family=Noto+Sans+Devanagari:wght@100;300;400;500;700;900&display=swap";
+  "https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Montserrat:wght@900&family=Nunito:ital,wght@0,400;0,700;0,900;1,400;1,700;1,900&family=Oswald:wght@400;700;900&family=Permanent+Marker&family=Poppins:wght@800&family=Press+Start+2P&family=Space+Grotesk:wght@400;700;900&family=UnifrakturCook:wght@700&family=Noto+Sans+Devanagari:wght@100;300;400;500;700;900&display=swap";
 
 function ensureGFontsLoaded() {
   if (typeof document === "undefined") return;
@@ -73,7 +78,7 @@ const DEVA_WEIGHT: Partial<Record<CaptionStyle, string>> = {
   glitch:          "300",
 };
 
-export type CaptionStyle =
+export type LegacyCaptionStyle =
   | "none"
   | "full-line"
   | "word-pop"
@@ -111,6 +116,8 @@ export type CaptionStyle =
   | "stack-gold" | "stack-sunny"
   | "font-cycle";
 
+export type CaptionStyle = LegacyCaptionStyle | ProCaptionStyle;
+
 export interface CaptionWord {
   word:  string;
   start: number;
@@ -142,6 +149,8 @@ const F_PIXEL   = `"Press Start 2P",${F_DEFAULT}`;             // retro pixel   
 const F_SPACE   = `"Space Grotesk",${F_DEFAULT}`;              // geometric modern     — variable (use 700)
 const F_GOTHIC  = `"UnifrakturCook",${F_DEFAULT}`;             // gothic blackletter   — registered at 700
 const F_NUNITO  = `"Nunito",${F_DEFAULT}`;                     // rounded black (900)
+const F_MONT    = `"Montserrat",${F_DEFAULT}`;                 // heavy geometric   — registered at 900
+const F_POPPINS = `"Poppins",${F_DEFAULT}`;                    // rounded geometric — registered at 800
 
 // Registered CSS weight per font — must match what the TTF reports on server
 const W: Record<string, string> = {
@@ -158,7 +167,7 @@ const W: Record<string, string> = {
 };
 const fw = (f: string): string => W[f] ?? "bold";
 
-const CFG: Record<CaptionStyle, {
+const CFG: Record<LegacyCaptionStyle, {
   weight: string;
   font: string;
   activeColor: string | "gradient";
@@ -316,7 +325,7 @@ export default function CaptionRenderer({
     const video  = videoRef.current;
     if (!video) return;
 
-    const baseCfg = CFG[resolvedStyle];
+    const baseCfg = CFG[resolvedStyle as LegacyCaptionStyle] ?? CFG["bold-center"];
     // When rendering Devanagari script, override the font to Noto Sans Devanagari
     // and use a differentiated font weight so each style still looks visually distinct.
     const cfg = isDevanagari
@@ -365,8 +374,28 @@ export default function CaptionRenderer({
         return;
       }
 
+      // Pro styles bring their own layout, paging and animation engine.
+      if (isProCaptionStyle(frameStyle)) {
+        const { h, v } = getPos();
+        renderProCaptionFrame({
+          ctx, canvasW: cw, canvasH: ch,
+          words: frameWords,
+          style: frameStyle,
+          t,
+          fontSize,
+          posOffset: v,
+          hOffset: h,
+          montserrat: F_MONT,
+          poppins: F_POPPINS,
+          fontOverride: isDevanagari ? F_DEVA : null,
+          overrideWeight: "700",
+        });
+        rafRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
       // Resolve cfg for this frame's style (may differ in segment mode)
-      const frameCfgBase = CFG[frameStyle] ?? cfg;
+      const frameCfgBase = CFG[frameStyle as LegacyCaptionStyle] ?? cfg;
       const frameCfg = isDevanagari
         ? { ...frameCfgBase, font: F_DEVA, weight: DEVA_WEIGHT[frameStyle] ?? "700" }
         : frameCfgBase;

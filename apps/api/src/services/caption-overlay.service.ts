@@ -6,19 +6,25 @@
  *
  * Performance strategy
  * ─────────────────────
- * • Render at 10 fps — plenty for text animations.
+ * • Render at 10 fps — plenty for the legacy text animations.
+ * • Pro styles animate on spring curves and blur ramps that read as choppy
+ *   below ~24fps, so a clip containing one is rendered at 30 fps instead.
  * • Static styles: cache the PNG buffer, re-render only when the active word
  *   changes → O(words) renders instead of O(frames).
- * • Motion styles (bounce/wave/shake/glitch): always re-render per frame.
+ * • Motion styles (bounce/wave/shake/glitch, and all Pro styles): always
+ *   re-render per frame.
  */
 
 import { createCanvas } from "@napi-rs/canvas";
 import { spawn }        from "child_process";
-import { renderCaptionFrame, MOTION_STYLES, CaptionWord, CaptionStyle } from "./caption-renderer.js";
+import {
+  renderCaptionFrame, MOTION_STYLES, HIGH_FPS_STYLES, CaptionWord, CaptionStyle,
+} from "./caption-renderer.js";
 import { ensureFontsRegistered } from "../utils/fonts.js";
 import { logger }       from "../utils/logger.js";
 
-const FPS               = 10;
+const BASE_FPS          = 10;
+const HIGH_FPS          = 30;
 const DEFAULT_FONT_SIZE = 50; // same default as the browser CaptionRenderer
 
 export interface OverlayParams {
@@ -65,7 +71,11 @@ export async function renderCaptionToFile(params: OverlayParams): Promise<void> 
   const isMotion    = useSegments
     ? segments!.some(s => MOTION_STYLES.has(s.style as CaptionStyle))
     : MOTION_STYLES.has(style as CaptionStyle);
-  const totalFrames = Math.ceil(durationSecs * FPS);
+  const needsHighFps = useSegments
+    ? segments!.some(s => HIGH_FPS_STYLES.has(s.style as CaptionStyle))
+    : HIGH_FPS_STYLES.has(style as CaptionStyle);
+  const fps         = needsHighFps ? HIGH_FPS : BASE_FPS;
+  const totalFrames = Math.ceil(durationSecs * fps);
 
   // [LOG_REDUCED]
   // logger.info("Caption overlay render started", {
@@ -75,7 +85,7 @@ export async function renderCaptionToFile(params: OverlayParams): Promise<void> 
 
   const ffmpeg = spawn("ffmpeg", [
     "-y",
-    "-f", "image2pipe", "-vcodec", "png", "-r", String(FPS), "-i", "pipe:0",
+    "-f", "image2pipe", "-vcodec", "png", "-r", String(fps), "-i", "pipe:0",
     "-c:v", "qtrle", "-pix_fmt", "argb",
     outputPath,
   ], { stdio: ["pipe", "ignore", "pipe"] });
@@ -102,8 +112,8 @@ export async function renderCaptionToFile(params: OverlayParams): Promise<void> 
   let lastPng: Buffer | null = null;
 
   for (let f = 0; f < totalFrames; f++) {
-    const timeMs  = (f / FPS) * 1000;
-    const timeSec = f / FPS;
+    const timeMs  = (f / fps) * 1000;
+    const timeSec = f / fps;
 
     let frameWords = words;
     let frameStyle = style as CaptionStyle;
@@ -148,5 +158,5 @@ export async function renderCaptionToFile(params: OverlayParams): Promise<void> 
   ffmpeg.stdin.end();
   await done;
 
-  logger.info("Caption overlay encoded", { style, outputPath });
+  logger.info("Caption overlay encoded", { style, fps, outputPath });
 }

@@ -71,6 +71,10 @@ export const FONT_SPACE    = `"Space Grotesk",${MULTILINGUAL_FALLBACK}`;
 export const FONT_GOTHIC   = `"UnifrakturCook",${MULTILINGUAL_FALLBACK}`;
 /** Rounded humanist sans — Black (900) weight variant. TTF family: "Nunito ExtraLight" weight 900 */
 export const FONT_NUNITO   = `"Nunito ExtraLight",${MULTILINGUAL_FALLBACK}`;
+/** Heavy geometric sans — the modern short-form caption face. TTF weight: 900 */
+export const FONT_MONTSERRAT = `"Montserrat",${MULTILINGUAL_FALLBACK}`;
+/** Rounded geometric sans, ExtraBold. TTF weight: 800 */
+export const FONT_POPPINS    = `"Poppins",${MULTILINGUAL_FALLBACK}`;
 
 /** Registered weight for each font family (must match what the TTF reports). */
 export const FONT_WEIGHT: Record<string, string> = {
@@ -83,6 +87,8 @@ export const FONT_WEIGHT: Record<string, string> = {
   "Space Grotesk":    "300",
   "UnifrakturCook":   "bold",
   "Nunito ExtraLight":"900",
+  "Montserrat":       "900",
+  "Poppins":          "800",
 };
 
 let registered = false;

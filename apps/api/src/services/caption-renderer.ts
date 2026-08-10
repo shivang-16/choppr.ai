@@ -17,8 +17,16 @@ import {
   FONT_SPACE,
   FONT_GOTHIC,
   FONT_NUNITO,
+  FONT_MONTSERRAT,
+  FONT_POPPINS,
   FONT_WEIGHT,
 } from "../utils/fonts.js";
+import {
+  PRO_CAPTION_STYLES,
+  isProCaptionStyle,
+  renderProCaptionFrame,
+  type ProCaptionStyle,
+} from "./pro-captions.js";
 
 /** Return the registered CSS weight for a given font stack (uses first family name). */
 function fw(fontStack: string): string {
@@ -28,7 +36,7 @@ function fw(fontStack: string): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type CaptionStyle =
+export type LegacyCaptionStyle =
   | "none" | "full-line" | "word-pop" | "karaoke" | "bold-center" | "neon"
   | "bounce" | "subtitle" | "shadow" | "fire" | "typewriter"
   | "glitch" | "rainbow" | "outline-white" | "outline-black"
@@ -41,16 +49,23 @@ export type CaptionStyle =
   | "stack-gold" | "stack-sunny"
   | "font-cycle";
 
+export type CaptionStyle = LegacyCaptionStyle | ProCaptionStyle;
+
 export interface CaptionWord {
   word:  string;
   start: number; // seconds
   end:   number; // seconds
 }
 
-// Styles that need per-frame re-render (motion animations driven by time)
+// Styles that need per-frame re-render (motion animations driven by time).
+// Every Pro style animates from each word's onset, so all of them qualify.
 export const MOTION_STYLES = new Set<CaptionStyle>([
   "bounce", "wave", "shake", "solo-shake", "glitch", "stack-shake", "stack-wave",
+  ...PRO_CAPTION_STYLES,
 ]);
+
+/** Pro styles animate on spring curves and look choppy below ~24fps. */
+export const HIGH_FPS_STYLES = new Set<CaptionStyle>(PRO_CAPTION_STYLES);
 
 // ── Style config (mirror of CFG in caption-renderer.tsx) ─────────────────────
 
@@ -66,7 +81,7 @@ interface StyleCfg {
   outline:       { color: string; width: number } | null;
 }
 
-const CFG: Record<CaptionStyle, StyleCfg> = {
+const CFG: Record<LegacyCaptionStyle, StyleCfg> = {
   // ── Font: default Noto Sans ────────────────────────────────────────────────
   none:             { weight:"bold", font:CAPTION_FONT_STACK, activeColor:"#fff",       inactiveColor:"transparent",            bg:null,                 showAll:false, yRatio:0.80, glow:null,       outline:null },
   subtitle:         { weight:"bold", font:CAPTION_FONT_STACK, activeColor:"#fff",       inactiveColor:"rgba(255,255,255,0.6)",   bg:"rgba(0,0,0,0.7)",    showAll:true,  yRatio:0.88, glow:null,       outline:null },
@@ -283,7 +298,19 @@ export function renderCaptionFrame(
 ): void {
   if (style === "none" || words.length === 0) return;
 
-  const cfg = CFG[style] ?? CFG["bold-center"];
+  // Pro styles have their own layout and animation engine.
+  if (isProCaptionStyle(style)) {
+    renderProCaptionFrame({
+      ctx, canvasW, canvasH, words, style,
+      t: timeMs / 1000,
+      fontSize, posOffset, hOffset,
+      montserrat: FONT_MONTSERRAT,
+      poppins:    FONT_POPPINS,
+    });
+    return;
+  }
+
+  const cfg = CFG[style as LegacyCaptionStyle] ?? CFG["bold-center"];
   const t   = timeMs / 1000; // seconds
 
   const activeIdx = words.findIndex(w => t >= w.start && t < w.end);
