@@ -474,18 +474,19 @@ function drawFocus(d: DrawCtx): void {
   for (let i = 0; i < laid.length; i++) {
     const w    = laid[i]!;
     const isA  = i === activeIdx;
-    const p    = easeOutExpo(entrance(t, w, 0.18));
-    const blur = isA ? (1 - p) * fs * 0.16 : fs * 0.05;
-    const scale = isA ? 1.18 - 0.18 * p : 1;
-    const alpha = isA ? 0.55 + 0.45 * p : 0.5;
+    // Longer entrance + cubic ease so focus resolves smoothly, not snappy
+    const p    = easeOutCubic(entrance(t, w, 0.32));
+    const blur = isA ? (1 - p) * fs * 0.12 : fs * 0.055;
+    const scale = isA ? 1.12 - 0.12 * p : 1;
+    const alpha = isA ? 0.5 + 0.5 * p : 0.42;
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    if (blur > 0.4) ctx.filter = `blur(${blur.toFixed(2)}px)`;
+    if (blur > 0.35) ctx.filter = `blur(${blur.toFixed(2)}px)`;
     transformed(ctx, w.x + w.width / 2, w.y, scale, 0, () => {
       // No stroke on this style — a deep soft shadow keeps it clean but legible.
       ctx.shadowColor   = "rgba(0,0,0,0.85)";
-      ctx.shadowBlur    = fs * (isA ? 0.42 : 0.3);
+      ctx.shadowBlur    = fs * (isA ? 0.42 : 0.28);
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = fs * 0.04;
       // Two passes so the shadow builds enough density over bright footage.

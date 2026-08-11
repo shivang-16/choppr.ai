@@ -33,6 +33,8 @@ const OUTLINE_HEAVY =
 const PRO_STROKE =
   "-1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000";
 
+const SMOOTH_EASE = [0.22, 1, 0.36, 1] as const;
+
 const RAINBOW = ["#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#8B00FF"];
 
 // Full spoken lines — captions advance word-by-word through these
@@ -186,14 +188,12 @@ type CaptionPreset = {
   id: CaptionId;
   label: string;
   preview: ReactNode;
-  isNew?: boolean;
 };
 
 const PRO_PRESETS: CaptionPreset[] = [
   {
     id: "pro-spring",
     label: "Spring Pop",
-    isNew: true,
     preview: (
       <div className="flex flex-col items-center gap-0.5" style={{ fontFamily: PF_MONT }}>
         <span className="text-white font-black text-[13px] leading-none" style={{ textShadow: PRO_STROKE }}>SPRING</span>
@@ -204,7 +204,6 @@ const PRO_PRESETS: CaptionPreset[] = [
   {
     id: "pro-slide-box",
     label: "Slide Box",
-    isNew: true,
     preview: (
       <div className="flex items-center gap-1" style={{ fontFamily: PF_POPPINS }}>
         <span className="text-white/90 font-extrabold text-[9px]">the</span>
@@ -215,7 +214,6 @@ const PRO_PRESETS: CaptionPreset[] = [
   {
     id: "pro-liquid",
     label: "Liquid Fill",
-    isNew: true,
     preview: (
       <span
         className="font-black text-[13px] bg-clip-text text-transparent"
@@ -230,7 +228,6 @@ const PRO_PRESETS: CaptionPreset[] = [
   {
     id: "pro-focus",
     label: "Focus Blur",
-    isNew: true,
     preview: (
       <div className="flex items-center gap-1" style={{ fontFamily: PF_POPPINS }}>
         <span className="text-white/50 font-extrabold text-[10px] blur-[1.5px]">into</span>
@@ -241,7 +238,6 @@ const PRO_PRESETS: CaptionPreset[] = [
   {
     id: "pro-rise",
     label: "Rise Mask",
-    isNew: true,
     preview: (
       <div className="flex items-stretch gap-1" style={{ fontFamily: PF_MONT }}>
         <div className="w-[3px] rounded-full bg-[#4ADE80]" />
@@ -252,7 +248,6 @@ const PRO_PRESETS: CaptionPreset[] = [
   {
     id: "pro-tilt",
     label: "Tilt Drop",
-    isNew: true,
     preview: (
       <div className="flex items-center gap-1" style={{ fontFamily: PF_POPPINS }}>
         <span className="text-[#FFD166] font-extrabold text-[13px] rotate-6 inline-block" style={{ textShadow: PRO_STROKE }}>TILT</span>
@@ -262,7 +257,6 @@ const PRO_PRESETS: CaptionPreset[] = [
   {
     id: "pro-chroma",
     label: "Chroma Split",
-    isNew: true,
     preview: (
       <span className="relative inline-block font-black text-[13px]" style={{ fontFamily: PF_MONT }}>
         <span className="absolute inset-0 text-[#FF0033] -translate-x-[2px]">SPLIT</span>
@@ -274,7 +268,6 @@ const PRO_PRESETS: CaptionPreset[] = [
   {
     id: "pro-shimmer",
     label: "Shimmer",
-    isNew: true,
     preview: (
       <span
         className="font-black text-[13px] bg-clip-text text-transparent drop-shadow-[0_0_8px_#A7F3FF]"
@@ -288,7 +281,6 @@ const PRO_PRESETS: CaptionPreset[] = [
   {
     id: "pro-depth",
     label: "Depth Pop",
-    isNew: true,
     preview: (
       <span
         className="font-black text-[13px] text-white"
@@ -302,7 +294,6 @@ const PRO_PRESETS: CaptionPreset[] = [
   {
     id: "pro-glass",
     label: "Glass Panel",
-    isNew: true,
     preview: (
       <div className="rounded-md border border-white/35 bg-white/12 px-1.5 py-0.5">
         <span className="text-white font-extrabold text-[9px]" style={{ fontFamily: PF_POPPINS }}>glass</span>
@@ -524,57 +515,23 @@ function LiveProCaptionLine({
         <motion.div
           key={`glass-${words.join("-")}`}
           className="mx-auto rounded-2xl border border-white/35 bg-black/45 px-5 py-3 backdrop-blur-sm"
-          initial={{ opacity: 0, scale: 0.92 }}
+          initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.96 }}
-          transition={{ duration: 0.25 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={{ duration: 0.4, ease: SMOOTH_EASE }}
         >
           <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1" style={{ fontFamily: font }}>
-            {display.map((word, i) => (
-              <span
-                key={`${word}-${i}`}
-                className="font-extrabold leading-none"
-                style={{
-                  fontSize: i === activeWord ? 24 : 20,
-                  color: i === activeWord ? "#fff" : "rgba(255,255,255,0.55)",
-                }}
-              >
-                {word}
-              </span>
-            ))}
-          </div>
-        </motion.div>
-      </AnimatePresence>
-    );
-  }
-
-  if (styleId === "pro-rise") {
-    return (
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={`rise-${activeWord}`}
-          className="flex items-stretch gap-3"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-        >
-          <div className="w-[4px] rounded-full bg-[#4ADE80]" />
-          <div className="flex flex-col items-start gap-1" style={{ fontFamily: font }}>
             {display.map((word, i) => {
               const on = i === activeWord;
-              const past = i < activeWord;
-              if (i > activeWord) return null;
               return (
                 <motion.span
                   key={`${word}-${i}`}
-                  className="font-black uppercase leading-none"
-                  initial={{ y: 18, opacity: 0 }}
-                  animate={{ y: past ? -2 : 0, opacity: past ? 0.4 : 1 }}
-                  style={{
-                    fontSize: on ? 32 : 18,
-                    color: "#fff",
-                    textShadow: PRO_STROKE,
+                  className="font-extrabold leading-none"
+                  animate={{
+                    fontSize: on ? 24 : 20,
+                    color: on ? "#fff" : "rgba(255,255,255,0.55)",
                   }}
+                  transition={{ duration: 0.4, ease: SMOOTH_EASE }}
                 >
                   {word}
                 </motion.span>
@@ -586,16 +543,60 @@ function LiveProCaptionLine({
     );
   }
 
+  if (styleId === "pro-rise") {
+    return (
+      <motion.div
+        key={`rise-${words.join("-")}`}
+        className="flex items-stretch gap-3"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: SMOOTH_EASE }}
+      >
+        <motion.div
+          className="w-[4px] rounded-full bg-[#4ADE80] origin-top"
+          animate={{ scaleY: (activeWord + 1) / Math.max(display.length, 1) }}
+          transition={{ duration: 0.45, ease: SMOOTH_EASE }}
+        />
+        <div className="flex flex-col items-start gap-1" style={{ fontFamily: font }}>
+          {display.map((word, i) => {
+            const on = i === activeWord;
+            const past = i < activeWord;
+            if (i > activeWord) return null;
+            return (
+              <motion.span
+                key={`${word}-${i}`}
+                className="font-black uppercase leading-none"
+                initial={{ y: 14, opacity: 0 }}
+                animate={{
+                  y: past ? -2 : 0,
+                  opacity: past ? 0.4 : 1,
+                  fontSize: on ? 32 : 18,
+                }}
+                transition={{ duration: 0.45, ease: SMOOTH_EASE }}
+                style={{
+                  color: "#fff",
+                  textShadow: PRO_STROKE,
+                }}
+              >
+                {word}
+              </motion.span>
+            );
+          })}
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <AnimatePresence mode="wait">
       <motion.div
         key={`${styleId}-${words.join("-")}`}
         className="flex flex-wrap items-end justify-center gap-x-2.5 gap-y-1 px-1"
         style={{ fontFamily: font }}
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        exit={{ opacity: 0, y: -6 }}
+        transition={{ duration: 0.38, ease: SMOOTH_EASE }}
       >
         {display.map((word, i) => {
           const on = i === activeWord;
@@ -606,23 +607,23 @@ function LiveProCaptionLine({
               <motion.span
                 key={`${word}-${i}`}
                 className="relative inline-flex flex-col items-center font-black uppercase leading-none"
-                animate={on ? { scale: [0.82, 1.08, 1] } : { scale: 1 }}
-                transition={{ duration: 0.35, ease: "easeOut" }}
-                style={{
+                animate={{
+                  scale: on ? 1.06 : 1,
                   fontSize: on ? 30 : 22,
+                }}
+                transition={{ type: "spring", stiffness: 260, damping: 22, mass: 0.7 }}
+                style={{
                   color: "#fff",
                   textShadow: PRO_STROKE,
                 }}
               >
                 {word}
-                {on && (
-                  <motion.span
-                    className="mt-1 h-[4px] rounded-full bg-[#FFE900]"
-                    initial={{ width: 0 }}
-                    animate={{ width: "100%" }}
-                    transition={{ duration: 0.28 }}
-                  />
-                )}
+                <motion.span
+                  className="mt-1 h-[4px] rounded-full bg-[#FFE900]"
+                  initial={false}
+                  animate={{ width: on ? "100%" : 0, opacity: on ? 1 : 0 }}
+                  transition={{ duration: 0.4, ease: SMOOTH_EASE }}
+                />
               </motion.span>
             );
           }
@@ -633,12 +634,16 @@ function LiveProCaptionLine({
                 key={`${word}-${i}`}
                 className="font-extrabold leading-none inline-block rounded-lg"
                 layout
-                style={{
+                animate={{
                   fontSize: on ? 26 : 20,
                   color: on ? "#0A0A0A" : "rgba(255,255,255,0.9)",
-                  background: on ? "#C6FF00" : "transparent",
-                  padding: on ? "4px 10px" : undefined,
+                  backgroundColor: on ? "#C6FF00" : "rgba(0,0,0,0)",
+                  paddingLeft: on ? 10 : 0,
+                  paddingRight: on ? 10 : 0,
+                  paddingTop: on ? 4 : 0,
+                  paddingBottom: on ? 4 : 0,
                 }}
+                transition={{ duration: 0.42, ease: SMOOTH_EASE }}
               >
                 {word}
               </motion.span>
@@ -648,35 +653,43 @@ function LiveProCaptionLine({
           if (styleId === "pro-liquid") {
             const fill = past || on;
             return (
-              <span
+              <motion.span
                 key={`${word}-${i}`}
                 className="font-black uppercase leading-none"
+                animate={{
+                  color: fill ? "#22D3EE" : "rgba(255,255,255,0.35)",
+                  opacity: fill ? 1 : 0.7,
+                }}
+                transition={{ duration: 0.45, ease: SMOOTH_EASE }}
                 style={{
                   fontSize: 24,
-                  color: fill ? "#22D3EE" : "rgba(255,255,255,0.35)",
                   textShadow: PRO_STROKE,
                 }}
               >
                 {word}
-              </span>
+              </motion.span>
             );
           }
 
           if (styleId === "pro-focus") {
+            // CSS filter transition (not framer filter tween) — much smoother
             return (
               <motion.span
                 key={`${word}-${i}`}
-                className="font-extrabold leading-none"
+                className="font-extrabold leading-none will-change-[filter,opacity,transform]"
                 animate={{
-                  filter: on ? "blur(0px)" : "blur(2.5px)",
-                  opacity: on ? 1 : 0.45,
-                  scale: on ? 1.12 : 1,
+                  opacity: on ? 1 : 0.42,
+                  scale: on ? 1.1 : 1,
                 }}
-                transition={{ duration: 0.25 }}
+                transition={{ duration: 0.5, ease: SMOOTH_EASE }}
                 style={{
                   fontSize: 24,
                   color: "#fff",
-                  textShadow: on ? "0 4px 18px rgba(0,0,0,0.85)" : undefined,
+                  filter: on ? "blur(0px)" : "blur(3.5px)",
+                  transition: "filter 0.55s cubic-bezier(0.22, 1, 0.36, 1)",
+                  textShadow: on
+                    ? "0 4px 20px rgba(0,0,0,0.85)"
+                    : "0 2px 12px rgba(0,0,0,0.45)",
                 }}
               >
                 {word}
@@ -689,15 +702,15 @@ function LiveProCaptionLine({
               <motion.span
                 key={`${word}-${i}`}
                 className="font-extrabold uppercase leading-none inline-block"
-                animate={
-                  on
-                    ? { rotate: [-12, 4, 0], y: [-10, 0], scale: [1.12, 1] }
-                    : { rotate: i % 2 === 0 ? -4 : 4, y: 0, scale: 1 }
-                }
-                transition={{ duration: 0.4, ease: "easeOut" }}
-                style={{
+                animate={{
+                  rotate: on ? 0 : i % 2 === 0 ? -4 : 4,
+                  y: on ? 0 : 0,
+                  scale: on ? 1.08 : 1,
                   fontSize: on ? 30 : 20,
                   color: on ? "#FFD166" : "rgba(255,255,255,0.55)",
+                }}
+                transition={{ type: "spring", stiffness: 220, damping: 18, mass: 0.8 }}
+                style={{
                   textShadow: PRO_STROKE,
                 }}
               >
@@ -711,20 +724,38 @@ function LiveProCaptionLine({
               <motion.span
                 key={`${word}-${i}`}
                 className="relative font-black uppercase leading-none inline-block"
-                animate={on ? { scale: [1.14, 1] } : { scale: 1 }}
-                transition={{ duration: 0.28 }}
-                style={{
+                animate={{
+                  scale: on ? 1.06 : 1,
                   fontSize: on ? 32 : 20,
                   color: on ? "#fff" : "rgba(255,255,255,0.45)",
+                }}
+                transition={{ duration: 0.42, ease: SMOOTH_EASE }}
+                style={{
                   textShadow: PRO_STROKE,
                 }}
               >
-                {on && (
-                  <>
-                    <span className="absolute inset-0 text-[#FF0033] -translate-x-[4px] opacity-80" aria-hidden>{word}</span>
-                    <span className="absolute inset-0 text-[#00E5FF] translate-x-[4px] opacity-80" aria-hidden>{word}</span>
-                  </>
-                )}
+                <motion.span
+                  className="absolute inset-0 text-[#FF0033]"
+                  aria-hidden
+                  animate={{
+                    opacity: on ? 0.75 : 0,
+                    x: on ? -3 : 0,
+                  }}
+                  transition={{ duration: 0.45, ease: SMOOTH_EASE }}
+                >
+                  {word}
+                </motion.span>
+                <motion.span
+                  className="absolute inset-0 text-[#00E5FF]"
+                  aria-hidden
+                  animate={{
+                    opacity: on ? 0.75 : 0,
+                    x: on ? 3 : 0,
+                  }}
+                  transition={{ duration: 0.45, ease: SMOOTH_EASE }}
+                >
+                  {word}
+                </motion.span>
                 <span className="relative">{word}</span>
               </motion.span>
             );
@@ -732,21 +763,25 @@ function LiveProCaptionLine({
 
           if (styleId === "pro-shimmer") {
             return (
-              <span
+              <motion.span
                 key={`${word}-${i}`}
                 className="font-black uppercase leading-none bg-clip-text text-transparent"
-                style={{
+                animate={{
                   fontSize: on ? 28 : 20,
+                  opacity: on ? 1 : 0.5,
+                }}
+                transition={{ duration: 0.45, ease: SMOOTH_EASE }}
+                style={{
                   backgroundImage: on
                     ? "linear-gradient(100deg,#FFFFFF 15%,#67E8F9 40%,#FFFFFF 50%,#F472B6 65%,#FFFFFF 85%)"
                     : "linear-gradient(#fff,#fff)",
                   WebkitTextStroke: "1px rgba(0,0,0,0.7)",
                   filter: on ? "drop-shadow(0 0 10px #A7F3FF)" : undefined,
-                  opacity: on ? 1 : 0.5,
+                  transition: "filter 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
                 }}
               >
                 {word}
-              </span>
+              </motion.span>
             );
           }
 
@@ -755,15 +790,18 @@ function LiveProCaptionLine({
               <motion.span
                 key={`${word}-${i}`}
                 className="font-extrabold uppercase leading-none"
-                animate={on ? { y: [6, 0], scale: [0.9, 1.05, 1] } : { y: 0, scale: 1 }}
-                transition={{ duration: 0.3 }}
-                style={{
+                animate={{
+                  y: on ? 0 : 0,
+                  scale: on ? 1.06 : 1,
                   fontSize: on ? 32 : 20,
+                  opacity: on ? 1 : 0.55,
+                }}
+                transition={{ type: "spring", stiffness: 240, damping: 20 }}
+                style={{
                   color: "#fff",
                   textShadow: on
                     ? "2px 2px 0 #7C3AED,4px 4px 0 #6D28D9,6px 6px 0 #5B21B6,8px 8px 0 #4C1D95"
                     : "1px 1px 0 #4C1D95",
-                  opacity: on ? 1 : 0.55,
                 }}
               >
                 {word}
@@ -808,17 +846,19 @@ function LiveCaptionLine({
           key={`stack-${activeWord}-${cur}`}
           className="flex flex-col items-center gap-0.5"
           style={{ fontFamily: cfg.font }}
-          initial={{ opacity: 0, y: 8 }}
+          initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.38, ease: SMOOTH_EASE }}
         >
           <span className="uppercase font-black text-[11px] text-white/35" style={{ textShadow: cfg.outline }}>
             {prev ?? "\u00A0"}
           </span>
           <motion.span
             className="uppercase font-black leading-none"
-            initial={{ scale: 0.85 }}
-            animate={{ scale: 1 }}
+            initial={{ scale: 0.92, opacity: 0.7 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.4, ease: SMOOTH_EASE }}
             style={{ fontSize: 34, color: cfg.activeColor, textShadow: cfg.outline }}
           >
             {cur}
@@ -844,10 +884,10 @@ function LiveCaptionLine({
         key={cfg.showAll ? `${styleId}-${words.join("-")}` : `${styleId}-${activeWord}-${words[activeWord]}`}
         className="flex flex-wrap items-end justify-center gap-x-2.5 gap-y-1 px-1"
         style={{ fontFamily: cfg.font }}
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        exit={{ opacity: 0, y: -6 }}
+        transition={{ duration: 0.38, ease: SMOOTH_EASE }}
       >
         {visible.map(({ word, i }) => {
           const on = i === activeWord;
@@ -884,21 +924,25 @@ function LiveCaptionLine({
                 cfg.wave
                   ? undefined
                   : cfg.bounce && on
-                    ? { y: [0, -14, 0] }
+                    ? { y: [0, -10, 0], scale: 1 }
                     : cfg.shake && on
-                      ? { x: [0, -3, 3, -2, 2, 0] }
+                      ? { x: [0, -2, 2, -1, 1, 0], scale: 1 }
                       : cfg.glitch && on
-                        ? { x: [0, 2, -2, 1, 0], y: [0, -1, 1, 0] }
-                        : { y: 0, x: 0 }
+                        ? { x: [0, 2, -2, 1, 0], y: [0, -1, 1, 0], scale: 1 }
+                        : {
+                            y: 0,
+                            x: 0,
+                            scale: on && cfg.activeScale > 1 ? Math.min(cfg.activeScale, 1.35) : 1,
+                          }
               }
               transition={
                 cfg.bounce && on
-                  ? { duration: 0.4, ease: "easeOut" }
+                  ? { duration: 0.5, ease: SMOOTH_EASE }
                   : cfg.shake && on
-                    ? { duration: 0.28, ease: "easeInOut" }
+                    ? { duration: 0.35, ease: "easeInOut" }
                     : cfg.glitch && on
-                      ? { duration: 0.2, repeat: 1 }
-                      : { duration: 0.15 }
+                      ? { duration: 0.25, repeat: 1 }
+                      : { duration: 0.42, ease: SMOOTH_EASE }
               }
               style={{
                 fontSize: on ? activeSize : baseSize,
@@ -908,6 +952,7 @@ function LiveCaptionLine({
                 borderRadius: on && cfg.bg ? (styleId === "comic" || styleId === "solo-box" ? 4 : 8) : undefined,
                 padding: on && cfg.bg ? "2px 8px" : undefined,
                 transform: cfg.wave ? `translateY(${Math.sin(i * 0.9 + activeWord) * 6}px)` : undefined,
+                transition: "font-size 0.42s cubic-bezier(0.22, 1, 0.36, 1), color 0.42s cubic-bezier(0.22, 1, 0.36, 1)",
                 ...gradientStyle,
               }}
             >
@@ -939,8 +984,8 @@ const DEMO_CLIPS = [
   },
 ] as const;
 
-const WORD_MS = 420; // advance active word
-const STYLE_MS = 2400; // switch caption style
+const WORD_MS = 560; // advance active word — slower for smoother read
+const STYLE_MS = 3400; // switch caption style — dwell longer so motion settles
 const VIDEO_MS = 8000; // rotate HD podcast clip
 
 type Props = { active?: boolean };
@@ -1112,11 +1157,6 @@ export default function HeroCaptionDemo({ active = true }: Props) {
                           : "border-white/8 bg-white/[0.03]"
                       }`}
                     >
-                      {p.isNew && (
-                        <span className="absolute top-1 right-1 z-10 rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 px-1 py-[1px] text-[7px] font-bold uppercase tracking-wider text-white">
-                          New
-                        </span>
-                      )}
                       <div className="h-12 bg-[#0a0a0a] flex items-center justify-center px-1">
                         {p.preview}
                       </div>
