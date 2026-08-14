@@ -207,21 +207,50 @@ function fmtDate(v: string | null | undefined) {
   });
 }
 
+/** Production top-up rate: $5 / 500 credits ($10 / 1,500 is cheaper; we use $5 pack). */
+const USD_PER_CREDIT = 5 / 500;
+
+function formatCreditsUsd(credits: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(credits * USD_PER_CREDIT);
+}
+
 function StatCard({
   label,
   value,
+  aside,
+  asideLabel,
   sub,
 }: {
   label: string;
   value: string | number;
+  aside?: string;
+  asideLabel?: string;
   sub?: string;
 }) {
   return (
     <div className="rounded-2xl border border-white/8 bg-[#141414] p-4">
       <p className="text-[12px] tracking-wider text-white/40 uppercase">{label}</p>
-      <p className="mt-2 font-mono text-3xl font-semibold tracking-tight text-white tabular-nums">
-        {value}
-      </p>
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <p className="font-mono text-3xl font-semibold tracking-tight text-white tabular-nums">
+          {value}
+        </p>
+        {aside && (
+          <div className="min-w-0">
+            <p className="font-mono text-lg font-semibold tracking-tight text-white/80 tabular-nums">
+              {aside}
+            </p>
+            {asideLabel && (
+              <p className="text-[11px] tracking-wide text-white/35 uppercase">
+                {asideLabel}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
       {sub && <p className="mt-1 text-[12px] text-white/40">{sub}</p>}
     </div>
   );
@@ -1025,6 +1054,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                   <StatCard
                     label="Credits spent"
                     value={overview.credits.creditsSpent}
+                    aside={formatCreditsUsd(overview.credits.creditsSpent)}
+                    asideLabel="equiv. cost"
                     sub={`${overview.credits.topupGrants} top-ups · ${overview.credits.topupCreditsGranted} credits bought`}
                   />
                 </div>
