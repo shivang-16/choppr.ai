@@ -1438,7 +1438,12 @@ function EditPanelContent({
 
           {captionSubTab === "transcript" && !hideTranscript && (
             <div className="flex flex-col gap-2">
-              {captionWords.length > 0 ? (
+              {translating ? (
+                <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-white/40" />
+                  <p className="text-[12px] font-medium text-white/45">Loading transcript…</p>
+                </div>
+              ) : captionWords.length > 0 ? (
                 <>
                   <div className="flex items-center justify-between">
                     <p className="text-[12px] font-medium text-white/70">Transcript</p>
@@ -2672,25 +2677,32 @@ export default function ClipRefinePage() {
           restoredWords = (draft?.captionWords?.length ? draft.captionWords : savedWords?.length ? savedWords : data.captions) as CaptionWord[] | undefined;
         }
 
-        if (restoredWords?.length) {
+        const needsAutoHinglish =
+          isHindiSource(sourceLang) &&
+          restoredLang !== "hinglish" &&
+          !userPickedOtherLang &&
+          !!restoredWords?.length &&
+          wordsHaveDevanagari(restoredWords);
+
+        if (restoredWords?.length && !needsAutoHinglish) {
           setCaptionWords(restoredWords);
           setCaptionLang(restoredLang);
           setActiveLang(restoredLang === "hinglish" ? "hinglish" : restoredLang.split("-")[0] ?? "");
         }
 
         // Hindi source still in Devanagari → fetch Hinglish once, then reuse the cache.
-        if (
-          isHindiSource(sourceLang) &&
-          restoredLang !== "hinglish" &&
-          !userPickedOtherLang &&
-          restoredWords?.length &&
-          wordsHaveDevanagari(restoredWords)
-        ) {
+        // Keep the transcript empty while this runs so Hindi does not flash first.
+        if (needsAutoHinglish) {
           setTranslating(true);
           apiFetch(`${API_URL}/api/clips/${clipId}/captions/translate/hinglish`)
             .then(r => (r.ok ? r.json() : null))
             .then(tr => {
-              if (!tr?.captions?.length) return;
+              if (!tr?.captions?.length) {
+                setCaptionWords(restoredWords ?? []);
+                setCaptionLang(sourceLang);
+                setActiveLang(sourceCode);
+                return;
+              }
               saveCachedTranslation(clipId, "hinglish", originalCaptionsRef.current, tr.captions);
               captionWordsRef.current = tr.captions;
               setCaptionWords(tr.captions);
@@ -3739,12 +3751,17 @@ export default function ClipRefinePage() {
               >
                 <div className="px-4 py-3 border-b border-white/6 shrink-0 flex items-center justify-between">
                   <p className="text-[12px] font-semibold text-white/60">Transcript</p>
-                  {captionWords.length > 0 && (
+                  {!translating && captionWords.length > 0 && (
                     <span className="text-[10px] text-white/25">{captionWords.length} words</span>
                   )}
                 </div>
                 <div className="flex-1 overflow-y-auto px-4 py-5 no-scrollbar">
-                  {captionWords.length > 0 ? (
+                  {translating ? (
+                    <div className="flex flex-col items-center justify-center gap-2.5 pt-16 text-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-white/40" />
+                      <p className="text-[13px] font-medium text-white/45">Loading transcript…</p>
+                    </div>
+                  ) : captionWords.length > 0 ? (
                     <div className="flex flex-wrap gap-x-1.5 gap-y-0.5">
                       {captionWords.map((w, i) => (
                         <span
@@ -4144,7 +4161,7 @@ export default function ClipRefinePage() {
                   />
                   <CaptionRenderer
                     videoRef={videoRef}
-                    words={captionWords}
+                    words={translating ? [] : captionWords}
                     style={captionStyle}
                     fontSize={captionFontSize}
                     aspectRatio={aspectRatio}
