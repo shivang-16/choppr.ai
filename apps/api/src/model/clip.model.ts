@@ -18,6 +18,10 @@ export interface IEditSettings {
   brightness:       number;
   contrast:         number;
   saturation:       number;
+  backgroundFill?:  string;
+  videoLayout?:     string;
+  splitLayout?:     unknown;
+  fillCrop?:        unknown;
 }
 
 export interface IClip {
@@ -70,6 +74,10 @@ const ClipSchema = new Schema<IClip>(
         brightness:    { type: Number, default: 100 },
         contrast:      { type: Number, default: 100 },
         saturation:    { type: Number, default: 100 },
+        backgroundFill: { type: String, default: undefined },
+        videoLayout:   { type: String, default: undefined },
+        splitLayout:   { type: Schema.Types.Mixed, default: undefined },
+        fillCrop:      { type: Schema.Types.Mixed, default: undefined },
       },
       default: undefined,
     },

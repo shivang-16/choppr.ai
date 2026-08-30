@@ -23,6 +23,10 @@ export interface ClipDraftState {
   placedStickers: unknown[];
   aspectRatio: string;
   thumbnailOverlay: unknown | null;
+  backgroundFill?: string;
+  videoLayout?: string;
+  splitLayout?: unknown;
+  fillCrop?: unknown;
   /** Serialized Twick timeline tracks (via track.serialize()) */
   timelineTracks: unknown[] | null;
 }

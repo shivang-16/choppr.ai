@@ -102,6 +102,19 @@ const CreateExportSchema = z.object({
   })).default([]),
   aspectRatio:    z.string().default("9:16"),
   backgroundFill: z.string().default("blur"),
+  videoLayout:    z.enum(["fill", "fit", "split"]).default("fit"),
+  splitLayout:    z.object({
+    mode: z.literal("split"),
+    axis: z.literal("vertical"),
+    divider: z.number().min(0.2).max(0.8),
+    panes: z.tuple([
+      z.object({ crop: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }) }),
+      z.object({ crop: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }) }),
+    ]),
+  }).nullable().optional(),
+  fillCrop:       z.object({
+    x: z.number(), y: z.number(), w: z.number(), h: z.number(),
+  }).nullable().optional(),
   brightness:     z.number().min(0).max(400).default(100),
   contrast:       z.number().min(0).max(400).default(100),
   saturation:     z.number().min(0).max(400).default(100),
@@ -160,7 +173,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, captionSegments, aspectRatio, backgroundFill, brightness, contrast, saturation, originalClipId, stickers, textOverlays, thumbnailOverlay, previewWidth } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, captionSegments, aspectRatio, backgroundFill, videoLayout, splitLayout, fillCrop, brightness, contrast, saturation, originalClipId, stickers, textOverlays, thumbnailOverlay, previewWidth } = parsed.data;
 
     // Gate: free plan cannot export clips longer than 5 minutes (after speed)
     const exportDurationSecs = getExportDurationSecs(tracks, speeds);
@@ -218,7 +231,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
     runExportPipeline({
       exportId, projectId, userId, tracks, volumes, speeds,
       captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, captionSegments,
-      aspectRatio, backgroundFill,
+      aspectRatio, backgroundFill, videoLayout, splitLayout: splitLayout ?? null, fillCrop: fillCrop ?? null,
       brightness, contrast, saturation,
       originalClipId: originalClipId ?? null,
       stickers,

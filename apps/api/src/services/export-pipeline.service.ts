@@ -26,6 +26,7 @@ import { renderCaptionToFile } from "./caption-overlay.service.js";
 import { type PlacedSticker } from "./sticker-renderer.js";
 import { renderTextOverlaysToBuffer, type TextOverlay as TextOverlayRenderable } from "./text-overlay-renderer.js";
 import { logger }            from "../utils/logger.js";
+import { buildFillFilter, buildSplitFilter, type SourceCrop, type SplitLayout } from "../utils/video-layout.js";
 
 // ── AWS ───────────────────────────────────────────────────────────────────────
 
@@ -135,6 +136,9 @@ export interface ExportPipelineParams {
   }>;
   aspectRatio:    string;
   backgroundFill: string;
+  videoLayout?:   "fill" | "fit" | "split";
+  splitLayout?:   SplitLayout | null;
+  fillCrop?:      SourceCrop | null;
   brightness?:    number;
   contrast?:      number;
   saturation?:    number;
@@ -473,7 +477,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
   const {
     exportId, projectId, userId, tracks: rawTracks, volumes, speeds,
     captionStyle, captionFontSize, captionPosY, captionPosX, captionSegments = [],
-    aspectRatio, backgroundFill,
+    aspectRatio, backgroundFill, videoLayout = "fit", splitLayout = null, fillCrop = null,
     brightness = 100, contrast = 100, saturation = 100, originalClipId,
     stickers = [], textOverlays = [],
     thumbnailOverlay = null,
@@ -627,7 +631,11 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
           ];
         }
       } else {
-        const reframeRaw = buildReframeFilter(targetW, targetH, backgroundFill);
+        const reframeRaw = videoLayout === "split" && splitLayout
+          ? buildSplitFilter(targetW, targetH, splitLayout, backgroundFill)
+          : videoLayout === "fill" && fillCrop
+            ? buildFillFilter(targetW, targetH, fillCrop)
+            : buildReframeFilter(targetW, targetH, backgroundFill);
         const reframe    = reframeRaw.replace("[out]", "[reframed]");
         const videoFilter = `${reframe};[reframed]${postParts.join(",")}[vout]`;
         if (muted || vol === 0) {

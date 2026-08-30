@@ -30,6 +30,18 @@ import { UploadPanel } from "./_components/upload-panel";
 import type { ChopprTrack, TimelineOverlayApi, OverlayTimingItem, TimelineMediaApi, CaptionTrackApi, CaptionSegment } from "./_components/clip-timeline";
 import { useClipDraftAutosave, loadClipDraft, clearClipDraft, type ClipDraftState } from "./_components/use-clip-draft";
 import { loadCachedTranslation, saveCachedTranslation } from "./_components/caption-translate-cache";
+import { CropLayoutModal } from "./_components/crop-layout-modal";
+import { SplitLayoutRenderer } from "./_components/split-layout-renderer";
+import {
+  aspectRatioToPair,
+  coverCrop,
+  createDefaultSplitLayout,
+  isSourceCrop,
+  isSplitLayout,
+  type SourceCrop,
+  type SplitLayout,
+  type VideoLayoutMode,
+} from "./_components/video-layout";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 /** Free plan can only export clips up to this length (seconds). */
@@ -2420,6 +2432,12 @@ export default function ClipRefinePage() {
     if (draft.textOverlays?.length) setTextOverlays(draft.textOverlays as any);
     if (draft.placedStickers?.length) setPlacedStickers(draft.placedStickers as any);
     if (draft.thumbnailOverlay) setThumbnailOverlay(draft.thumbnailOverlay as any);
+    if (draft.backgroundFill) setBackgroundFill(draft.backgroundFill);
+    if (draft.videoLayout === "fill" || draft.videoLayout === "fit" || draft.videoLayout === "split") {
+      setVideoLayout(draft.videoLayout);
+    }
+    if (isSplitLayout(draft.splitLayout)) setSplitLayout(draft.splitLayout);
+    if (isSourceCrop(draft.fillCrop)) setFillCrop(draft.fillCrop);
     if (draft.timelineTracks?.length) setDraftTracks(draft.timelineTracks);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clipId]);
@@ -2564,6 +2582,55 @@ export default function ClipRefinePage() {
     segmentId: string | null;
   } | null>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
+  const [backgroundFill, setBackgroundFill] = useState<string>("blur");
+  const [videoLayout, setVideoLayout] = useState<VideoLayoutMode>("fit");
+  const [splitLayout, setSplitLayout] = useState<SplitLayout | null>(null);
+  const [fillCrop, setFillCrop] = useState<SourceCrop | null>(null);
+  const [cropPane, setCropPane] = useState<0 | 1 | null>(null);
+  const [fillCropOpen, setFillCropOpen] = useState(false);
+  const fillAspectRef = useRef(aspectRatio);
+
+  const activateSplit = useCallback((openPane: 0 | 1 | null = 0) => {
+    const srcW = videoRef.current?.videoWidth || 16;
+    const srcH = videoRef.current?.videoHeight || 9;
+    setSplitLayout(prev => prev ?? createDefaultSplitLayout(srcW, srcH, 9, 16));
+    setVideoLayout("split");
+    setBackgroundFill(prev => prev === "none" ? "blur" : prev);
+    setFillCropOpen(false);
+    if (openPane !== null) setCropPane(openPane);
+  }, []);
+
+  const activateFill = useCallback((openModal = true) => {
+    const srcW = videoRef.current?.videoWidth || 16;
+    const srcH = videoRef.current?.videoHeight || 9;
+    const [ow, oh] = aspectRatioToPair(aspectRatio);
+    const dest = ow / oh;
+    setFillCrop(prev => {
+      if (prev) {
+        const cropAspect = (prev.w * srcW) / Math.max(prev.h * srcH, 1);
+        if (Math.abs(cropAspect - dest) < 0.02) return prev;
+        return coverCrop(srcW, srcH, dest, prev.x + prev.w / 2);
+      }
+      return coverCrop(srcW, srcH, dest);
+    });
+    setVideoLayout("fill");
+    setBackgroundFill("none");
+    setCropPane(null);
+    if (openModal) setFillCropOpen(true);
+  }, [aspectRatio]);
+
+  useEffect(() => {
+    if (videoLayout !== "fill") {
+      fillAspectRef.current = aspectRatio;
+      return;
+    }
+    if (fillAspectRef.current === aspectRatio) return;
+    fillAspectRef.current = aspectRatio;
+    const srcW = videoRef.current?.videoWidth || 16;
+    const srcH = videoRef.current?.videoHeight || 9;
+    const [ow, oh] = aspectRatioToPair(aspectRatio);
+    setFillCrop(prev => coverCrop(srcW, srcH, ow / oh, prev ? prev.x + prev.w / 2 : 0.5));
+  }, [aspectRatio, videoLayout]);
 
   // ── Auto-save page-level settings to draft ─────────────────────────────────
   useEffect(() => {
@@ -2584,17 +2651,23 @@ export default function ClipRefinePage() {
       placedStickers: placedStickers as unknown[],
       aspectRatio,
       thumbnailOverlay: thumbnailOverlay as unknown,
+      backgroundFill,
+      videoLayout,
+      splitLayout,
+      fillCrop,
     });
   }, [
     clipId, saveDraft, captionStyle, captionWords, captionFontSize,
     captionPosX, captionPosY, speed, trimStart, trimEnd, brightness,
     contrast, saturation, textOverlays, placedStickers, aspectRatio, thumbnailOverlay,
+    backgroundFill, videoLayout, splitLayout, fillCrop,
   ]);
 
   // Load project aspect ratio
   const [arDropdownOpen, setArDropdownOpen] = useState(false);
   const arDropdownRef = useRef<HTMLDivElement>(null);
-  const [backgroundFill, setBackgroundFill] = useState<string>("blur");
+  const [layoutDropdownOpen, setLayoutDropdownOpen] = useState(false);
+  const layoutDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -2622,17 +2695,18 @@ export default function ClipRefinePage() {
       .catch(() => setIsFreePlan(true));
   }, [apiFetch]);
 
-  // Close AR dropdown on outside click
+  // Close AR / layout dropdowns on outside click
   useEffect(() => {
-    if (!arDropdownOpen) return;
+    if (!arDropdownOpen && !layoutDropdownOpen) return;
     const handler = (e: MouseEvent) => {
-      if (arDropdownRef.current && !arDropdownRef.current.contains(e.target as Node)) {
-        setArDropdownOpen(false);
-      }
+      const t = e.target as Node;
+      if (arDropdownRef.current?.contains(t) || layoutDropdownRef.current?.contains(t)) return;
+      setArDropdownOpen(false);
+      setLayoutDropdownOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [arDropdownOpen]);
+  }, [arDropdownOpen, layoutDropdownOpen]);
 
   // Load clip captions + duration on mount (duration from API avoids Export↔Upgrade flicker)
   useEffect(() => {
@@ -2715,6 +2789,20 @@ export default function ClipRefinePage() {
             })
             .finally(() => setTranslating(false));
         }
+
+        if (!draft?.videoLayout && data.editSettings?.videoLayout) {
+          const vl = data.editSettings.videoLayout;
+          if (vl === "fill" || vl === "fit" || vl === "split") setVideoLayout(vl);
+        }
+        if (!draft?.splitLayout && isSplitLayout(data.editSettings?.splitLayout)) {
+          setSplitLayout(data.editSettings.splitLayout);
+        }
+        if (!draft?.fillCrop && isSourceCrop(data.editSettings?.fillCrop)) {
+          setFillCrop(data.editSettings.fillCrop);
+        }
+        if (!draft?.backgroundFill && data.editSettings?.backgroundFill) {
+          setBackgroundFill(data.editSettings.backgroundFill);
+        }
         // Prefer API duration so timeline isn't stuck waiting on <video> metadata
         const apiDur = Number(data.duration) || (Number(data.endTime) - Number(data.startTime)) || 0;
         if (apiDur > 0 && duration <= 0) {
@@ -2757,7 +2845,9 @@ export default function ClipRefinePage() {
     placedStickers.length > 0 ||
     textOverlays.length > 0 ||
     thumbnailOverlay !== null ||
-    backgroundFill !== "blur";
+    backgroundFill !== "blur" ||
+    videoLayout === "split" ||
+    videoLayout === "fill";
 
   // Selecting an edited version → show a straight Download until the user tweaks something
   const downloadMode = isViewingEdit && !hasChanges;
@@ -2794,14 +2884,14 @@ export default function ClipRefinePage() {
       settingsReadyRef.current = true;
       return;
     }
-    saveSettings({ captionStyle, captionFontSize, captionPosY, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation });
-  }, [clipId, captionStyle, captionFontSize, captionPosY, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, saveSettings]);
+    saveSettings({ captionStyle, captionFontSize, captionPosY, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, backgroundFill, videoLayout, splitLayout, fillCrop });
+  }, [clipId, captionStyle, captionFontSize, captionPosY, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, backgroundFill, videoLayout, splitLayout, fillCrop, saveSettings]);
 
   const buildExportSnapshot = useCallback(() => JSON.stringify({
     aspectRatio, backgroundFill, captionStyle, captionFontSize, captionPosY, captionPosX,
     speed, trimStart, trimEnd, brightness, contrast, saturation,
-    placedStickers, textOverlays, captionWords,
-  }), [aspectRatio, backgroundFill, captionStyle, captionFontSize, captionPosY, captionPosX, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers, textOverlays, captionWords]);
+    placedStickers, textOverlays, captionWords, videoLayout, splitLayout, fillCrop,
+  }), [aspectRatio, backgroundFill, captionStyle, captionFontSize, captionPosY, captionPosX, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers, textOverlays, captionWords, videoLayout, splitLayout, fillCrop]);
 
   const invalidateExport = useCallback(() => {
     if (exportPollRef.current) {
@@ -2830,7 +2920,7 @@ export default function ClipRefinePage() {
   useEffect(() => {
     if (exportPhase === "done") invalidateExport();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only invalidate when settings change, not when exportPhase flips to done
-  }, [captionStyle, captionFontSize, captionPosY, captionPosX, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers, textOverlays, aspectRatio, backgroundFill]);
+  }, [captionStyle, captionFontSize, captionPosY, captionPosX, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers, textOverlays, aspectRatio, backgroundFill, videoLayout, splitLayout, fillCrop]);
 
   const applyTranslatedCaptions = useCallback((captions: CaptionWord[], lang: string) => {
     captionWordsRef.current = captions;
@@ -2989,6 +3079,9 @@ export default function ClipRefinePage() {
             : [],
           aspectRatio,
           backgroundFill,
+          videoLayout,
+          splitLayout: videoLayout === "split" ? splitLayout : null,
+          fillCrop: videoLayout === "fill" ? fillCrop : null,
           brightness,
           contrast,
           saturation,
@@ -3103,6 +3196,11 @@ export default function ClipRefinePage() {
     setPlacedStickers([]);
     setTextOverlays([]);
     setBackgroundFill("blur");
+    setVideoLayout("fit");
+    setSplitLayout(null);
+    setFillCrop(null);
+    setFillCropOpen(false);
+    setCropPane(null);
     setCaptionSegments([]);
     // Restore the original (untranslated) captions
     apiFetch(`${API_URL}/api/clips/${clipId}`)
@@ -3150,6 +3248,12 @@ export default function ClipRefinePage() {
         if (draft.textOverlays?.length) setTextOverlays(draft.textOverlays as any);
         if (draft.placedStickers?.length) setPlacedStickers(draft.placedStickers as any);
         if (draft.thumbnailOverlay) setThumbnailOverlay(draft.thumbnailOverlay as any);
+        if (draft.backgroundFill) setBackgroundFill(draft.backgroundFill);
+        if (draft.videoLayout === "fill" || draft.videoLayout === "fit" || draft.videoLayout === "split") {
+          setVideoLayout(draft.videoLayout);
+        }
+        if (isSplitLayout(draft.splitLayout)) setSplitLayout(draft.splitLayout);
+        if (isSourceCrop(draft.fillCrop)) setFillCrop(draft.fillCrop);
         if (draft.timelineTracks?.length) setDraftTracks(draft.timelineTracks);
       } else {
         applyDefaults();
@@ -3835,7 +3939,7 @@ export default function ClipRefinePage() {
           )}>
             <div ref={arDropdownRef} className="relative">
             <button
-              onClick={() => setArDropdownOpen(o => !o)}
+              onClick={() => { setArDropdownOpen(o => !o); setLayoutDropdownOpen(false); }}
               className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 backdrop-blur-sm hover:border-white/20 transition-colors"
             >
               {aspectRatio === "9:16" && (
@@ -3847,7 +3951,9 @@ export default function ClipRefinePage() {
               {aspectRatio === "16:9" && (
                 <svg viewBox="0 0 18 11" className="h-2 w-3.5 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="16" height="9" rx="1.5" /></svg>
               )}
-              <span className="text-[11px] font-semibold text-white/70">{aspectRatio}</span>
+              <span className="text-[11px] font-semibold text-white/70">
+                {aspectRatio}
+              </span>
               <svg viewBox="0 0 10 6" className="h-2 w-2.5 text-white/30 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 1l4 4 4-4" /></svg>
             </button>
 
@@ -3861,7 +3967,7 @@ export default function ClipRefinePage() {
               >
 
                 {/* Aspect ratio section */}
-                <div className="px-3 pt-3 pb-1.5">
+                <div className={cn("px-3 pt-3", videoLayout === "fill" ? "pb-3" : "pb-1.5")}>
                   <p className="text-[9px] uppercase tracking-widest text-white/25 mb-1.5">Aspect ratio</p>
                   <div className="flex flex-col gap-0.5">
                     {([
@@ -3871,66 +3977,43 @@ export default function ClipRefinePage() {
                     ] as const).map(({ r, label, icon }) => (
                       <button
                         key={r}
-                        onClick={() => { invalidateExport(); setAspectRatio(r); }}
+                        onClick={() => { invalidateExport(); setAspectRatio(r); setArDropdownOpen(false); }}
                         className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] transition-colors w-full text-left ${
                           aspectRatio === r ? "bg-white/10 text-white font-semibold" : "text-white/50 hover:bg-white/6 hover:text-white/80"
                         }`}
                       >
                         {icon} {label}
+                        {aspectRatio === r && <Check className="h-3 w-3 ml-auto shrink-0 text-white/70" />}
                       </button>
                     ))}
                   </div>
                 </div>
 
+                {(videoLayout === "fit" || videoLayout === "split") && (
+                <>
                 <div className="h-px bg-white/8 mx-3" />
 
                 {/* Background fill section */}
                 <div className="px-3 pt-1.5 pb-3">
                   <p className="text-[9px] uppercase tracking-widest text-white/25 mb-2">Background</p>
 
-                  {/* Blur + Crop quick options */}
-                  <div className="flex gap-1.5 mb-2">
-                    <button
-                      onClick={() => { invalidateExport(); setBackgroundFill("blur"); }}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] transition-colors ${backgroundFill === "blur" ? "bg-white/15 text-white font-semibold" : "bg-white/4 text-white/50 hover:bg-white/8 hover:text-white/80"}`}
-                    >
-                      <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5" strokeOpacity="0.6"/><circle cx="8" cy="8" r="2.5" strokeOpacity="0.3"/></svg>
-                      Blur
-                    </button>
-                    <button
-                      onClick={() => { invalidateExport(); setBackgroundFill("none"); }}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] transition-colors ${backgroundFill === "none" ? "bg-white/15 text-white font-semibold" : "bg-white/4 text-white/50 hover:bg-white/8 hover:text-white/80"}`}
-                    >
-                      <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 14L14 2M4 4h8v8H4z" strokeLinejoin="round"/></svg>
-                      Crop
-                    </button>
-                  </div>
-
-                  {/* Live backgrounds — disabled for now, implement later
-                  <p className="text-[9px] uppercase tracking-widest text-white/20 mb-1.5 mt-0.5">Live backgrounds</p>
-                  <div className="grid grid-cols-2 gap-1.5 mb-3">
-                    {([
-                      { id: "anim-aurora",   label: "Aurora",   preview: "linear-gradient(135deg,#0ea5e9,#8b5cf6,#ec4899,#0ea5e9)" },
-                      { id: "anim-mesh",     label: "Mesh",     preview: "linear-gradient(135deg,#f97316,#ec4899,#8b5cf6,#06b6d4)" },
-                      { id: "anim-conic",    label: "Conic",    preview: "conic-gradient(from 0deg,#f97316,#ec4899,#8b5cf6,#06b6d4,#f97316)" },
-                      { id: "anim-grain",    label: "Grain",    preview: "linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)" },
-                      { id: "anim-sunset",   label: "Sunset",   preview: "linear-gradient(135deg,#ff6b6b,#feca57,#ff9ff3,#54a0ff)" },
-                      { id: "anim-neon",     label: "Neon",     preview: "linear-gradient(135deg,#00ff88,#00d4ff,#ff00ff,#00ff88)" },
-                    ] as { id: string; label: string; preview: string }[]).map(({ id, label, preview }) => (
-                      <button
-                        key={id}
-                        onClick={() => setBackgroundFill(id)}
-                        className={`relative flex items-end justify-start p-2 rounded-xl h-10 overflow-hidden text-[10px] font-medium transition-all ${backgroundFill === id ? "ring-2 ring-white/70 ring-offset-1 ring-offset-[#111]" : "hover:ring-1 hover:ring-white/20"}`}
-                        style={{ background: preview }}
-                      >
-                        <span className="relative z-10 text-white drop-shadow-md">{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                  */}
-
-                  {/* Color swatches grid */}
+                  {/* Color swatches grid — blur is the first square */}
                   <div className="grid grid-cols-7 gap-1 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => { invalidateExport(); setBackgroundFill("blur"); }}
+                      title="Blur"
+                      className={`relative w-full aspect-square rounded-md overflow-hidden transition-all ${backgroundFill === "blur" ? "ring-2 ring-white ring-offset-1 ring-offset-[#111] scale-110" : "hover:scale-110"}`}
+                    >
+                      <span
+                        className="absolute inset-[-40%]"
+                        style={{ background: "radial-gradient(circle at 30% 30%, #9ca3af, #374151 55%, #111827)", filter: "blur(3px)" }}
+                      />
+                      <svg viewBox="0 0 16 16" className="relative h-3 w-3 text-white/80 mx-auto" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <circle cx="8" cy="8" r="5" strokeOpacity="0.85" />
+                        <circle cx="8" cy="8" r="2.5" strokeOpacity="0.45" />
+                      </svg>
+                    </button>
                     {[
                       "#000000","#1a1a1a","#ffffff","#f0f0f0",
                       "#0f172a","#1e3a5f","#312e81","#3b0764",
@@ -3942,6 +4025,7 @@ export default function ClipRefinePage() {
                     ].map((color) => (
                       <button
                         key={color}
+                        type="button"
                         onClick={() => { invalidateExport(); setBackgroundFill(color); }}
                         title={color}
                         className={`w-full aspect-square rounded-md transition-all ${backgroundFill === color ? "ring-2 ring-white ring-offset-1 ring-offset-[#111] scale-110" : "hover:scale-110"}`}
@@ -3969,19 +4053,89 @@ export default function ClipRefinePage() {
                     )}
                   </label>
                 </div>
-
-                {/* Done button */}
-                <div className="px-3 pb-3">
-                  <button
-                    onClick={() => setArDropdownOpen(false)}
-                    className="w-full rounded-xl bg-white/8 hover:bg-white/12 text-white/70 hover:text-white text-[11px] font-medium py-1.5 transition-colors"
-                  >
-                    Done
-                  </button>
-                </div>
+                </>
+                )}
 
               </div>
             )}
+            </div>
+
+            <div ref={layoutDropdownRef} className="relative">
+              <button
+                type="button"
+                onClick={() => { setLayoutDropdownOpen(o => !o); setArDropdownOpen(false); }}
+                className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/60 px-2.5 py-1.5 backdrop-blur-sm hover:border-white/20 transition-colors"
+              >
+                {videoLayout === "fill" && (
+                  <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6V3h3M14 6V3h-3M2 10v3h3M14 10v3h-3" /></svg>
+                )}
+                {videoLayout === "fit" && (
+                  <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3H2v3M11 3h3v3M5 13H2v-3M11 13h3v-3" /></svg>
+                )}
+                {videoLayout === "split" && (
+                  <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="12" height="12" rx="1.5" /><path d="M2 8h12" /></svg>
+                )}
+                <span className="text-[11px] font-semibold text-white/70">
+                  Layout: {videoLayout === "fill" ? "Fill" : videoLayout === "split" ? "Split" : "Fit"}
+                </span>
+                <svg viewBox="0 0 10 6" className="h-2 w-2.5 text-white/30 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 1l4 4 4-4" /></svg>
+              </button>
+
+              {layoutDropdownOpen && (
+                <div
+                  className={cn(
+                    "absolute top-full mt-1.5 flex flex-col rounded-2xl border border-white/10 bg-[#111] py-1.5 shadow-2xl overflow-hidden",
+                    isMobile ? "left-0" : "right-0",
+                  )}
+                  style={{ minWidth: 180 }}
+                >
+                  {([
+                    {
+                      id: "fill" as const,
+                      label: "Fill",
+                      icon: <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6V3h3M14 6V3h-3M2 10v3h3M14 10v3h-3" /></svg>,
+                    },
+                    {
+                      id: "fit" as const,
+                      label: "Fit",
+                      icon: <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3H2v3M11 3h3v3M5 13H2v-3M11 13h3v-3" /></svg>,
+                    },
+                    {
+                      id: "split" as const,
+                      label: "Split",
+                      icon: <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="12" height="12" rx="1.5" /><path d="M2 8h12" /></svg>,
+                    },
+                  ]).map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        invalidateExport();
+                        if (opt.id === "split") {
+                          activateSplit(0);
+                        } else if (opt.id === "fill") {
+                          activateFill(true);
+                        } else {
+                          setVideoLayout("fit");
+                          setCropPane(null);
+                          setFillCropOpen(false);
+                          setBackgroundFill("blur");
+                        }
+                        setLayoutDropdownOpen(false);
+                      }}
+                      className={`flex items-center gap-2.5 px-3 py-2 text-[12px] transition-colors w-full text-left ${
+                        videoLayout === opt.id
+                          ? "bg-white/10 text-white font-semibold"
+                          : "text-white/55 hover:bg-white/6 hover:text-white/85"
+                      }`}
+                    >
+                      {opt.icon}
+                      <span>{opt.label}</span>
+                      {videoLayout === opt.id && <Check className="h-3.5 w-3.5 ml-auto shrink-0 text-white" />}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -4130,9 +4284,19 @@ export default function ClipRefinePage() {
                     preload="auto"
                     className="w-full h-full"
                     style={{
-                      objectFit: backgroundFill === "none" ? "cover" : "contain",
+                      ...(videoLayout === "fill" && fillCrop ? {
+                        position: "absolute" as const,
+                        width: `${100 / fillCrop.w}%`,
+                        height: `${100 / fillCrop.h}%`,
+                        left: `${-100 * fillCrop.x / fillCrop.w}%`,
+                        top: `${-100 * fillCrop.y / fillCrop.h}%`,
+                        maxWidth: "none",
+                        objectFit: "fill" as const,
+                      } : {
+                        objectFit: backgroundFill === "none" ? "cover" : "contain",
+                      }),
                       filter: filterStyle,
-                      opacity: placedStickers.some(ps => isOverlayVisible(ps.startTime, ps.duration)) && segmentationReady ? 0 : 1,
+                      opacity: videoLayout === "split" || (placedStickers.some(ps => isOverlayVisible(ps.startTime, ps.duration)) && segmentationReady) ? 0 : 1,
                     }}
                     onLoadedData={() => {
                       const v = videoRef.current;
@@ -4159,6 +4323,25 @@ export default function ClipRefinePage() {
                       console.warn("[clip] preview video failed to load metadata");
                     }}
                   />
+                  {videoLayout === "split" && splitLayout && (
+                    <div
+                      className="absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2"
+                      style={{ height: "100%", aspectRatio: "9 / 16", maxWidth: "100%" }}
+                    >
+                      <div className="relative h-full w-full">
+                        <SplitLayoutRenderer
+                          videoRef={videoRef}
+                          layout={splitLayout}
+                          filter={filterStyle}
+                          isMobile={isMobile}
+                          onCropPane={(pane) => setCropPane(pane)}
+                          onDivider={(divider) => {
+                            setSplitLayout(prev => prev ? { ...prev, divider } : prev);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                   <CaptionRenderer
                     videoRef={videoRef}
                     words={translating ? [] : captionWords}
@@ -4249,6 +4432,19 @@ export default function ClipRefinePage() {
                       </div>
                     )}
                   </div>
+                  {videoLayout === "fill" && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); activateFill(true); }}
+                      className={cn(
+                        "pointer-events-auto absolute z-[20] inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-bold text-black shadow-[0_2px_14px_rgba(0,0,0,0.55)] ring-1 ring-black/10 hover:bg-white/90",
+                        isMobile ? "right-2 bottom-2" : "left-2 top-2",
+                      )}
+                    >
+                      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2v10h10M2 4h10v10" /></svg>
+                      Crop
+                    </button>
+                  )}
                 </div>
 
                 {/* Draggable sticker handles — outside overflow-hidden so they can be dragged freely */}
@@ -4669,6 +4865,42 @@ export default function ClipRefinePage() {
           </div>
         )}
       </main>
+
+      {cropPane !== null && splitLayout && (
+        <CropLayoutModal
+          src={activeSrc}
+          currentTime={currentTime}
+          initialTop={splitLayout.panes[0].crop}
+          initialBottom={splitLayout.panes[1].crop}
+          onClose={() => setCropPane(null)}
+          onApply={(top, bottom) => {
+            setSplitLayout(prev => prev ? {
+              ...prev,
+              panes: [{ crop: top }, { crop: bottom }],
+            } : prev);
+            setCropPane(null);
+          }}
+        />
+      )}
+
+      {fillCropOpen && fillCrop && (
+        <CropLayoutModal
+          variant="fill"
+          src={activeSrc}
+          currentTime={currentTime}
+          aspectLabel={aspectRatio}
+          lockAspect={(() => {
+            const [ow, oh] = aspectRatioToPair(aspectRatio);
+            return ow / oh;
+          })()}
+          initialCrop={fillCrop}
+          onClose={() => setFillCropOpen(false)}
+          onApply={(crop) => {
+            setFillCrop(crop);
+            setFillCropOpen(false);
+          }}
+        />
+      )}
 
     </div>
   );
