@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { Clip } from "../model/clip.model.js";
 import { TranslateClient, TranslateTextCommand } from "@aws-sdk/client-translate";
+import { translateCaptionsToHinglish } from "../services/hinglish-translate.service.js";
 
 const translate = new TranslateClient({
   region: process.env.AWS_REGION ?? "us-east-1",
@@ -77,6 +78,12 @@ export async function translateClipCaptions(req: Request, res: Response, next: N
     if (!clip)                  { res.status(404).json({ error: "Not found" });  return; }
     if (clip.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
     if (!clip.captions?.length) { res.json({ captions: [], lang: targetLang }); return; }
+
+    if (targetLang === "hinglish") {
+      const captions = await translateCaptionsToHinglish(clip.captions);
+      res.json({ captions, lang: targetLang });
+      return;
+    }
 
     const sourceLang = (clip.captionLang ?? "auto").split("-")[0] ?? "auto";
     const BATCH = 100;

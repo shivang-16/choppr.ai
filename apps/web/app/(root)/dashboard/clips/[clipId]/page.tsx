@@ -29,6 +29,7 @@ import BackgroundRenderer, { STIPOP_KEY, fetchStipopStickers, fetchStipopTrendin
 import { UploadPanel } from "./_components/upload-panel";
 import type { ChopprTrack, TimelineOverlayApi, OverlayTimingItem, TimelineMediaApi, CaptionTrackApi, CaptionSegment } from "./_components/clip-timeline";
 import { useClipDraftAutosave, loadClipDraft, clearClipDraft, type ClipDraftState } from "./_components/use-clip-draft";
+import { loadCachedTranslation, saveCachedTranslation } from "./_components/caption-translate-cache";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 /** Free plan can only export clips up to this length (seconds). */
@@ -446,21 +447,36 @@ const CAPTION_STYLE_GROUPS: CaptionStyleCategory[] = [
 const SPEED_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
 const TRANSLATE_LANGS = [
-  { code: "en", label: "English"    },
-  { code: "hi", label: "Hindi"      },
-  { code: "ta", label: "Tamil"      },
-  { code: "te", label: "Telugu"     },
-  { code: "kn", label: "Kannada"    },
-  { code: "ml", label: "Malayalam"  },
-  { code: "es", label: "Spanish"    },
-  { code: "fr", label: "French"     },
-  { code: "de", label: "German"     },
-  { code: "zh", label: "Chinese"    },
-  { code: "ja", label: "Japanese"   },
-  { code: "ko", label: "Korean"     },
-  { code: "ar", label: "Arabic"     },
-  { code: "pt", label: "Portuguese" },
+  { code: "hinglish", label: "Hinglish", native: "Hindi in English" },
+  { code: "en",       label: "English",  native: "English" },
+  { code: "hi",       label: "Hindi",    native: "हिंदी" },
+  { code: "ta",       label: "Tamil",    native: "தமிழ்" },
+  { code: "te",       label: "Telugu",   native: "తెలుగు" },
+  { code: "kn",       label: "Kannada",  native: "ಕನ್ನಡ" },
+  { code: "ml",       label: "Malayalam", native: "മലയാളം" },
+  { code: "es",       label: "Spanish",  native: "Español" },
+  { code: "fr",       label: "French",   native: "Français" },
+  { code: "de",       label: "German",   native: "Deutsch" },
+  { code: "zh",       label: "Chinese",  native: "中文" },
+  { code: "ja",       label: "Japanese", native: "日本語" },
+  { code: "ko",       label: "Korean",   native: "한국어" },
+  { code: "ar",       label: "Arabic",   native: "العربية" },
+  { code: "pt",       label: "Portuguese", native: "Português" },
 ];
+
+function isHindiSource(lang: string): boolean {
+  const code = (lang || "").toLowerCase();
+  if (!code || code === "hinglish") return false;
+  return code === "hi" || code.startsWith("hi-");
+}
+
+function wordsHaveDevanagari(words: { word: string }[]): boolean {
+  return words.some(w => /[\u0900-\u097F]/.test(w.word));
+}
+
+function wordsForSegment(words: CaptionWord[], start: number, end: number): CaptionWord[] {
+  return words.filter(w => w.start < end && w.end > start);
+}
 
 // ── Shared edit panel (desktop sidebar + mobile drawer) ─────────────────────
 interface EditPanelProps {
@@ -1457,33 +1473,46 @@ function EditPanelContent({
           )}
 
           {captionSubTab === "translate" && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Languages className="h-3.5 w-3.5 text-white/40" />
-                <p className="text-[12px] font-medium text-white/70">Translate captions</p>
-                {translating && <Loader2 className="h-3 w-3 animate-spin text-white/40 ml-auto" />}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Languages className="h-4 w-4 text-white/80" />
+                    <p className="text-[13px] font-semibold text-white">Translate captions</p>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-white/50">
+                    Styles already on the timeline keep their look and switch to the new language.
+                  </p>
+                </div>
+                {translating && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-white/70" />}
               </div>
-              {captionLang && (
-                <p className="text-[10px] text-white/25">
-                  Current language: <span className="text-white/45">{captionLang}</span>
-                </p>
-              )}
-              <div className="grid grid-cols-3 gap-1.5 mt-1">
-                {TRANSLATE_LANGS.map(l => (
-                  <button
-                    key={l.code}
-                    onClick={() => handleTranslate(l.code)}
-                    disabled={translating || l.code === activeLang}
-                    className={cn(
-                      "rounded-lg border py-1.5 text-[10px] font-medium transition-all disabled:opacity-40",
-                      activeLang === l.code
-                        ? "border-white/30 bg-white/10 text-white/80"
-                        : "border-white/8 text-white/35 hover:border-white/20 hover:text-white/60"
-                    )}
-                  >
-                    {l.label}
-                  </button>
-                ))}
+
+              <div className="grid grid-cols-2 gap-2">
+                {TRANSLATE_LANGS.map(l => {
+                  const selected = activeLang === l.code;
+                  return (
+                    <button
+                      key={l.code}
+                      type="button"
+                      onClick={() => handleTranslate(l.code)}
+                      disabled={translating}
+                      className={cn(
+                        "rounded-xl border px-3 py-2.5 text-left transition-all disabled:opacity-50",
+                        selected
+                          ? "border-white bg-white text-black shadow-sm"
+                          : "border-white/20 bg-white/[0.08] text-white hover:border-white/40 hover:bg-white/14",
+                      )}
+                    >
+                      <span className="block text-[12px] font-semibold leading-tight">{l.label}</span>
+                      <span className={cn(
+                        "mt-0.5 block text-[11px] leading-tight",
+                        selected ? "text-black/50" : "text-white/50",
+                      )}>
+                        {l.native}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -2397,6 +2426,7 @@ export default function ClipRefinePage() {
   const mediaApiRef           = useRef<TimelineMediaApi | null>(null);
   const captionApiRef         = useRef<CaptionTrackApi | null>(null);
   const captionWordsRef       = useRef<import("./_components/caption-renderer").CaptionWord[]>([]);
+  const originalCaptionsRef   = useRef<CaptionWord[]>([]);
   const [captionSegments, setCaptionSegments] = useState<CaptionSegment[]>([]);
   const timelineOverlayIdsRef = useRef<Set<string>>(new Set());
   const lastOverlayReportRef  = useRef<Set<string>>(new Set());
@@ -2463,6 +2493,25 @@ export default function ClipRefinePage() {
 
   // Keep the ref in sync so timeline-caption-bridge can access latest words
   useEffect(() => { captionWordsRef.current = captionWords; }, [captionWords]);
+
+  // Styles bake words onto each segment. Re-slice when the transcript changes
+  // (translate / inline edit) so the preview and export stay on the new text.
+  useEffect(() => {
+    setCaptionSegments(prev => {
+      if (!prev.length) return prev;
+      let changed = false;
+      const next = prev.map(seg => {
+        const words = wordsForSegment(captionWords, seg.start, seg.end);
+        const same =
+          words.length === seg.words.length &&
+          words.every((w, i) => w.word === seg.words[i]?.word);
+        if (same) return seg;
+        changed = true;
+        return { ...seg, words };
+      });
+      return changed ? next : prev;
+    });
+  }, [captionWords]);
   const [translating, setTranslating]     = useState(false);
   const [activeLang, setActiveLang]       = useState("");
 
@@ -2592,10 +2641,67 @@ export default function ClipRefinePage() {
           setDuration(data.duration);
           setTrimEnd((prev) => (prev > 0 ? prev : data.duration));
         }
-        if (data.captions?.length) {
-          setCaptionWords(data.captions);
-          setCaptionLang(data.captionLang ?? "");
-          setActiveLang((data.captionLang ?? "").split("-")[0]);
+        const draft = loadClipDraft(clipId);
+        const savedWords = data.editSettings?.captionWords as CaptionWord[] | undefined;
+        const savedLang = String(data.editSettings?.captionLang ?? "");
+        const sourceLang = String(data.captionLang ?? "");
+        const sourceCode = sourceLang === "hinglish" ? "hinglish" : sourceLang.split("-")[0] ?? "";
+        const originalWords = (data.captions ?? []) as CaptionWord[];
+        originalCaptionsRef.current = originalWords;
+        if (originalWords.length && sourceCode) {
+          saveCachedTranslation(clipId, sourceCode, originalWords, originalWords);
+        }
+
+        const cachedHinglish = originalWords.length
+          ? loadCachedTranslation(clipId, "hinglish", originalWords)
+          : null;
+        const userPickedOtherLang = !!savedLang && savedLang !== "hinglish" && !isHindiSource(savedLang);
+
+        let restoredWords: CaptionWord[] | undefined;
+        let restoredLang = savedLang || sourceLang;
+
+        if (userPickedOtherLang && (draft?.captionWords?.length || savedWords?.length)) {
+          restoredWords = (draft?.captionWords?.length ? draft.captionWords : savedWords) as CaptionWord[];
+        } else if (cachedHinglish?.length && isHindiSource(sourceLang)) {
+          restoredWords = cachedHinglish;
+          restoredLang = "hinglish";
+        } else if (savedLang === "hinglish" && savedWords?.length) {
+          restoredWords = savedWords;
+          restoredLang = "hinglish";
+        } else {
+          restoredWords = (draft?.captionWords?.length ? draft.captionWords : savedWords?.length ? savedWords : data.captions) as CaptionWord[] | undefined;
+        }
+
+        if (restoredWords?.length) {
+          setCaptionWords(restoredWords);
+          setCaptionLang(restoredLang);
+          setActiveLang(restoredLang === "hinglish" ? "hinglish" : restoredLang.split("-")[0] ?? "");
+        }
+
+        // Hindi source still in Devanagari → fetch Hinglish once, then reuse the cache.
+        if (
+          isHindiSource(sourceLang) &&
+          restoredLang !== "hinglish" &&
+          !userPickedOtherLang &&
+          restoredWords?.length &&
+          wordsHaveDevanagari(restoredWords)
+        ) {
+          setTranslating(true);
+          apiFetch(`${API_URL}/api/clips/${clipId}/captions/translate/hinglish`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(tr => {
+              if (!tr?.captions?.length) return;
+              saveCachedTranslation(clipId, "hinglish", originalCaptionsRef.current, tr.captions);
+              captionWordsRef.current = tr.captions;
+              setCaptionWords(tr.captions);
+              setActiveLang("hinglish");
+              setCaptionLang("hinglish");
+              setCaptionSegments(prev => prev.map(seg => ({
+                ...seg,
+                words: wordsForSegment(tr.captions, seg.start, seg.end),
+              })));
+            })
+            .finally(() => setTranslating(false));
         }
         // Prefer API duration so timeline isn't stuck waiting on <video> metadata
         const apiDur = Number(data.duration) || (Number(data.endTime) - Number(data.startTime)) || 0;
@@ -2714,16 +2820,40 @@ export default function ClipRefinePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only invalidate when settings change, not when exportPhase flips to done
   }, [captionStyle, captionFontSize, captionPosY, captionPosX, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, placedStickers, textOverlays, aspectRatio, backgroundFill]);
 
+  const applyTranslatedCaptions = useCallback((captions: CaptionWord[], lang: string) => {
+    captionWordsRef.current = captions;
+    setCaptionWords(captions);
+    setActiveLang(lang);
+    setCaptionLang(lang);
+    const next = captionApiRef.current?.getSegments();
+    if (next?.length) {
+      setCaptionSegments(next);
+      return;
+    }
+    setCaptionSegments(prev => prev.map(seg => ({
+      ...seg,
+      words: wordsForSegment(captions, seg.start, seg.end),
+    })));
+  }, []);
+
   const handleTranslate = async (lang: string) => {
     if (!lang || lang === activeLang || translating) return;
+    const source = originalCaptionsRef.current;
+    const cached = source.length ? loadCachedTranslation(clipId ?? "", lang, source) : null;
+    if (cached?.length) {
+      applyTranslatedCaptions(cached, lang);
+      return;
+    }
     setTranslating(true);
     try {
       const r = await apiFetch(`${API_URL}/api/clips/${clipId}/captions/translate/${lang}`);
       if (r.ok) {
         const data = await r.json();
-        setCaptionWords(data.captions);
-        setActiveLang(lang);
-        setCaptionLang(lang);
+        const captions = data.captions ?? [];
+        if (captions.length && source.length) {
+          saveCachedTranslation(clipId ?? "", lang, source, captions);
+        }
+        applyTranslatedCaptions(captions, lang);
       }
     } finally {
       setTranslating(false);

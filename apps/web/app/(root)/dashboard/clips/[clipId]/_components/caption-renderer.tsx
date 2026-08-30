@@ -430,8 +430,13 @@ export default function CaptionRenderer({
       const t = currentTime ?? videoRef.current?.currentTime ?? 0;
       const seg = segments.find(s => t >= s.start - 0.001 && t < s.end + 0.001);
       if (seg) {
+        // Always prefer the latest transcript so a translation after style apply
+        // shows the new language instead of the words frozen on the segment.
+        const liveWords = words.length
+          ? words.filter(w => w.start < seg.end && w.end > seg.start)
+          : seg.words;
         return {
-          activeWords: seg.words,
+          activeWords: liveWords.length ? liveWords : seg.words,
           activeStyle: seg.style,
           posX: seg.posX ?? hOffset,
           posY: seg.posY ?? posOffset,
@@ -456,9 +461,10 @@ export default function CaptionRenderer({
   const bounceRef = useRef<Record<string, number>>({});
   const waveRef   = useRef<Record<string, number>>({});
 
-  // Detect Devanagari script either from the language code or from the words themselves
+  // Detect Devanagari script either from the language code or from the words themselves.
+  // "hinglish" is romanized Hindi — do not treat it as Devanagari (it starts with "hi").
   const isDevanagari = language
-    ? ["hi", "mr", "ne", "kok", "bho", "mai", "dgo"].some(l => language.startsWith(l))
+    ? language !== "hinglish" && ["hi", "mr", "ne", "kok", "bho", "mai", "dgo"].some(l => language === l || language.startsWith(l + "-"))
     : wordsHaveDevanagari(resolvedWords);
 
   useEffect(() => {
