@@ -22,6 +22,7 @@ export interface IEditSettings {
   videoLayout?:     string;
   splitLayout?:     unknown;
   fillCrop?:        unknown;
+  aspectRatio?:     string;
 }
 
 export interface IClip {
@@ -78,6 +79,7 @@ const ClipSchema = new Schema<IClip>(
         videoLayout:   { type: String, default: undefined },
         splitLayout:   { type: Schema.Types.Mixed, default: undefined },
         fillCrop:      { type: Schema.Types.Mixed, default: undefined },
+        aspectRatio:   { type: String, default: undefined },
       },
       default: undefined,
     },

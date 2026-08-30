@@ -58,6 +58,29 @@ function getTrimmedExportSecs(trimStart: number, trimEnd: number, duration: numb
   return Math.max(0, end - start);
 }
 
+function previewBoxStyle(ratio: string, mobile: boolean): React.CSSProperties {
+  if (mobile) {
+    if (ratio === "9:16") return { aspectRatio: "9/16", height: "100%", width: "auto", maxWidth: "100%", maxHeight: "100%" };
+    if (ratio === "1:1") return { aspectRatio: "1/1", width: "100%", height: "auto", maxWidth: "100%", maxHeight: "100%" };
+    return { aspectRatio: "16/9", width: "100%", height: "auto", maxWidth: "100%", maxHeight: "100%" };
+  }
+  if (ratio === "9:16") return { aspectRatio: "9/16", height: "100%", maxHeight: "100%", maxWidth: "100%" };
+  return {
+    aspectRatio: ratio === "16:9" ? "16/9" : "1/1",
+    width: "100%",
+    maxWidth: ratio === "16:9" ? "min(780px, 100%)" : "min(560px, 100%)",
+    maxHeight: "100%",
+  };
+}
+
+function aspectFromVideoSize(w: number, h: number): string {
+  if (!(w > 0 && h > 0)) return "9:16";
+  const r = w / h;
+  if (Math.abs(r - 1) < 0.08) return "1:1";
+  if (r > 1.25) return "16:9";
+  return "9:16";
+}
+
 /** Final rendered length after playback speed (matches API / FFmpeg: duration / speed). */
 function getRenderedExportSecs(
   trimStart: number,
@@ -2803,6 +2826,9 @@ export default function ClipRefinePage() {
         if (!draft?.backgroundFill && data.editSettings?.backgroundFill) {
           setBackgroundFill(data.editSettings.backgroundFill);
         }
+        if (!draft?.aspectRatio && data.editSettings?.aspectRatio) {
+          setAspectRatio(data.editSettings.aspectRatio);
+        }
         // Prefer API duration so timeline isn't stuck waiting on <video> metadata
         const apiDur = Number(data.duration) || (Number(data.endTime) - Number(data.startTime)) || 0;
         if (apiDur > 0 && duration <= 0) {
@@ -2833,6 +2859,15 @@ export default function ClipRefinePage() {
   const activeEdit    = activeEditId ? editedClips.find(c => c._id === activeEditId) ?? null : null;
   const activeSrc     = activeEdit?.s3Url ?? src;
   const isViewingEdit = !!activeEdit;
+  const exportedAspect = typeof activeEdit?.editSettings?.aspectRatio === "string"
+    ? activeEdit.editSettings.aspectRatio
+    : undefined;
+  const [exportNativeAspect, setExportNativeAspect] = useState<string | null>(null);
+  // Layout / blur / crop only run on the original. Exported edits play as baked.
+  const applyLayoutFx = !isViewingEdit;
+  const previewAspect = applyLayoutFx
+    ? aspectRatio
+    : (exportedAspect ?? exportNativeAspect ?? "9:16");
 
   // Whether any edit setting has been applied on top of the active (base) video.
   // Used to decide Download (untouched selected version) vs Export (has new changes).
@@ -2845,9 +2880,11 @@ export default function ClipRefinePage() {
     placedStickers.length > 0 ||
     textOverlays.length > 0 ||
     thumbnailOverlay !== null ||
-    backgroundFill !== "blur" ||
-    videoLayout === "split" ||
-    videoLayout === "fill";
+    (!isViewingEdit && (
+      backgroundFill !== "blur" ||
+      videoLayout === "split" ||
+      videoLayout === "fill"
+    ));
 
   // Selecting an edited version → show a straight Download until the user tweaks something
   const downloadMode = isViewingEdit && !hasChanges;
@@ -2884,8 +2921,9 @@ export default function ClipRefinePage() {
       settingsReadyRef.current = true;
       return;
     }
-    saveSettings({ captionStyle, captionFontSize, captionPosY, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, backgroundFill, videoLayout, splitLayout, fillCrop });
-  }, [clipId, captionStyle, captionFontSize, captionPosY, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, backgroundFill, videoLayout, splitLayout, fillCrop, saveSettings]);
+    if (activeEditId) return;
+    saveSettings({ captionStyle, captionFontSize, captionPosY, captionLang: activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, backgroundFill, videoLayout, splitLayout, fillCrop, aspectRatio });
+  }, [clipId, activeEditId, captionStyle, captionFontSize, captionPosY, activeLang, captionWords, speed, trimStart, trimEnd, brightness, contrast, saturation, backgroundFill, videoLayout, splitLayout, fillCrop, aspectRatio, saveSettings]);
 
   const buildExportSnapshot = useCallback(() => JSON.stringify({
     aspectRatio, backgroundFill, captionStyle, captionFontSize, captionPosY, captionPosX,
@@ -3219,6 +3257,9 @@ export default function ClipRefinePage() {
   // Switch which version (original or an edit) the preview + edits are based on
   const selectVersion = useCallback((id: string | null) => {
     if (id === activeEditId) return;
+    setArDropdownOpen(false);
+    setLayoutDropdownOpen(false);
+    setExportNativeAspect(null);
     // Flush current draft before switching so unsaved changes are persisted
     flushDraft();
     // Reset overlay tracking refs so the new version starts fresh
@@ -3257,11 +3298,22 @@ export default function ClipRefinePage() {
         if (draft.timelineTracks?.length) setDraftTracks(draft.timelineTracks);
       } else {
         applyDefaults();
+        const edit = id ? editedClips.find(c => c._id === id) : null;
+        const es = edit?.editSettings;
+        if (es) {
+          if (typeof es.aspectRatio === "string") setAspectRatio(es.aspectRatio);
+          if (es.videoLayout === "fill" || es.videoLayout === "fit" || es.videoLayout === "split") {
+            setVideoLayout(es.videoLayout);
+          }
+          if (isSplitLayout(es.splitLayout)) setSplitLayout(es.splitLayout);
+          if (isSourceCrop(es.fillCrop)) setFillCrop(es.fillCrop);
+          if (typeof es.backgroundFill === "string") setBackgroundFill(es.backgroundFill);
+        }
       }
     } else {
       applyDefaults();
     }
-  }, [activeEditId, applyDefaults, clipId, flushDraft]);
+  }, [activeEditId, applyDefaults, clipId, flushDraft, editedClips]);
 
   // Reset every edit setting AND go back to the original video
   const resetAll = useCallback(() => {
@@ -3932,7 +3984,8 @@ export default function ClipRefinePage() {
 
           {/* Mobile edit tools moved to bottom bar — sheet rendered next to the bar */}
 
-          {/* Aspect ratio — left on mobile (replaces Back), right on desktop with export */}
+          {/* Aspect ratio + layout — original clip only. Exported edits are already framed. */}
+          {!isViewingEdit && (
           <div className={cn(
             "absolute top-3 z-20 flex items-center gap-1.5",
             isMobile ? "left-3" : "right-3",
@@ -4138,6 +4191,7 @@ export default function ClipRefinePage() {
               )}
             </div>
           </div>
+          )}
 
           {/* Mobile export — stays top-right */}
           {isMobile && (
@@ -4169,47 +4223,12 @@ export default function ClipRefinePage() {
                   !isMobile && "md:rounded-2xl",
                   isMobile && "rounded-xl"
                 )}
-                style={isMobile ? (
-                  aspectRatio === "9:16" ? {
-                    // Portrait: fill available height, width follows aspect ratio
-                    aspectRatio: "9/16",
-                    height: "100%",
-                    width: "auto",
-                    maxWidth: "100%",
-                    maxHeight: "100%",
-                  } : aspectRatio === "1:1" ? {
-                    // Square: full width, height capped — clearly shorter than 9:16
-                    aspectRatio: "1/1",
-                    width: "100%",
-                    height: "auto",
-                    maxWidth: "100%",
-                    maxHeight: "100%",
-                  } : {
-                    // Landscape: full width, height shrinks — letterbox visible above/below
-                    aspectRatio: "16/9",
-                    width: "100%",
-                    height: "auto",
-                    maxWidth: "100%",
-                    maxHeight: "100%",
-                  }
-                ) : aspectRatio === "9:16" ? {
-                  // Portrait: height-driven — fill the tall container
-                  aspectRatio: "9/16",
-                  height: "100%",
-                  maxHeight: "100%",
-                  maxWidth: "100%",
-                } : {
-                  // Landscape / square: width-driven — fill the available width
-                  aspectRatio: aspectRatio === "16:9" ? "16/9" : "1/1",
-                  width: "100%",
-                  maxWidth: aspectRatio === "16:9" ? "min(780px, 100%)" : "min(560px, 100%)",
-                  maxHeight: "100%",
-                }}
+                style={previewBoxStyle(previewAspect, isMobile)}
               >
                 {/* Clip the video/canvas layers but NOT the drag handles */}
                 <div className="absolute inset-0 overflow-hidden">
                   {/* Background fill layer — visible when video has letterbox space */}
-                  {backgroundFill === "blur" && (
+                  {applyLayoutFx && backgroundFill === "blur" && (
                     <video
                       key={`blur-${activeSrc}`}
                       src={activeSrc}
@@ -4226,43 +4245,43 @@ export default function ClipRefinePage() {
                       style={{ filter: "blur(20px) brightness(0.5)", transform: "scale(1.15)" }}
                     />
                   )}
-                  {backgroundFill === "black" && (
+                  {applyLayoutFx && backgroundFill === "black" && (
                     <div className="absolute inset-0 bg-black" />
                   )}
-                  {backgroundFill === "white" && (
+                  {applyLayoutFx && backgroundFill === "white" && (
                     <div className="absolute inset-0 bg-white" />
                   )}
-                  {backgroundFill === "anim-aurora" && (
+                  {applyLayoutFx && backgroundFill === "anim-aurora" && (
                     <div className="absolute inset-0 overflow-hidden" style={{ background: "#0a0a18" }}>
                       <div className="absolute -inset-1/4 opacity-70" style={{ background: "radial-gradient(ellipse 80% 60% at 20% 30%, #8b5cf6cc 0%, transparent 60%), radial-gradient(ellipse 60% 80% at 80% 70%, #06b6d4cc 0%, transparent 60%), radial-gradient(ellipse 70% 50% at 50% 90%, #ec4899cc 0%, transparent 60%)", filter: "blur(32px)", animation: "chopprAurora 8s ease-in-out infinite alternate" }} />
                     </div>
                   )}
-                  {backgroundFill === "anim-mesh" && (
+                  {applyLayoutFx && backgroundFill === "anim-mesh" && (
                     <div className="absolute inset-0 overflow-hidden" style={{ background: "#0f0518" }}>
                       <div className="absolute -inset-1/4" style={{ backgroundImage: "radial-gradient(ellipse 60% 50% at 10% 20%, #f97316cc 0%, transparent 55%), radial-gradient(ellipse 55% 65% at 90% 10%, #ec4899cc 0%, transparent 55%), radial-gradient(ellipse 65% 55% at 80% 90%, #8b5cf6cc 0%, transparent 55%), radial-gradient(ellipse 50% 60% at 20% 80%, #06b6d4cc 0%, transparent 55%)", backgroundSize: "300% 300%", filter: "blur(28px)", animation: "chopprMesh 12s ease-in-out infinite" }} />
                     </div>
                   )}
-                  {backgroundFill === "anim-conic" && (
+                  {applyLayoutFx && backgroundFill === "anim-conic" && (
                     <div className="absolute inset-0 overflow-hidden">
                       <div className="absolute inset-[-50%]" style={{ background: "conic-gradient(from 0deg, #f97316, #ec4899, #8b5cf6, #06b6d4, #22c55e, #f97316)", filter: "blur(16px) brightness(0.8)", animation: "chopprConic 6s linear infinite", transformOrigin: "center" }} />
                     </div>
                   )}
-                  {backgroundFill === "anim-grain" && (
+                  {applyLayoutFx && backgroundFill === "anim-grain" && (
                     <div className="absolute inset-0 overflow-hidden" style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%)" }}>
                       <div className="absolute inset-0" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`, opacity: 0.18, animation: "chopprGrain 0.4s steps(8) infinite" }} />
                     </div>
                   )}
-                  {backgroundFill === "anim-sunset" && (
+                  {applyLayoutFx && backgroundFill === "anim-sunset" && (
                     <div className="absolute inset-0 overflow-hidden" style={{ background: "#1a0520" }}>
                       <div className="absolute -inset-1/4" style={{ backgroundImage: "radial-gradient(ellipse 70% 55% at 15% 25%, #ff6b6bcc 0%, transparent 55%), radial-gradient(ellipse 60% 70% at 85% 15%, #feca57cc 0%, transparent 55%), radial-gradient(ellipse 65% 60% at 75% 85%, #ff9ff3cc 0%, transparent 55%), radial-gradient(ellipse 55% 65% at 25% 75%, #54a0ffcc 0%, transparent 55%)", backgroundSize: "280% 280%", filter: "blur(30px)", animation: "chopprMesh 10s ease-in-out infinite reverse" }} />
                     </div>
                   )}
-                  {backgroundFill === "anim-neon" && (
+                  {applyLayoutFx && backgroundFill === "anim-neon" && (
                     <div className="absolute inset-0 overflow-hidden" style={{ background: "#050510" }}>
                       <div className="absolute -inset-1/4" style={{ backgroundImage: "radial-gradient(ellipse 50% 60% at 20% 40%, #00ff8899 0%, transparent 50%), radial-gradient(ellipse 60% 50% at 80% 30%, #00d4ff99 0%, transparent 50%), radial-gradient(ellipse 55% 55% at 50% 80%, #ff00ff99 0%, transparent 50%)", backgroundSize: "250% 250%", filter: "blur(24px)", animation: "chopprNeon 7s ease-in-out infinite alternate" }} />
                     </div>
                   )}
-                  {backgroundFill !== "blur" && backgroundFill !== "black" && backgroundFill !== "white" && backgroundFill !== "none" && !backgroundFill.startsWith("anim-") && (
+                  {applyLayoutFx && backgroundFill !== "blur" && backgroundFill !== "black" && backgroundFill !== "white" && backgroundFill !== "none" && !backgroundFill.startsWith("anim-") && (
                     <div className="absolute inset-0" style={{ background: backgroundFill }} />
                   )}
                   <BackgroundRenderer
@@ -4284,7 +4303,7 @@ export default function ClipRefinePage() {
                     preload="auto"
                     className="w-full h-full"
                     style={{
-                      ...(videoLayout === "fill" && fillCrop ? {
+                      ...(applyLayoutFx && videoLayout === "fill" && fillCrop ? {
                         position: "absolute" as const,
                         width: `${100 / fillCrop.w}%`,
                         height: `${100 / fillCrop.h}%`,
@@ -4293,10 +4312,10 @@ export default function ClipRefinePage() {
                         maxWidth: "none",
                         objectFit: "fill" as const,
                       } : {
-                        objectFit: backgroundFill === "none" ? "cover" : "contain",
+                        objectFit: applyLayoutFx && backgroundFill === "none" ? "cover" : "contain",
                       }),
-                      filter: filterStyle,
-                      opacity: videoLayout === "split" || (placedStickers.some(ps => isOverlayVisible(ps.startTime, ps.duration)) && segmentationReady) ? 0 : 1,
+                      filter: applyLayoutFx ? filterStyle : undefined,
+                      opacity: (applyLayoutFx && videoLayout === "split") || (placedStickers.some(ps => isOverlayVisible(ps.startTime, ps.duration)) && segmentationReady) ? 0 : 1,
                     }}
                     onLoadedData={() => {
                       const v = videoRef.current;
@@ -4305,7 +4324,11 @@ export default function ClipRefinePage() {
                       }
                     }}
                     onLoadedMetadata={() => {
-                      const d = videoRef.current?.duration ?? 0;
+                      const v = videoRef.current;
+                      const d = v?.duration ?? 0;
+                      if (v && v.videoWidth && v.videoHeight) {
+                        setExportNativeAspect(aspectFromVideoSize(v.videoWidth, v.videoHeight));
+                      }
                       if (!Number.isFinite(d) || d <= 0) return;
                       // Always trust metadata for the main clip when duration is missing/stale
                       setDuration(prev => (prev > 0 && Math.abs(prev - d) < 0.5 ? prev : d));
@@ -4323,7 +4346,7 @@ export default function ClipRefinePage() {
                       console.warn("[clip] preview video failed to load metadata");
                     }}
                   />
-                  {videoLayout === "split" && splitLayout && (
+                  {applyLayoutFx && videoLayout === "split" && splitLayout && (
                     <div
                       className="absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2"
                       style={{ height: "100%", aspectRatio: "9 / 16", maxWidth: "100%" }}
@@ -4432,7 +4455,7 @@ export default function ClipRefinePage() {
                       </div>
                     )}
                   </div>
-                  {videoLayout === "fill" && (
+                  {applyLayoutFx && videoLayout === "fill" && (
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); activateFill(true); }}
