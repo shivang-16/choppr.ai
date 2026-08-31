@@ -638,11 +638,28 @@ export default function LayoutDemoSection() {
   const playhead = 8 + (time / LOOP_MS) * 42;
 
   return (
-    <section className="relative overflow-hidden px-3 py-20 sm:px-4 sm:py-28">
-      <div className="pointer-events-none absolute inset-0" aria-hidden>
-        <div className="absolute left-1/2 top-[46%] h-[520px] w-[900px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c48a4a]/28 blur-[130px]" />
-        <div className="absolute left-[18%] top-[30%] h-[280px] w-[280px] rounded-full bg-white/[0.04] blur-[90px]" />
+    <section className="relative overflow-x-clip px-3 pt-20 pb-28 sm:px-4 sm:pt-28 sm:pb-36">
+      <div
+        className="pointer-events-none absolute inset-0"
+        aria-hidden
+        style={{
+          WebkitMaskImage:
+            "linear-gradient(to bottom, transparent 0%, black 16%, black 58%, transparent 100%)",
+          maskImage:
+            "linear-gradient(to bottom, transparent 0%, black 16%, black 58%, transparent 100%)",
+        }}
+      >
+        <div className="absolute left-1/2 top-[42%] h-[380px] w-[640px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c48a4a]/28 blur-[130px] sm:h-[520px] sm:w-[900px]" />
+        <div className="absolute left-[18%] top-[30%] h-[200px] w-[200px] rounded-full bg-white/[0.04] blur-[90px] sm:h-[280px] sm:w-[280px]" />
       </div>
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-28 bg-gradient-to-b from-transparent via-black/55 to-black sm:h-36"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-16 bg-gradient-to-b from-black to-transparent sm:h-20"
+        aria-hidden
+      />
 
       <div className="relative z-10 mx-auto flex w-full min-w-0 max-w-[1180px] flex-col items-center">
         <motion.div {...reveal} className="flex max-w-3xl flex-col items-center gap-4 text-center">

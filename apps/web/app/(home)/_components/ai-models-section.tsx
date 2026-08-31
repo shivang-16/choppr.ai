@@ -335,7 +335,11 @@ const MODELS: Model[] = [
 
 export default function AiModelsSection() {
   return (
-    <section className="relative overflow-hidden px-4 py-24 sm:py-32">
+    <section className="relative overflow-x-clip px-4 pt-20 pb-24 sm:pt-28 sm:pb-32">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-24 bg-gradient-to-b from-black to-transparent sm:h-28"
+        aria-hidden
+      />
       <div className="relative z-10 mx-auto flex max-w-6xl flex-col">
         {/* Header */}
         <motion.div {...reveal} className="flex flex-col items-center gap-5 text-center">
