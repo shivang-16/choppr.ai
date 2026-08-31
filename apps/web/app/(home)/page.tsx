@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Navbar from "./_components/navbar";
 import HeroSection from "./_components/hero-section";
+import LayoutDemoSection from "./_components/layout-demo-section";
 import AiModelsSection from "./_components/ai-models-section";
 import Footer from "./_components/footer";
 
@@ -38,6 +39,7 @@ export default function Home() {
       <div className="relative z-10">
         <Navbar />
         <HeroSection />
+        <LayoutDemoSection />
         <AiModelsSection />
         <Footer />
       </div>
