@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import {
   ArrowLeft,
@@ -391,7 +391,7 @@ function DemoCursor({ x, y, clicking, visible }: { x: number; y: number; clickin
   return (
     <motion.div
       aria-hidden
-      className="pointer-events-none absolute z-[60]"
+      className="pointer-events-none absolute z-[60] -translate-x-1 -translate-y-px sm:-translate-x-1.5 sm:-translate-y-0.5"
       animate={{
         left: `${x}%`,
         top: `${y}%`,
@@ -399,9 +399,8 @@ function DemoCursor({ x, y, clicking, visible }: { x: number; y: number; clickin
         opacity: visible ? 1 : 0,
       }}
       transition={{ duration: 0.55, ease: EASE }}
-      style={{ translateX: "-6px", translateY: "-2px" }}
     >
-      <svg width="22" height="24" viewBox="0 0 22 24" fill="none">
+      <svg className="h-3 w-[11px] sm:h-6 sm:w-[22px]" viewBox="0 0 22 24" fill="none">
         <path
           d="M2.2 1.4 19.6 14.1l-7.4.4 3.2 7.2-3.3 1.5-3.1-7.1-5.2 4.8L2.2 1.4Z"
           fill="#fff"
@@ -411,7 +410,7 @@ function DemoCursor({ x, y, clicking, visible }: { x: number; y: number; clickin
         />
       </svg>
       {clicking && (
-        <span className="absolute left-1 top-1 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/50 bg-white/15" />
+        <span className="absolute left-1 top-1 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/50 bg-white/15 sm:h-5 sm:w-5" />
       )}
     </motion.div>
   );
@@ -476,6 +475,7 @@ function DemoWaterFill({ progress }: { progress: number }) {
 
 export default function LayoutDemoSection() {
   const frameWrapRef = useRef<HTMLDivElement>(null);
+  const demoInnerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const layoutBtnRef = useRef<HTMLButtonElement>(null);
   const splitOptRef = useRef<HTMLButtonElement>(null);
@@ -502,26 +502,32 @@ export default function LayoutDemoSection() {
   const [reduceMotion, setReduceMotion] = useState(false);
   const [time, setTime] = useState(0);
   const [cursor, setCursor] = useState({ x: 62, y: 18 });
-  const [scale, setScale] = useState(() => {
-    if (typeof window === "undefined") return 1;
-    return Math.min(1, Math.max(0.2, (window.innerWidth - 24) / DESIGN_W));
-  });
+  const [frameW, setFrameW] = useState(0);
 
   useEffect(() => {
     ensureFonts();
   }, []);
 
-  useEffect(() => {
-    const el = frameWrapRef.current;
-    if (!el) return;
-    const update = () => {
-      const w = el.clientWidth;
-      setScale(w > 0 ? Math.min(1, w / DESIGN_W) : 1);
+  useLayoutEffect(() => {
+    const wrap = frameWrapRef.current;
+    const inner = demoInnerRef.current;
+    if (!wrap || !inner) return;
+    const apply = () => {
+      const w = wrap.getBoundingClientRect().width;
+      if (w < 1) return;
+      const s = w / DESIGN_W;
+      inner.style.transform = `scale(${s})`;
+      inner.style.transformOrigin = "top left";
+      setFrameW(w);
     };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(wrap);
+    window.addEventListener("resize", apply);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", apply);
+    };
   }, []);
 
   const playing = inView && !reduceMotion;
@@ -625,7 +631,7 @@ export default function LayoutDemoSection() {
       x: ((r.left + r.width * 0.55 - s.left) / s.width) * 100,
       y: ((r.top + r.height * 0.55 - s.top) / s.height) * 100,
     });
-  }, [scene.aim, scene.crop.x, scene.crop.y, scene.modal, scene.layoutOpen, scene.pane, scene.applied, scene.panelOpen, scene.captionOn, scene.posOffset, scene.translateOpen, scene.hinglishOn, scene.exporting, scene.showVersions, scene.viewingEdit, scale]);
+  }, [scene.aim, scene.crop.x, scene.crop.y, scene.modal, scene.layoutOpen, scene.pane, scene.applied, scene.panelOpen, scene.captionOn, scene.posOffset, scene.translateOpen, scene.hinglishOn, scene.exporting, scene.showVersions, scene.viewingEdit, frameW]);
 
   const modalSrc = scene.pane === 0 ? TOP_SRC : BOT_SRC;
   const modalPoster = scene.pane === 0 ? TOP_POSTER : BOT_POSTER;
@@ -638,7 +644,7 @@ export default function LayoutDemoSection() {
         <div className="absolute left-[18%] top-[30%] h-[280px] w-[280px] rounded-full bg-white/[0.04] blur-[90px]" />
       </div>
 
-      <div className="relative z-10 mx-auto flex max-w-[1180px] flex-col items-center">
+      <div className="relative z-10 mx-auto flex w-full min-w-0 max-w-[1180px] flex-col items-center">
         <motion.div {...reveal} className="flex max-w-3xl flex-col items-center gap-4 text-center">
           <span className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70 backdrop-blur-md">
             <Sparkles className="h-3 w-3 text-white/70" strokeWidth={2.5} />
@@ -652,21 +658,25 @@ export default function LayoutDemoSection() {
           </p>
         </motion.div>
 
-        <motion.div {...reveal} className="relative mt-12 w-full">
-          <div ref={frameWrapRef} className="w-full">
+        <motion.div {...reveal} className="relative mt-12 w-full min-w-0">
+          <div
+            ref={frameWrapRef}
+            className="relative w-full min-w-0 max-w-full overflow-hidden"
+            style={{ aspectRatio: `${DESIGN_W} / ${DESIGN_H}` }}
+          >
           <div
             ref={stageRef}
-            className="relative w-full overflow-hidden rounded-[20px] border border-white/10 bg-black/55 shadow-[0_40px_100px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:rounded-[28px]"
-            style={{ height: DESIGN_H * scale }}
+            className="relative h-full w-full overflow-hidden rounded-[20px] border border-white/10 bg-black/55 shadow-[0_40px_100px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:rounded-[28px]"
           >
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.06] via-transparent to-black/20" />
 
             <div
+              ref={demoInnerRef}
               className="pointer-events-none absolute top-0 left-0 flex select-none flex-col"
               style={{
                 width: DESIGN_W,
                 height: DESIGN_H,
-                transform: `scale(${scale})`,
+                transform: `scale(min(1, calc((100vw - 24px) / ${DESIGN_W}px)))`,
                 transformOrigin: "top left",
               }}
             >
