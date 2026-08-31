@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
-  CROP_PRESETS,
   clampCrop,
   coverCrop,
-  type CropPresetId,
   type SourceCrop,
 } from "./video-layout";
 
@@ -19,6 +17,7 @@ interface SplitProps {
   currentTime: number;
   initialTop: SourceCrop;
   initialBottom: SourceCrop;
+  initialPane?: Pane;
   onApply: (top: SourceCrop, bottom: SourceCrop) => void;
   onClose: () => void;
 }
@@ -42,11 +41,12 @@ export function CropLayoutModal(props: Props) {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const [pane, setPane] = useState<Pane>(0);
+  const [pane, setPane] = useState<Pane>(() => (
+    !isFill && props.initialPane === 1 ? 1 : 0
+  ));
   const [crops, setCrops] = useState<[SourceCrop, SourceCrop]>(() => (
     isFill ? [props.initialCrop, props.initialCrop] : [props.initialTop, props.initialBottom]
   ));
-  const [preset, setPreset] = useState<CropPresetId>("custom");
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{
     handle: Handle;
@@ -72,18 +72,61 @@ export function CropLayoutModal(props: Props) {
     dragRef.current = null;
     setDragging(false);
     setPane(next);
-    setPreset("custom");
   };
+
+  const [frameReady, setFrameReady] = useState(false);
+  const seekOnceRef = useRef(currentTime);
 
   useEffect(() => {
     const v = videoRef.current;
-    if (!v) return;
-    const sync = () => {
-      try { v.currentTime = currentTime; } catch { /* ignore */ }
+    if (!v || !src) return;
+    setFrameReady(false);
+    let cancelled = false;
+
+    const paint = () => {
+      if (cancelled) return;
+      setFrameReady(true);
     };
-    if (v.readyState >= 1) sync();
-    else v.addEventListener("loadedmetadata", sync, { once: true });
-  }, [currentTime, src]);
+
+    const seekAndPaint = () => {
+      if (cancelled) return;
+      const t = Number.isFinite(seekOnceRef.current) ? Math.max(0, seekOnceRef.current) : 0;
+      const onSeeked = () => {
+        v.removeEventListener("seeked", onSeeked);
+        paint();
+      };
+      v.addEventListener("seeked", onSeeked);
+      try {
+        // Seek away from 0 so browsers that skip seeked-at-zero still decode a frame.
+        v.currentTime = t > 0.04 ? t : 0.04;
+      } catch {
+        paint();
+      }
+      // Force a decoded frame when a second <video> shares the preview URL.
+      v.muted = true;
+      const playAttempt = v.play();
+      if (playAttempt) {
+        playAttempt.then(() => {
+          if (cancelled) return;
+          v.pause();
+          paint();
+        }).catch(() => { /* autoplay blocked — seeked should still paint */ });
+      }
+    };
+
+    const onLoaded = () => seekAndPaint();
+    v.addEventListener("loadeddata", onLoaded);
+    v.addEventListener("canplay", onLoaded, { once: true });
+    if (v.readyState >= 2) seekAndPaint();
+    else v.load();
+
+    return () => {
+      cancelled = true;
+      v.removeEventListener("loadeddata", onLoaded);
+      v.removeEventListener("canplay", onLoaded);
+      try { v.pause(); } catch { /* ignore */ }
+    };
+  }, [src]);
 
   useEffect(() => {
     if (!isFill) return;
@@ -122,12 +165,6 @@ export function CropLayoutModal(props: Props) {
     if (isFill || drag.handle === "move") {
       next = { ...s, x: s.x + dx, y: s.y + dy };
     } else {
-      const lock = preset !== "custom" && preset !== "original"
-        ? (typeof CROP_PRESETS.find(p => p.id === preset)?.aspect === "number"
-          ? s.w / s.h
-          : null)
-        : null;
-
       if (drag.handle.includes("w")) {
         next.x = s.x + dx;
         next.w = s.w - dx;
@@ -138,15 +175,9 @@ export function CropLayoutModal(props: Props) {
         next.h = s.h - dy;
       }
       if (drag.handle.includes("s")) next.h = s.h + dy;
-
-      if (lock && next.h > 0.05) {
-        next.w = next.h * lock;
-        if (drag.handle.includes("w")) next.x = s.x + s.w - next.w;
-      }
     }
     setCrop(clampCrop(next));
-    if (!isFill) setPreset("custom");
-  }, [isFill, preset, pane]);
+  }, [isFill, pane]);
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
@@ -175,22 +206,6 @@ export function CropLayoutModal(props: Props) {
     setDragging(true);
   };
 
-  const applyPreset = useCallback((id: CropPresetId) => {
-    if (isFill) return;
-    setPreset(id);
-    const v = videoRef.current;
-    const srcW = v?.videoWidth || 16;
-    const srcH = v?.videoHeight || 9;
-    if (id === "custom") return;
-    if (id === "original") {
-      setCrop({ x: 0, y: 0, w: 1, h: 1 });
-      return;
-    }
-    const presetDef = CROP_PRESETS.find(p => p.id === id);
-    const aspect = typeof presetDef?.aspect === "number" ? presetDef.aspect : srcW / srcH;
-    setCrop(coverCrop(srcW, srcH, aspect, cropRef.current.x + cropRef.current.w / 2));
-  }, [isFill, pane]);
-
   const nudge = (dx: number, dy: number) => {
     setCrop(prev => clampCrop({ ...prev, x: prev.x + dx, y: prev.y + dy }));
   };
@@ -212,55 +227,54 @@ export function CropLayoutModal(props: Props) {
         {isFill ? (
           <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
             <p className="text-[12px] font-semibold text-white/70">Crop · Fill</p>
-            <span className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-black">
-              {props.aspectLabel}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-black">
+                {props.aspectLabel}
+              </span>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white"
+              >
+                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                  <path d="M3 3l10 10M13 3 3 13" />
+                </svg>
+              </button>
+            </div>
           </div>
         ) : (
-          <>
-            <div className="flex items-center gap-1 border-b border-white/8 px-4 pt-3">
-              {([
-                { id: 0 as const, label: "Top" },
-                { id: 1 as const, label: "Bottom" },
-              ]).map(t => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => goToPane(t.id)}
-                  className={cn(
-                    "relative px-4 py-2 text-[12px] font-semibold transition-colors",
-                    pane === t.id ? "text-white" : "text-white/40 hover:text-white/70",
-                  )}
-                >
-                  {t.label}
-                  {pane === t.id && (
-                    <span className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-white" />
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5 border-b border-white/8 px-4 py-3">
-              <p className="mr-2 text-[12px] font-semibold text-white/70">
-                Crop · {pane === 0 ? "Top" : "Bottom"}
-              </p>
-              {CROP_PRESETS.map(p => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => applyPreset(p.id)}
-                  className={cn(
-                    "rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors",
-                    preset === p.id
-                      ? "bg-white text-black"
-                      : "bg-white/6 text-white/55 hover:bg-white/10 hover:text-white/80",
-                  )}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </>
+          <div className="flex items-center border-b border-white/8 px-4 pt-3">
+            {([
+              { id: 0 as const, label: "Top" },
+              { id: 1 as const, label: "Bottom" },
+            ]).map(t => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => goToPane(t.id)}
+                className={cn(
+                  "relative cursor-pointer px-4 py-2 text-[12px] font-semibold transition-colors",
+                  pane === t.id ? "text-white" : "text-white/40 hover:text-white/70",
+                )}
+              >
+                {t.label}
+                {pane === t.id && (
+                  <span className="absolute inset-x-3 -bottom-px h-0.5 rounded-full bg-white" />
+                )}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="ml-auto mb-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white"
+            >
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M3 3l10 10M13 3 3 13" />
+              </svg>
+            </button>
+          </div>
         )}
 
         <p className="px-4 pt-2 text-center text-[11px] text-white/45 sm:hidden">
@@ -270,19 +284,28 @@ export function CropLayoutModal(props: Props) {
         <div className="flex min-h-0 flex-1 items-center justify-center bg-black px-0 py-3 sm:flex-none sm:px-4 sm:py-5">
           <div
             ref={stageRef}
-            className="relative max-h-full max-w-full touch-none select-none overflow-hidden"
+            className={cn(
+              "relative max-h-full max-w-full touch-none select-none overflow-hidden",
+              !frameReady && "min-h-[240px] w-full min-w-[280px]",
+            )}
             style={{ touchAction: "none" }}
             onPointerDown={startDrag("move")}
           >
+            {!frameReady && (
+              <div className="absolute inset-0 z-[1] flex items-center justify-center bg-black text-[12px] text-white/40">
+                Loading video…
+              </div>
+            )}
             <video
               ref={videoRef}
+              key={src}
               src={src}
               muted
               playsInline
               preload="auto"
               controls={false}
               className="pointer-events-none block max-h-[min(62dvh,100%)] max-w-full sm:max-h-[58vh]"
-              style={{ width: "auto", height: "auto" }}
+              style={{ width: "auto", height: "auto", opacity: frameReady ? 1 : 0 }}
             />
             <div
               className={cn(
@@ -372,7 +395,7 @@ export function CropLayoutModal(props: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-2 text-[13px] text-white/50 hover:text-white"
+            className="cursor-pointer rounded-lg px-3 py-2 text-[13px] text-white/50 hover:text-white"
           >
             Close
           </button>
@@ -380,7 +403,7 @@ export function CropLayoutModal(props: Props) {
             <button
               type="button"
               onClick={resetCrop}
-              className="rounded-lg border border-white/12 px-3 py-2 text-[13px] text-white/60 hover:bg-white/8 hover:text-white"
+              className="cursor-pointer rounded-lg border border-white/12 px-3 py-2 text-[13px] text-white/60 hover:bg-white/8 hover:text-white"
             >
               Reset
             </button>

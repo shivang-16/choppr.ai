@@ -4347,23 +4347,40 @@ export default function ClipRefinePage() {
                     }}
                   />
                   {applyLayoutFx && videoLayout === "split" && splitLayout && (
-                    <div
-                      className="absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2"
-                      style={{ height: "100%", aspectRatio: "9 / 16", maxWidth: "100%" }}
-                    >
-                      <div className="relative h-full w-full">
-                        <SplitLayoutRenderer
-                          videoRef={videoRef}
-                          layout={splitLayout}
-                          filter={filterStyle}
-                          isMobile={isMobile}
-                          onCropPane={(pane) => setCropPane(pane)}
-                          onDivider={(divider) => {
-                            setSplitLayout(prev => prev ? { ...prev, divider } : prev);
-                          }}
-                        />
+                    <>
+                      <div
+                        className="pointer-events-none absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2"
+                        style={{ height: "100%", aspectRatio: "9 / 16", maxWidth: "100%" }}
+                      >
+                        <div className="relative h-full w-full">
+                          <SplitLayoutRenderer
+                            layer="picture"
+                            videoRef={videoRef}
+                            layout={splitLayout}
+                            filter={filterStyle}
+                            isMobile={isMobile}
+                          />
+                        </div>
                       </div>
-                    </div>
+                      <div
+                        className="pointer-events-none absolute left-1/2 top-1/2 z-[20] -translate-x-1/2 -translate-y-1/2"
+                        style={{ height: "100%", aspectRatio: "9 / 16", maxWidth: "100%" }}
+                      >
+                        <div className="relative h-full w-full">
+                          <SplitLayoutRenderer
+                            layer="controls"
+                            videoRef={videoRef}
+                            layout={splitLayout}
+                            filter={filterStyle}
+                            isMobile={isMobile}
+                            onCropPane={(pane) => setCropPane(pane)}
+                            onDivider={(divider) => {
+                              setSplitLayout(prev => prev ? { ...prev, divider } : prev);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </>
                   )}
                   <CaptionRenderer
                     videoRef={videoRef}
@@ -4397,6 +4414,7 @@ export default function ClipRefinePage() {
                     }}
                     onPointerDown={(e) => {
                       if (dragRef.current) return;
+                      if ((e.target as HTMLElement).closest("[data-crop-btn]")) return;
                       e.preventDefault(); // stop browser claiming the touch for scroll
                       const rect = videoContainerRef.current?.getBoundingClientRect();
                       if (!rect) return;
@@ -4445,6 +4463,7 @@ export default function ClipRefinePage() {
                         captionApiRef.current.updateSegmentPosition(ref.segmentId, nextX, nextY);
                       }
                       captionDragRef.current = null;
+                      if ((e.target as HTMLElement).closest("[data-crop-btn]")) return;
                       if (!wasDrag && !dragRef.current) togglePlay();
                     }}
                     onPointerCancel={() => { captionDragRef.current = null; }}
@@ -4458,9 +4477,11 @@ export default function ClipRefinePage() {
                   {applyLayoutFx && videoLayout === "fill" && (
                     <button
                       type="button"
+                      data-crop-btn
+                      onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
                       onClick={(e) => { e.stopPropagation(); activateFill(true); }}
                       className={cn(
-                        "pointer-events-auto absolute z-[20] inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-bold text-black shadow-[0_2px_14px_rgba(0,0,0,0.55)] ring-1 ring-black/10 hover:bg-white/90",
+                        "pointer-events-auto absolute z-[30] inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-bold text-black shadow-[0_2px_14px_rgba(0,0,0,0.55)] ring-1 ring-black/10 hover:bg-white/90",
                         isMobile ? "right-2 bottom-2" : "left-2 top-2",
                       )}
                     >
@@ -4893,6 +4914,7 @@ export default function ClipRefinePage() {
         <CropLayoutModal
           src={activeSrc}
           currentTime={currentTime}
+          initialPane={cropPane}
           initialTop={splitLayout.panes[0].crop}
           initialBottom={splitLayout.panes[1].crop}
           onClose={() => setCropPane(null)}
