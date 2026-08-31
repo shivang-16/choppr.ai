@@ -1297,6 +1297,10 @@ function EditPanelContent({
     if (hideTranscript && captionSubTab === "transcript") setCaptionSubTab("styles");
   }, [hideTranscript, captionSubTab]);
 
+  useEffect(() => {
+    if (selectedTextId) setOverlaySubTab("text");
+  }, [selectedTextId]);
+
   const captionApplyStyle = captionApplyMenu
     ? CAPTION_STYLE_GROUPS.flatMap(g => g.styles).find(s => s.id === captionApplyMenu) ?? null
     : null;
@@ -1591,7 +1595,7 @@ function EditPanelContent({
                 }
                 const id = `txt-${Date.now()}`;
                 setTextOverlays(prev => [...prev, {
-                  id, text: "Your text", x: 0.5, y: 0.5, fontSize: 20, color: "#ffffff",
+                  id, text: "Your text", x: 0.5, y: 0.28, fontSize: 20, color: "#ffffff",
                   bold: false, italic: false, startTime: 0, duration: 4,
                 }]);
                 setSelectedTextId(id);
@@ -2576,7 +2580,8 @@ export default function ClipRefinePage() {
   const [placedStickers, setPlacedStickers]     = useState<PlacedSticker[]>([]);
   const [textOverlays, setTextOverlays]         = useState<TextOverlay[]>([]);
   const [selectedTextId, setSelectedTextId]     = useState<string | null>(null);
-  const textDragRef = useRef<{ id: string; rectLeft: number; rectTop: number; rectW: number; rectH: number } | null>(null);
+  const textDragRef = useRef<{ id: string; rectLeft: number; rectTop: number; rectW: number; rectH: number; startX: number; startY: number; moved: boolean } | null>(null);
+  const ignoreDrawerCloseUntil = useRef(0);
   const [segmentationReady, setSegmentationReady] = useState(false);
   const segmenterRef = useRef<ImageSegmenterRef | null>(null);
 
@@ -3124,8 +3129,12 @@ export default function ClipRefinePage() {
           contrast,
           saturation,
           originalClipId: clipId,
-          stickers: placedStickers,
-          textOverlays,
+          stickers: isMobile
+            ? placedStickers.map(({ startTime: _s, duration: _d, ...rest }) => rest)
+            : placedStickers,
+          textOverlays: isMobile
+            ? textOverlays.map(({ startTime: _s, duration: _d, ...rest }) => rest)
+            : textOverlays,
           thumbnailOverlay: thumbnailOverlay ?? null,
           previewWidth: videoContainerRef.current?.clientWidth || 380,
         }),
@@ -3466,13 +3475,13 @@ export default function ClipRefinePage() {
   }, []);
 
   const isOverlayVisible = useCallback((startTime: number | undefined, duration: number | undefined) => {
-    // If no startTime defined, always show (mobile single-select / backwards compat)
+    // Phone has no timeline — text/stickers stay on for the whole clip.
+    if (isMobile) return true;
+    // If no startTime defined, always show (backwards compat)
     if (startTime === undefined || startTime === null) return true;
-    // On mobile there is no timeline — drive visibility from the scrubber clock.
-    const t = isMobile ? currentTime : timelineTime;
     const dur = duration ?? DEFAULT_OVERLAY_DUR;
-    return t >= startTime - 0.05 && t < startTime + dur + 0.05;
-  }, [isMobile, currentTime, timelineTime]);
+    return timelineTime >= startTime - 0.05 && timelineTime < startTime + dur + 0.05;
+  }, [isMobile, timelineTime]);
 
   const handleOverlayTimingChange = useCallback((items: OverlayTimingItem[]) => {
     // Cap duration: if timeline reports a duration >= video duration, it's a Twick default
@@ -3550,27 +3559,32 @@ export default function ClipRefinePage() {
 
   const handleAddTextOverlay = useCallback(() => {
     const id = `txt-${Date.now()}`;
-    // Place the new overlay after all existing overlays (not at cursor position).
-    // This prevents overlap when the cursor sits on an existing overlay.
-    const lastEnd = textOverlays.reduce((acc, t) => {
-      const end = (t.startTime ?? 0) + (t.duration ?? DEFAULT_OVERLAY_DUR);
-      return Math.max(acc, end);
-    }, 0);
-    const start = lastEnd;
     const overlay: TextOverlay = {
       id,
       text: "Your text",
       x: 0.5,
-      y: 0.5,
+      y: 0.28,
       fontSize: 20,
       color: "#ffffff",
       bold: false,
       italic: false,
-      startTime: start,
-      duration: DEFAULT_OVERLAY_DUR,
     };
+    if (!isMobile) {
+      // Place the new overlay after all existing overlays (not at cursor position).
+      // This prevents overlap when the cursor sits on an existing overlay.
+      const lastEnd = textOverlays.reduce((acc, t) => {
+        const end = (t.startTime ?? 0) + (t.duration ?? DEFAULT_OVERLAY_DUR);
+        return Math.max(acc, end);
+      }, 0);
+      overlay.startTime = lastEnd;
+      overlay.duration = DEFAULT_OVERLAY_DUR;
+    }
     setTextOverlays(prev => [...prev, overlay]);
     setSelectedTextId(id);
+    if (isMobile) {
+      setMobileDrawerOpen(false);
+      return;
+    }
     timelineOverlayIdsRef.current.add(id);
     void overlayApiRef.current?.addText({
       id,
@@ -3579,10 +3593,10 @@ export default function ClipRefinePage() {
       fontSize: overlay.fontSize,
       bold: overlay.bold,
       italic: overlay.italic,
-      startTime: start,
-      duration: DEFAULT_OVERLAY_DUR,
+      startTime: overlay.startTime ?? 0,
+      duration: overlay.duration ?? DEFAULT_OVERLAY_DUR,
     });
-  }, [textOverlays]);
+  }, [textOverlays, isMobile]);
 
   const handleRemoveTextOverlay = useCallback((id: string) => {
     setTextOverlays(prev => prev.filter(o => o.id !== id));
@@ -3797,7 +3811,37 @@ export default function ClipRefinePage() {
     }
   };
 
-  const closeDrawer = () => setMobileDrawerOpen(false);
+  const closeDrawer = () => {
+    if (Date.now() < ignoreDrawerCloseUntil.current) return;
+    setMobileDrawerOpen(false);
+  };
+
+  const openTextEditor = useCallback((id: string) => {
+    setSelectedTextId(id);
+    setActiveTab("overlays");
+    if (isMobile) {
+      // Ignore the ghost click that follows pointerup on iOS/Android, or the
+      // newly-mounted drawer backdrop will immediately close the sheet.
+      ignoreDrawerCloseUntil.current = Date.now() + 500;
+      setDrawerMounted(true);
+      setMobileDrawerOpen(true);
+    } else {
+      setPanelOpen(true);
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!selectedTextId) return;
+    const onDown = (e: PointerEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (!el) return;
+      if (el.closest("[data-text-overlay]")) return;
+      if (el.closest("[data-text-edit-panel]")) return;
+      setSelectedTextId(null);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [selectedTextId]);
 
   const activeTabLabel = TABS.find(t => t.id === activeTab)?.label ?? "";
 
@@ -4464,7 +4508,11 @@ export default function ClipRefinePage() {
                       }
                       captionDragRef.current = null;
                       if ((e.target as HTMLElement).closest("[data-crop-btn]")) return;
-                      if (!wasDrag && !dragRef.current) togglePlay();
+                      if ((e.target as HTMLElement).closest("[data-text-overlay]")) return;
+                      if (!wasDrag && !dragRef.current) {
+                        setSelectedTextId(null);
+                        togglePlay();
+                      }
                     }}
                     onPointerCancel={() => { captionDragRef.current = null; }}
                   >
@@ -4548,33 +4596,60 @@ export default function ClipRefinePage() {
                   isOverlayVisible(t.startTime, t.duration) ? (
                   <div
                     key={t.id}
-                    className="absolute cursor-grab active:cursor-grabbing touch-none select-none"
+                    data-text-overlay
+                    className="absolute cursor-grab active:cursor-grabbing touch-none select-none pointer-events-auto"
                     style={{
                       left: `${t.x * 100}%`,
                       top: `${t.y * 100}%`,
                       transform: "translate(-50%, -50%)",
-                      zIndex: 12,
+                      zIndex: 40,
                     }}
                     onPointerDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       const rect = videoContainerRef.current?.getBoundingClientRect();
                       if (!rect) return;
-                      textDragRef.current = { id: t.id, rectLeft: rect.left, rectTop: rect.top, rectW: rect.width, rectH: rect.height };
-                      e.currentTarget.setPointerCapture(e.pointerId);
+                      const drag = {
+                        id: t.id,
+                        rectLeft: rect.left,
+                        rectTop: rect.top,
+                        rectW: rect.width,
+                        rectH: rect.height,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        moved: false,
+                      };
+                      textDragRef.current = drag;
+                      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* iOS */ }
                       setSelectedTextId(t.id);
+
+                      const finish = () => {
+                        window.removeEventListener("pointerup", finish);
+                        window.removeEventListener("pointercancel", finish);
+                        const cur = textDragRef.current;
+                        textDragRef.current = null;
+                        if (cur && cur.id === t.id && !cur.moved) openTextEditor(t.id);
+                      };
+                      window.addEventListener("pointerup", finish);
+                      window.addEventListener("pointercancel", finish);
                     }}
                     onPointerMove={(e) => {
                       if (!textDragRef.current || textDragRef.current.id !== t.id) return;
-                      const { rectLeft, rectTop, rectW, rectH } = textDragRef.current;
+                      const { rectLeft, rectTop, rectW, rectH, startX, startY } = textDragRef.current;
+                      if (Math.abs(e.clientX - startX) > 12 || Math.abs(e.clientY - startY) > 12) {
+                        textDragRef.current.moved = true;
+                      }
+                      if (!textDragRef.current.moved) return;
                       const nx = Math.max(0.02, Math.min(0.98, (e.clientX - rectLeft) / rectW));
                       const ny = Math.max(0.02, Math.min(0.98, (e.clientY - rectTop) / rectH));
                       setTextOverlays(prev => prev.map(o => o.id === t.id ? { ...o, x: nx, y: ny } : o));
                     }}
-                    onPointerUp={() => { textDragRef.current = null; }}
                   >
                     <div
-                      className="relative pointer-events-none px-1.5 py-0.5 rounded"
+                      className={cn(
+                        "relative px-3 py-2 rounded-md",
+                        selectedTextId === t.id && "ring-1 ring-white/85",
+                      )}
                       style={{
                         fontSize: t.fontSize,
                         color: t.color,
@@ -4588,6 +4663,20 @@ export default function ClipRefinePage() {
                     >
                       {t.text}
                     </div>
+                    {selectedTextId === t.id && (
+                      <button
+                        type="button"
+                        aria-label="Remove text"
+                        className="absolute -right-2.5 -top-2.5 z-50 flex h-5 w-5 items-center justify-center rounded-full bg-white text-black shadow-[0_1px_6px_rgba(0,0,0,0.45)]"
+                        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveTextOverlay(t.id);
+                        }}
+                      >
+                        <X className="h-3 w-3" strokeWidth={2.5} />
+                      </button>
+                    )}
                   </div>
                   ) : null
                 ))}
@@ -4761,11 +4850,16 @@ export default function ClipRefinePage() {
                   type="button"
                   aria-label="Close panel"
                   className="fixed inset-x-0 top-12 bottom-0 z-[44] bg-black/45"
-                  onClick={closeDrawer}
+                  onClick={() => {
+                    if (Date.now() < ignoreDrawerCloseUntil.current) return;
+                    setMobileDrawerOpen(false);
+                    setSelectedTextId(null);
+                  }}
                 />
               )}
               {drawerMounted && (
                 <div
+                  data-text-edit-panel
                   className={cn(
                     "absolute left-0 right-0 bottom-full z-[45] flex flex-col bg-[#111] border-t border-white/10 rounded-t-2xl shadow-[0_0_48px_rgba(0,0,0,0.8)]",
                     "transition-transform duration-300 ease-out",
@@ -4809,6 +4903,7 @@ export default function ClipRefinePage() {
         {/* ── Desktop: collapsible icon sidebar + sliding panel ── */}
         {!isMobile && (
           <div
+            data-text-edit-panel
             className={cn(
               "shrink-0 flex flex-col bg-[#0f0f0f] border-l border-white/6 overflow-hidden transition-all duration-300 ease-in-out",
               panelOpen ? "w-[320px]" : "w-14"
