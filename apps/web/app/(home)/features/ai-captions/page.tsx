@@ -12,7 +12,7 @@ const faqs = [
   },
   {
     q: "What caption styles are available?",
-    a: "Choppr includes animated word styles (karaoke, word pop, MrBeast-style, bounce, glitch, and more), cleaner subtitle looks, and a set of pro motion styles such as spring, liquid fill, chroma split, and glass. You can also adjust size and vertical position.",
+    a: "Choppr includes animated word styles (karaoke, word pop, bounce, glitch, and more), cleaner subtitle looks, and a set of pro motion styles such as spring, liquid fill, chroma split, and glass. You can also adjust size and vertical position.",
   },
   {
     q: "Can I translate captions?",

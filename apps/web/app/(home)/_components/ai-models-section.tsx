@@ -324,7 +324,7 @@ type Model = {
 const MODELS: Model[] = [
   {
     title: "Clip any video",
-    desc: "Other tools only clip podcasts. ClipAnything finds the best moments in any footage - vlogs, gaming, sports, interviews, explainers - and turns them into ready-to-post shorts in one click.",
+    desc: "Other tools only clip podcasts. Choppr finds the best moments in any footage - vlogs, gaming, sports, interviews, explainers - and turns them into ready-to-post shorts in one click.",
     visual: <ClipVisual />,
   },
   {

@@ -99,7 +99,7 @@ export default function YoutubeToShortsPage() {
         },
         {
           title: "Podcasts that already live on YouTube",
-          body: "Video podcasts are the most common Choppr source in our own demos. Paste the episode, cut quotes, split the frame if needed.",
+          body: "Video podcasts convert cleanly because the value is often in a spoken line. Paste the episode, cut quotes, split the frame if needed.",
         },
         {
           title: "Creators testing a Shorts shelf",
