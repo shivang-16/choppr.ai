@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils";
 import ChopprLogo from "@/components/choppr-logo";
 
 const FEATURES = [
-  { label: "AI Clipping", description: "Auto-find viral moments", href: "/dashboard" },
-  { label: "AI Captioning", description: "Accurate captions in seconds", href: "/dashboard" },
-  { label: "AI Reframe", description: "Smart crop for any aspect ratio", href: "/dashboard" },
+  { label: "AI Clipping", description: "Auto-find viral moments", href: "/tools/ai-clip-maker" },
+  { label: "AI Captioning", description: "Accurate captions in seconds", href: "/features/ai-captions" },
+  { label: "AI Reframe", description: "Smart crop for any aspect ratio", href: "/features/ai-reframe" },
 ];
 
 export default function Navbar() {
@@ -66,15 +66,15 @@ export default function Navbar() {
           </div>
 
           {/* How It Works */}
-          <a
-            href="#how-it-works"
+          <Link
+            href="/#how-it-works"
             className={cn(
               "flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors",
               "text-white/60 hover:text-white hover:bg-white/6"
             )}
           >
             How It Works
-          </a>
+          </Link>
 
           {/* Pricing */}
           <Link

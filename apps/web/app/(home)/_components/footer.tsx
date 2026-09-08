@@ -5,18 +5,20 @@ import ChopprLogo from "@/components/choppr-logo";
 
 const LINKS = {
   Product: [
-    { label: "AI Clipping", href: "/dashboard" },
-    { label: "AI Captioning", href: "/dashboard" },
-    { label: "AI Reframe", href: "/dashboard" },
+    { label: "AI Clip Maker", href: "/tools/ai-clip-maker" },
+    { label: "YouTube to Shorts", href: "/tools/youtube-to-shorts" },
+    { label: "Podcast Clip Maker", href: "/tools/podcast-clip-maker" },
+    { label: "Automatic Clips", href: "/tools/automatic-video-clips" },
   ],
-  Navigation: [
-    { label: "Features", href: "/" },
-    { label: "How It Works", href: "/#how-it-works" },
+  Features: [
+    { label: "AI Captions", href: "/features/ai-captions" },
+    { label: "AI Reframe", href: "/features/ai-reframe" },
+    { label: "Opus Clip alternative", href: "/alternatives/opus-clip" },
     { label: "Pricing", href: "/pricing" },
   ],
   Contact: [
     { label: "Support", href: "mailto:shivang@choppr.pro" },
-    { label: "Pricing", href: "/pricing" },
+    { label: "Get started", href: "/sign-up" },
   ],
 };
 

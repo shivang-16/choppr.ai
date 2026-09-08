@@ -45,7 +45,7 @@ const CLIP_PROMPTS = [
 
 const PROMPT_MS = 3200;
 
-function ClipVisual() {
+export function ClipVisual() {
   const centerRef = useRef<HTMLVideoElement | null>(null);
   const portraitRef = useRef<HTMLVideoElement | null>(null);
   const [idx, setIdx] = useState(0);
@@ -60,7 +60,7 @@ function ClipVisual() {
   const current = CLIP_PROMPTS[idx]!;
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -69,32 +69,73 @@ function ClipVisual() {
         }}
       />
 
-      {/* Prompt block — text refactors slowly */}
-      <div className="absolute left-6 top-6 z-20 w-[58%]">
-        <span className="text-[11px] font-medium tracking-wide text-white/45">Prompt</span>
-        <div className="mt-1.5 flex h-9 items-center overflow-hidden rounded-xl border border-white/12 bg-white/[0.06] px-3 backdrop-blur-sm">
-          <AnimatePresence mode="wait">
-            <motion.span
-              key={idx}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-              className="truncate text-[12px] text-white/75"
-            >
-              {current.prompt}
-            </motion.span>
-          </AnimatePresence>
-        </div>
-      </div>
+      <div className="relative z-10 flex h-full w-full max-w-[680px] items-center gap-4 px-5 py-5">
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-2.5 min-h-0">
+          <div className="shrink-0">
+            <span className="text-[11px] font-medium tracking-wide text-white/45">Prompt</span>
+            <div className="mt-1.5 flex h-9 items-center overflow-hidden rounded-xl border border-white/12 bg-white/[0.06] px-3 backdrop-blur-sm">
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={idx}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                  className="truncate text-[12px] text-white/75"
+                >
+                  {current.prompt}
+                </motion.span>
+              </AnimatePresence>
+            </div>
+          </div>
 
-      {/* Center landscape clip + detected tags */}
-      <div className="absolute left-6 top-[40%] z-10 w-[52%]">
-        <div className="relative aspect-video overflow-hidden rounded-xl border border-white/12 shadow-lg shadow-black/40">
+          <div className="relative w-full max-h-[150px] sm:max-h-[168px] overflow-hidden rounded-xl border border-white/12 shadow-lg shadow-black/40 aspect-video">
+            <video
+              ref={centerRef}
+              className="h-full w-full object-cover"
+              poster="/demo/pod-mic-conversation-poster.jpg"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="auto"
+              disablePictureInPicture
+            >
+              <source src="/demo/pod-mic-conversation.mp4" type="video/mp4" />
+            </video>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5 shrink-0">
+            <AnimatePresence mode="popLayout">
+              {current.tags.map((t, i) => (
+                <motion.span
+                  key={t}
+                  layout
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={{ delay: i * 0.08, duration: 0.3 }}
+                  className="rounded-md border border-white/12 bg-white/[0.08] px-2 py-1 text-[10.5px] font-medium text-white/70 backdrop-blur-sm"
+                >
+                  {t}
+                </motion.span>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, x: 16 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.25, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          className="relative h-full shrink-0 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/60"
+          style={{ aspectRatio: "9 / 16" }}
+        >
           <video
-            ref={centerRef}
+            ref={portraitRef}
             className="h-full w-full object-cover"
-            poster="/demo/pod-mic-conversation-poster.jpg"
+            poster="/demo/pod-talking-mic-poster.jpg"
             autoPlay
             muted
             loop
@@ -102,54 +143,14 @@ function ClipVisual() {
             preload="auto"
             disablePictureInPicture
           >
-            <source src="/demo/pod-mic-conversation.mp4" type="video/mp4" />
+            <source src="/demo/pod-talking-mic.mp4" type="video/mp4" />
           </video>
-        </div>
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          <AnimatePresence mode="popLayout">
-            {current.tags.map((t, i) => (
-              <motion.span
-                key={t}
-                layout
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.85 }}
-                transition={{ delay: i * 0.08, duration: 0.3 }}
-                className="rounded-md border border-white/12 bg-white/[0.08] px-2 py-1 text-[10.5px] font-medium text-white/70 backdrop-blur-sm"
-              >
-                {t}
-              </motion.span>
-            ))}
-          </AnimatePresence>
-        </div>
+          <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/70 to-transparent" />
+          <span className="absolute bottom-2 left-2 rounded-md bg-black/50 px-1.5 py-0.5 text-[9px] font-semibold text-white/90 backdrop-blur-sm">
+            Clip 01
+          </span>
+        </motion.div>
       </div>
-
-      {/* Right portrait clip */}
-      <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        whileInView={{ opacity: 1, x: 0 }}
-        viewport={{ once: true }}
-        transition={{ delay: 0.25, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="absolute right-6 top-1/2 z-20 aspect-[9/16] w-[30%] -translate-y-1/2 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/60"
-      >
-        <video
-          ref={portraitRef}
-          className="h-full w-full object-cover"
-          poster="/demo/pod-talking-mic-poster.jpg"
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="auto"
-          disablePictureInPicture
-        >
-          <source src="/demo/pod-talking-mic.mp4" type="video/mp4" />
-        </video>
-        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/70 to-transparent" />
-        <span className="absolute bottom-2 left-2 rounded-md bg-black/50 px-1.5 py-0.5 text-[9px] font-semibold text-white/90 backdrop-blur-sm">
-          Clip 01
-        </span>
-      </motion.div>
     </div>
   );
 }
@@ -166,7 +167,7 @@ const RATIOS = [
 const RATIO_MS = 2600;
 const SRC_AR = 16 / 9; // the "before" frame aspect
 
-function ReframeVisual() {
+export function ReframeVisual() {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const beforeRef = useRef<HTMLVideoElement | null>(null);
   const afterRef = useRef<HTMLVideoElement | null>(null);
