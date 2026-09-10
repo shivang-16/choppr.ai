@@ -64,7 +64,7 @@ export function stripBrollTracks(tracks: unknown[]): unknown[] {
   });
 }
 
-export function serializedTracksHaveBroll(tracks: unknown[]): boolean {
+export function serializedTracksHaveBroll(tracks: unknown[] | null | undefined): boolean {
   if (!Array.isArray(tracks) || tracks.length === 0) return false;
   try {
     return JSON.stringify(tracks).includes("B-roll");
