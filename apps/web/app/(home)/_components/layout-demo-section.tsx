@@ -700,6 +700,7 @@ export default function LayoutDemoSection() {
   const modalSrc = scene.pane === 0 ? TOP_SRC : BOT_SRC;
   const modalPoster = scene.pane === 0 ? TOP_POSTER : BOT_POSTER;
   const playhead = 8 + (time / LOOP_MS) * 42;
+  const brollShot = BROLL_MOMENTS[scene.brollShotIdx] ?? BROLL_MOMENTS[0];
 
   return (
     <section className="relative overflow-x-clip px-3 pt-20 pb-28 sm:px-4 sm:pt-28 sm:pb-36">
@@ -876,7 +877,7 @@ export default function LayoutDemoSection() {
                       {scene.brollOn && scene.brollStillCount > 0 && (
                         <AnimatePresence mode="wait">
                           <motion.div
-                            key={BROLL_MOMENTS[scene.brollShotIdx].src}
+                            key={brollShot.src}
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
@@ -885,7 +886,7 @@ export default function LayoutDemoSection() {
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              src={BROLL_MOMENTS[scene.brollShotIdx].src}
+                              src={brollShot.src}
                               alt=""
                               className="h-full w-full object-cover"
                             />
