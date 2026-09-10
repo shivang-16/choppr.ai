@@ -473,6 +473,42 @@ function extFromUrl(url: string): string {
   return "png"; // safe default
 }
 
+type PreparedBroll = {
+  local: string;
+  isImage: boolean;
+  start: number;
+  dur: number;
+  trimIn: number;
+  fade: number;
+  fadeOutAt: number;
+};
+
+function buildBrollFilterGraph(
+  shots: PreparedBroll[],
+  targetW: number,
+  targetH: number,
+  withFade: boolean,
+): string {
+  const cover =
+    `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=${targetW}:${targetH}`;
+  const parts: string[] = [];
+  let prev = "0:v";
+  shots.forEach((shot, i) => {
+    let chain = `[${i + 1}:v]${cover},fps=30,format=rgba`;
+    if (withFade) {
+      chain +=
+        `,fade=t=in:st=0:d=${shot.fade.toFixed(3)}:alpha=1` +
+        `,fade=t=out:st=${shot.fadeOutAt.toFixed(3)}:d=${shot.fade.toFixed(3)}:alpha=1`;
+    }
+    chain += `,setpts=PTS+${shot.start.toFixed(3)}/TB[br${i}]`;
+    const next = i === shots.length - 1 ? "vout" : `bv${i}`;
+    parts.push(chain);
+    parts.push(`[${prev}][br${i}]overlay=0:0:eof_action=pass[${next}]`);
+    prev = next;
+  });
+  return parts.join(";");
+}
+
 async function applyBrollOverlays(opts: {
   exportId: string;
   tmpDir: string;
@@ -484,87 +520,76 @@ async function applyBrollOverlays(opts: {
   download: (url: string, dest: string, timeoutMs?: number) => Promise<void>;
 }): Promise<string> {
   const { exportId, tmpDir, broll, targetW, targetH, ffmpeg, download } = opts;
-  let current = opts.inputPath;
+  const candidates = broll.filter(s => s.src && s.duration >= 0.2);
+  if (candidates.length === 0) return opts.inputPath;
 
-  for (let i = 0; i < broll.length; i++) {
-    const shot = broll[i]!;
-    if (!shot.src || shot.duration < 0.2) continue;
-    const start = Math.max(0, shot.startTime);
-    const dur = shot.duration;
-    const fade = Math.min(0.22, dur * 0.22);
-    const fadeOutAt = Math.max(0, dur - fade);
+  await updateExport(exportId, { progress: 71 });
+
+  const slots: Array<PreparedBroll | null> = candidates.map(() => null);
+  const downloads = candidates.map(async (shot, i) => {
     const ext = extFromUrl(shot.src);
     const local = join(tmpDir, `broll_src_${i}.${ext}`);
-    try {
-      await download(shot.src, local, 60_000);
-    } catch (err: any) {
-      logger.warn(`[export:${exportId}] B-roll download failed (${err?.message}), skipping`);
-      continue;
+    await download(shot.src, local, 60_000);
+    const dur = shot.duration;
+    const fade = Math.min(0.22, dur * 0.22);
+    slots[i] = {
+      local,
+      isImage: shot.mediaType === "image" || ["png", "jpg", "jpeg", "webp", "gif"].includes(ext),
+      start: Math.max(0, shot.startTime),
+      dur,
+      trimIn: shot.trimIn ?? 0,
+      fade,
+      fadeOutAt: Math.max(0, dur - fade),
+    };
+  });
+  const results = await Promise.allSettled(downloads);
+  results.forEach((result, i) => {
+    if (result.status === "rejected") {
+      const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      logger.warn(`[export:${exportId}] B-roll download failed (${reason}), skipping`);
+      slots[i] = null;
     }
+  });
+  const prepared = slots.filter((s): s is PreparedBroll => s != null);
+  if (prepared.length === 0) return opts.inputPath;
 
-    const isImage = shot.mediaType === "image" || ["png", "jpg", "jpeg", "webp", "gif"].includes(ext);
-    const prepared = join(tmpDir, `broll_prep_${i}.mp4`);
-    const cover = `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${targetW}:${targetH}`;
+  await updateExport(exportId, { progress: 72 });
 
-    try {
-      if (isImage) {
-        const frames = Math.max(8, Math.round(dur * 30));
-        try {
-          await ffmpeg([
-            "-y", "-loop", "1", "-t", String(dur), "-i", local,
-            "-vf",
-            `${cover},zoompan=z='min(zoom+0.0009,1.1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${targetW}x${targetH}:fps=30,format=yuv420p`,
-            "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-            "-r", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-            prepared,
-          ], `broll-prep-${i}`);
-        } catch {
-          await ffmpeg([
-            "-y", "-loop", "1", "-t", String(dur), "-i", local,
-            "-vf", `${cover},fps=30,format=yuv420p`,
-            "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-            "-r", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-            prepared,
-          ], `broll-prep-still-${i}`);
-        }
-      } else {
-        const trimIn = shot.trimIn ?? 0;
-        await ffmpeg([
-          "-y", "-ss", String(trimIn), "-t", String(dur), "-i", local,
-          "-vf", `${cover},fps=30,format=yuv420p`,
-          "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-          "-r", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-          prepared,
-        ], `broll-prep-${i}`);
-      }
-    } catch (err: any) {
-      logger.warn(`[export:${exportId}] B-roll prepare failed (${err?.message}), skipping`);
-      continue;
+  const out = join(tmpDir, "with_broll.mp4");
+  const inputArgs: string[] = ["-y", "-i", opts.inputPath];
+  for (const shot of prepared) {
+    if (shot.isImage) {
+      inputArgs.push("-loop", "1", "-framerate", "30", "-t", String(shot.dur), "-i", shot.local);
+    } else {
+      inputArgs.push("-ss", String(shot.trimIn), "-t", String(shot.dur), "-i", shot.local);
     }
+  }
+  const encodeArgs = [
+    "-map", "[vout]", "-map", "0:a?",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    "-c:a", "copy", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+    out,
+  ];
 
-    const out = join(tmpDir, `with_broll_${i}.mp4`);
-    const fadeFilter =
-      `[1:v]format=rgba,fade=t=in:st=0:d=${fade.toFixed(3)}:alpha=1,fade=t=out:st=${fadeOutAt.toFixed(3)}:d=${fade.toFixed(3)}:alpha=1,setpts=PTS+${start.toFixed(3)}/TB[br];` +
-      `[0:v][br]overlay=0:0:eof_action=pass[vout]`;
-
+  try {
+    await ffmpeg(
+      [...inputArgs, "-filter_complex", buildBrollFilterGraph(prepared, targetW, targetH, true), ...encodeArgs],
+      "broll-overlay",
+    );
+  } catch (fadeErr: any) {
+    logger.warn(`[export:${exportId}] B-roll overlay with fade failed, retrying without fade (${fadeErr?.message})`);
     try {
-      await ffmpeg([
-        "-y",
-        "-i", current,
-        "-i", prepared,
-        "-filter_complex", fadeFilter,
-        "-map", "[vout]", "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "copy", "-movflags", "+faststart",
-        out,
-      ], `broll-overlay-${i}`);
-      current = out;
+      await ffmpeg(
+        [...inputArgs, "-filter_complex", buildBrollFilterGraph(prepared, targetW, targetH, false), ...encodeArgs],
+        "broll-overlay-plain",
+      );
     } catch (err: any) {
-      logger.warn(`[export:${exportId}] B-roll overlay failed (${err?.message}), skipping`);
+      logger.warn(`[export:${exportId}] B-roll overlay failed (${err?.message}), exporting without B-roll`);
+      return opts.inputPath;
     }
   }
 
-  return current;
+  return out;
 }
 
 /** Update the Export document in MongoDB. */

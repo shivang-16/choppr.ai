@@ -1920,7 +1920,6 @@ function WaterFill({ progress, direction = "horizontal" }: { progress: number; d
   const p = Math.max(0, Math.min(100, progress));
 
   if (direction === "vertical") {
-    // Water rises from bottom; start at ~5% so first fill is visible
     const fillHeight = Math.max(5, p);
     return (
       <span
@@ -1928,8 +1927,7 @@ function WaterFill({ progress, direction = "horizontal" }: { progress: number; d
         style={{ height: `${fillHeight}%` }}
         aria-hidden
       >
-        <span className="absolute inset-0 bg-white" />
-        {/* Horizontal wave scrolls left continuously */}
+        <span className="absolute inset-x-0 bottom-0 top-[10px] bg-white" />
         <svg
           className="absolute -top-[10px] left-0 w-[200%] animate-[chopprWaterScroll_2.2s_linear_infinite]"
           style={{ height: 20 }}
@@ -1946,7 +1944,6 @@ function WaterFill({ progress, direction = "horizontal" }: { progress: number; d
     );
   }
 
-  // Horizontal: fills left→right; wave on the right edge scrolls vertically
   const fillWidth = Math.max(3, p);
   return (
     <span
@@ -1954,16 +1951,15 @@ function WaterFill({ progress, direction = "horizontal" }: { progress: number; d
       style={{ width: `${fillWidth}%` }}
       aria-hidden
     >
-      <span className="absolute inset-0 bg-white" />
-      {/* Vertical wave on right edge — tall SVG, scrolls upward */}
+      <span className="absolute inset-y-0 left-0 right-4 bg-white" />
       <svg
-        className="absolute top-0 right-0 h-[200%] w-4 animate-[chopprWaterScrollV_1.6s_linear_infinite]"
+        className="absolute top-0 right-0 h-[200%] w-4 animate-[chopprWaterScrollV_1.8s_linear_infinite]"
         viewBox="0 0 16 200"
         preserveAspectRatio="none"
         aria-hidden
       >
         <path
-          d="M8 0 C13 12, 3 24, 8 36 C13 48, 3 60, 8 72 C13 84, 3 96, 8 108 C13 120, 3 132, 8 144 C13 156, 3 168, 8 180 C13 192, 8 200, 8 200 L0 200 L0 0 Z"
+          d="M0 0 L8 0 C13 12, 3 24, 8 36 C13 48, 3 60, 8 72 C13 84, 3 96, 8 108 C13 120, 3 132, 8 144 C13 156, 3 168, 8 180 C13 192, 8 200, 8 200 L0 200 Z"
           fill="white"
         />
       </svg>
