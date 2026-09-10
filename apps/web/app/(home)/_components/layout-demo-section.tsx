@@ -7,8 +7,10 @@ import {
   Captions,
   Check,
   ChevronRight,
+  Clapperboard,
   Gauge,
   Layers,
+  Loader2,
   Play,
   Redo2,
   Repeat,
@@ -22,6 +24,7 @@ import {
   Volume2,
   Languages,
   Download,
+  Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CaptionWord } from "@/app/(root)/dashboard/clips/[clipId]/_components/caption-renderer";
@@ -34,7 +37,7 @@ const TOP_POSTER = "/demo/pod-women-studio-poster.jpg";
 const BOT_SRC = "/demo/pod-talking-mic.mp4";
 const BOT_POSTER = "/demo/pod-talking-mic-poster.jpg";
 
-const LOOP_MS = 39200;
+const LOOP_MS = 47800;
 const DESIGN_W = 1180;
 const DESIGN_H = 680;
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -53,13 +56,21 @@ const TRANSLATE_CLICK_AT = 22900;
 const TRANSLATE_OPEN_AT = 23080;
 const HINGLISH_CLICK_AT = 24600;
 const HINGLISH_ON_AT = 24780;
-const EXPORT_CLICK_AT = 28600;
-const EXPORT_START_AT = 28780;
-const EXPORT_DONE_AT = 31400;
-const VERSIONS_AT = 31400;
-const EDIT1_CLICK_AT = 32800;
-const EDIT1_ON_AT = 32980;
-const RESET_AT = 37400;
+const BROLL_TAB_CLICK_AT = 25400;
+const BROLL_TAB_ON_AT = 25680;
+const BROLL_SUGGEST_CLICK_AT = 27200;
+const BROLL_SUGGESTING_AT = 27540;
+const BROLL_MOMENTS_AT = 29800;
+const BROLL_GENERATE_CLICK_AT = 32200;
+const BROLL_GENERATING_AT = 32520;
+const BROLL_APPLIED_AT = 34800;
+const EXPORT_CLICK_AT = 37200;
+const EXPORT_START_AT = 37480;
+const EXPORT_DONE_AT = 40100;
+const VERSIONS_AT = 40100;
+const EDIT1_CLICK_AT = 41500;
+const EDIT1_ON_AT = 41680;
+const RESET_AT = 46000;
 const WORD_DUR = 0.48;
 const EDITED_WORD = "greatest";
 
@@ -131,10 +142,17 @@ function editedTranscriptText(t: number): { text: string; editing: boolean; comm
 
 const TABS = [
   { id: "captions", icon: Captions, label: "Captions" },
+  { id: "broll", icon: Clapperboard, label: "B-roll" },
   { id: "upload", icon: Upload, label: "Upload" },
   { id: "overlays", icon: Layers, label: "Overlays" },
   { id: "speed", icon: Gauge, label: "Speed" },
   { id: "enhance", icon: Sparkles, label: "Enhance" },
+] as const;
+
+const BROLL_MOMENTS = [
+  { start: "0:04", end: "0:07", phrase: "waiting for the perfect moment", src: "/demo/broll-still-clock.jpg", left: "10%", width: "16%" },
+  { start: "0:08", end: "0:11", phrase: "start right now", src: "/demo/broll-still-start.jpg", left: "32%", width: "15%" },
+  { start: "0:16", end: "0:19", phrase: "break through", src: "/demo/broll-still-breakthrough.jpg", left: "55%", width: "18%" },
 ] as const;
 
 function ensureFonts() {
@@ -183,7 +201,7 @@ function inRange(t: number, start: number, end: number) {
   return t >= start && t < end;
 }
 
-type Aim = "rest" | "layout" | "split" | "crop" | "next" | "apply" | "preview" | "captions" | "slidebox" | "captionDrag" | "editWord" | "translateTab" | "hinglish" | "exportBtn" | "edit1";
+type Aim = "rest" | "layout" | "split" | "crop" | "next" | "apply" | "preview" | "captions" | "slidebox" | "captionDrag" | "editWord" | "translateTab" | "hinglish" | "brollTab" | "brollSuggest" | "brollGenerate" | "brollStills" | "exportBtn" | "edit1";
 
 function sceneAt(t: number) {
   const layoutOpen = inRange(t, 1100, 2480);
@@ -200,8 +218,8 @@ function sceneAt(t: number) {
     ? progress(t, EXPORT_START_AT, EXPORT_DONE_AT) * 100
     : exportDone ? 100 : 0;
   const showVersions = t >= VERSIONS_AT && !resetting;
-  const viewingEdit = t >= EDIT1_ON_AT && !resetting;
-  const viewingOriginal = showVersions && !viewingEdit;
+  const viewingEdit = t >= VERSIONS_AT && !resetting;
+  const viewingOriginal = false;
   const captionOn = t >= CAPTION_ON_AT && !resetting && !viewingOriginal;
   const edit = editedTranscriptText(t);
   const restarted = t >= CAPTION_RESTART_AT && !resetting;
@@ -211,7 +229,7 @@ function sceneAt(t: number) {
     : buildCaptionWords(edit.committed ? EDITED_WORD : "biggest");
   const frozenAtTranslate = (TRANSLATE_OPEN_AT - CAPTION_RESTART_AT) / 1000;
   const captionElapsed = !captionOn ? -1
-    : viewingEdit ? (t - EDIT1_ON_AT) / 1000
+    : viewingEdit ? (t - VERSIONS_AT) / 1000
     : hinglishOn ? (t - HINGLISH_ON_AT) / 1000
     : translateOpen ? frozenAtTranslate
     : restarted ? (t - CAPTION_RESTART_AT) / 1000
@@ -235,8 +253,30 @@ function sceneAt(t: number) {
     inRange(t, 19200, 19380) ||
     inRange(t, TRANSLATE_CLICK_AT, TRANSLATE_OPEN_AT) ||
     inRange(t, HINGLISH_CLICK_AT, HINGLISH_ON_AT) ||
+    inRange(t, BROLL_TAB_CLICK_AT, BROLL_TAB_ON_AT) ||
+    inRange(t, BROLL_SUGGEST_CLICK_AT, BROLL_SUGGESTING_AT) ||
+    inRange(t, BROLL_GENERATE_CLICK_AT, BROLL_GENERATING_AT) ||
     inRange(t, EXPORT_CLICK_AT, EXPORT_START_AT) ||
     inRange(t, EDIT1_CLICK_AT, EDIT1_ON_AT);
+
+  const brollTabOn = t >= BROLL_TAB_ON_AT && !resetting;
+  const brollSuggesting = inRange(t, BROLL_SUGGESTING_AT, BROLL_MOMENTS_AT) && !resetting;
+  const brollMomentsOn = t >= BROLL_MOMENTS_AT && !resetting;
+  const brollMomentCount = !brollMomentsOn
+    ? 0
+    : Math.min(BROLL_MOMENTS.length, 1 + Math.floor((t - BROLL_MOMENTS_AT) / 380));
+  const brollGenerating = inRange(t, BROLL_GENERATING_AT, BROLL_APPLIED_AT) && !resetting;
+  const brollOn = t >= BROLL_APPLIED_AT && !resetting && !viewingOriginal;
+  const brollStillCount = !brollOn
+    ? 0
+    : Math.min(BROLL_MOMENTS.length, 1 + Math.floor((t - BROLL_APPLIED_AT) / 340));
+  const brollCycleAt = viewingEdit ? VERSIONS_AT : BROLL_APPLIED_AT;
+  const brollShotIdx = brollOn
+    ? Math.min(
+        Math.max(brollStillCount, 1) - 1,
+        Math.floor(((t - brollCycleAt) / 1800) % BROLL_MOMENTS.length),
+      )
+    : 0;
 
   let aim: Aim = "rest";
   if (inRange(t, 400, 1600)) aim = "layout";
@@ -255,11 +295,13 @@ function sceneAt(t: number) {
   else if (inRange(t, 21100, 22200)) aim = "preview";
   else if (inRange(t, 22200, 23200)) aim = "translateTab";
   else if (inRange(t, 23200, 24900) && !resetting) aim = "hinglish";
-  else if (inRange(t, 24900, 27800)) aim = "preview";
-  else if (inRange(t, 27800, 31600) && !resetting) aim = "exportBtn";
-  else if (inRange(t, 31600, 32100)) aim = "preview";
-  else if (inRange(t, 32100, 33100) && !resetting) aim = "edit1";
-  else if (t >= 33100 && !resetting) aim = "preview";
+  else if (inRange(t, 24900, 27000) && !resetting) aim = "brollTab";
+  else if (inRange(t, 27000, 30600) && !resetting) aim = "brollSuggest";
+  else if (inRange(t, 30600, 35000) && !resetting) aim = "brollGenerate";
+  else if (inRange(t, 35000, 37200) && !resetting) aim = "brollStills";
+  else if (inRange(t, 37200, 40400) && !resetting) aim = "exportBtn";
+  else if (inRange(t, 40400, 41800) && !resetting) aim = "edit1";
+  else if (t >= 41800 && !resetting) aim = "preview";
 
   const topCrop = lerpCrop(TOP_CROP_A, TOP_CROP_B, progress(t, 3600, 5200));
   const botCrop = lerpCrop(BOT_CROP_A, BOT_CROP_B, progress(t, 7200, 8600));
@@ -270,6 +312,7 @@ function sceneAt(t: number) {
     captionWords, transcriptWords, translateOpen, hinglishOn,
     exporting, exportDone, exportProgress, showVersions, viewingEdit, viewingOriginal,
     editText: edit.text, editingWord: edit.editing, editCommitted: edit.committed,
+    brollTabOn, brollSuggesting, brollMomentsOn, brollMomentCount, brollGenerating, brollOn, brollStillCount, brollShotIdx,
   };
 }
 
@@ -387,7 +430,7 @@ function LayoutIcon({ kind, className }: { kind: "fill" | "fit" | "split"; class
   );
 }
 
-function DemoCursor({ x, y, clicking, visible }: { x: number; y: number; clicking: boolean; visible: boolean }) {
+function DemoCursor({ x, y, clicking, visible, duration = 0.55 }: { x: number; y: number; clicking: boolean; visible: boolean; duration?: number }) {
   return (
     <motion.div
       aria-hidden
@@ -398,7 +441,7 @@ function DemoCursor({ x, y, clicking, visible }: { x: number; y: number; clickin
         scale: clicking ? 0.86 : 1,
         opacity: visible ? 1 : 0,
       }}
-      transition={{ duration: 0.55, ease: EASE }}
+      transition={{ duration, ease: EASE }}
     >
       <svg className="h-3 w-[11px] sm:h-6 sm:w-[22px]" viewBox="0 0 22 24" fill="none">
         <path
@@ -488,6 +531,10 @@ export default function LayoutDemoSection() {
   const editWordRef = useRef<HTMLSpanElement>(null);
   const translateTabRef = useRef<HTMLSpanElement>(null);
   const hinglishBtnRef = useRef<HTMLDivElement>(null);
+  const brollTabRef = useRef<HTMLDivElement>(null);
+  const suggestBtnRef = useRef<HTMLDivElement>(null);
+  const generateBtnRef = useRef<HTMLDivElement>(null);
+  const brollStillsRef = useRef<HTMLDivElement>(null);
   const exportBtnRef = useRef<HTMLDivElement>(null);
   const edit1Ref = useRef<HTMLButtonElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -560,6 +607,14 @@ export default function LayoutDemoSection() {
         editText: EDITED_WORD,
         editingWord: false,
         editCommitted: true,
+        brollTabOn: true,
+        brollSuggesting: false,
+        brollMomentsOn: true,
+        brollMomentCount: 3,
+        brollGenerating: false,
+        brollOn: true,
+        brollStillCount: 3,
+        brollShotIdx: 0,
       }
     : sceneAt(time);
 
@@ -597,6 +652,11 @@ export default function LayoutDemoSection() {
   }, [scene.highlightIdx]);
 
   useEffect(() => {
+    if (!scene.brollGenerating && !scene.brollOn) return;
+    brollStillsRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [scene.brollGenerating, scene.brollOn]);
+
+  useEffect(() => {
     const v = modalRef.current;
     if (!v || !playing || !scene.modal) return;
     v.muted = true;
@@ -619,6 +679,10 @@ export default function LayoutDemoSection() {
       : scene.aim === "editWord" ? editWordRef.current
       : scene.aim === "translateTab" ? translateTabRef.current
       : scene.aim === "hinglish" ? hinglishBtnRef.current
+      : scene.aim === "brollTab" ? brollTabRef.current
+      : scene.aim === "brollSuggest" ? suggestBtnRef.current
+      : scene.aim === "brollGenerate" ? generateBtnRef.current
+      : scene.aim === "brollStills" ? brollStillsRef.current
       : scene.aim === "exportBtn" ? exportBtnRef.current
       : scene.aim === "edit1" ? edit1Ref.current
       : scene.aim === "preview" ? previewRef.current
@@ -631,7 +695,7 @@ export default function LayoutDemoSection() {
       x: ((r.left + r.width * 0.55 - s.left) / s.width) * 100,
       y: ((r.top + r.height * 0.55 - s.top) / s.height) * 100,
     });
-  }, [scene.aim, scene.crop.x, scene.crop.y, scene.modal, scene.layoutOpen, scene.pane, scene.applied, scene.panelOpen, scene.captionOn, scene.posOffset, scene.translateOpen, scene.hinglishOn, scene.exporting, scene.showVersions, scene.viewingEdit, frameW]);
+  }, [scene.aim, scene.crop.x, scene.crop.y, scene.modal, scene.layoutOpen, scene.pane, scene.applied, scene.panelOpen, scene.captionOn, scene.posOffset, scene.translateOpen, scene.hinglishOn, scene.brollTabOn, scene.brollMomentsOn, scene.brollMomentCount, scene.brollGenerating, scene.brollOn, scene.exporting, scene.showVersions, scene.viewingEdit, frameW]);
 
   const modalSrc = scene.pane === 0 ? TOP_SRC : BOT_SRC;
   const modalPoster = scene.pane === 0 ? TOP_POSTER : BOT_POSTER;
@@ -809,6 +873,25 @@ export default function LayoutDemoSection() {
                           src={BOT_SRC}
                         />
                       </div>
+                      {scene.brollOn && scene.brollStillCount > 0 && (
+                        <AnimatePresence mode="wait">
+                          <motion.div
+                            key={BROLL_MOMENTS[scene.brollShotIdx].src}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.5, ease: EASE }}
+                            className="absolute inset-0 z-[1]"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={BROLL_MOMENTS[scene.brollShotIdx].src}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          </motion.div>
+                        </AnimatePresence>
+                      )}
                       {scene.captionOn && (
                         <DemoSlideBoxCaption
                           t={scene.captionElapsed}
@@ -944,6 +1027,12 @@ export default function LayoutDemoSection() {
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={BOT_POSTER} alt="" className="h-1/2 w-full object-cover" />
                               </div>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={BROLL_MOMENTS[0].src}
+                                alt=""
+                                className="absolute inset-0 h-full w-full object-cover"
+                              />
                             </div>
                             <span className={cn("text-[9px] font-medium leading-none", scene.viewingEdit ? "text-white" : "text-white/40")}>
                               Edit 1
@@ -970,7 +1059,7 @@ export default function LayoutDemoSection() {
                         return (
                           <div
                             key={tab.id}
-                            ref={tab.id === "captions" ? captionsTabRef : undefined}
+                            ref={tab.id === "captions" ? captionsTabRef : tab.id === "broll" ? brollTabRef : undefined}
                             className="flex w-full flex-col items-center gap-1 py-3 text-white/55"
                           >
                             <Icon className="h-4 w-4" strokeWidth={1.8} />
@@ -989,20 +1078,125 @@ export default function LayoutDemoSection() {
                   {scene.panelOpen && (
                     <div className="flex h-full min-h-0 flex-col">
                       <div className="flex shrink-0 border-b border-white/8">
-                        {TABS.map(({ id, icon: Icon, label }) => (
+                        {TABS.map(({ id, icon: Icon, label }) => {
+                          const active = scene.brollTabOn ? id === "broll" : id === "captions";
+                          return (
                           <div
                             key={id}
+                            ref={id === "captions" ? captionsTabRef : id === "broll" ? brollTabRef : undefined}
                             className={cn(
                               "flex flex-1 flex-col items-center gap-1 border-b-2 py-2.5 text-[9px] font-medium",
-                              id === "captions" ? "border-white text-white" : "border-transparent text-white/55",
+                              active ? "border-white text-white" : "border-transparent text-white/55",
                             )}
                           >
                             <Icon className="h-3.5 w-3.5" />
                             {label}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3">
+                        {scene.brollTabOn ? (
+                          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto no-scrollbar">
+                            <div className="flex items-center gap-1 rounded-full bg-white/[0.04] p-0.5">
+                              <span className="flex-1 rounded-full bg-white/12 px-3 py-1.5 text-center text-[11px] font-semibold text-white">
+                                Auto
+                              </span>
+                              <span className="flex-1 rounded-full px-3 py-1.5 text-center text-[11px] font-semibold text-white/45">
+                                My media
+                              </span>
+                            </div>
+                            <p className="text-[12px] text-white/40">AI cutaways. Voice stays.</p>
+                            <div
+                              ref={suggestBtnRef}
+                              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#7c3aed] px-4 text-[13px] font-semibold text-white"
+                            >
+                              {scene.brollSuggesting ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Sparkles className="h-4 w-4" />
+                              )}
+                              {scene.brollSuggesting ? "Finding moments…" : "Suggest B-roll"}
+                            </div>
+                            {scene.brollMomentsOn && (
+                              <div className="flex flex-col gap-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="shrink-0 text-[12px] font-medium text-white/70">
+                                    {scene.brollMomentCount} moments
+                                  </p>
+                                  <div
+                                    ref={generateBtnRef}
+                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-white px-2.5 py-1 text-[11px] font-bold text-black"
+                                  >
+                                    {scene.brollGenerating ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Wand2 className="h-3 w-3" />
+                                    )}
+                                    {scene.brollGenerating ? "Generating…" : "Generate · 3 credits"}
+                                  </div>
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                  {BROLL_MOMENTS.slice(0, scene.brollMomentCount).map((m) => (
+                                    <motion.div
+                                      key={m.phrase}
+                                      initial={{ opacity: 0, y: 6 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      transition={{ duration: 0.28, ease: EASE }}
+                                      className="flex items-start gap-2.5 rounded-xl border border-white/20 bg-white/[0.06] px-2.5 py-2"
+                                    >
+                                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border border-white bg-white">
+                                        <Check className="h-3 w-3 text-black" strokeWidth={3} />
+                                      </span>
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block font-mono text-[10px] tabular-nums text-white/40">
+                                          {m.start} – {m.end}
+                                        </span>
+                                        <span className="mt-0.5 line-clamp-2 block text-[12px] leading-snug text-white/85">
+                                          {m.phrase}
+                                        </span>
+                                      </span>
+                                    </motion.div>
+                                  ))}
+                                </div>
+                                <p className="text-[10px] text-white/30">1 credit each</p>
+                              </div>
+                            )}
+                            {(scene.brollGenerating || scene.brollOn) && (
+                              <div ref={brollStillsRef} className="flex flex-col gap-2 pb-2">
+                                <p className="text-[12px] font-medium text-white/70">Generated</p>
+                                <div className="grid grid-cols-2 gap-2.5">
+                                  {scene.brollGenerating && !scene.brollOn &&
+                                    [0, 1, 2].map((i) => (
+                                      <div key={`sk-${i}`} className="flex flex-col gap-1.5">
+                                        <div className="aspect-[4/3] animate-pulse rounded-lg bg-white/5" />
+                                        <div className="h-3 w-1/2 animate-pulse rounded bg-white/5" />
+                                      </div>
+                                    ))}
+                                  {scene.brollOn &&
+                                    BROLL_MOMENTS.slice(0, scene.brollStillCount).map((m) => (
+                                      <motion.div
+                                        key={m.src}
+                                        initial={{ opacity: 0, y: 8 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.35, ease: EASE }}
+                                        className="flex min-w-0 flex-col gap-1.5"
+                                      >
+                                        <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-[#1a1a22]">
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img src={m.src} alt="" className="h-full w-full object-cover" />
+                                        </div>
+                                        <p className="px-0.5 font-mono text-[10px] tabular-nums text-white/40">
+                                          {m.start}
+                                        </p>
+                                      </motion.div>
+                                    ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                        <>
                         <div className="mb-3 flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
                           {(["Styles", "Adjustment", "Translate"] as const).map(label => {
                             const active = scene.translateOpen ? label === "Translate" : label === "Styles";
@@ -1093,6 +1287,8 @@ export default function LayoutDemoSection() {
                           </div>
                         </div>
                         )}
+                        </>
+                        )}
                       </div>
                       <div className="shrink-0 border-t border-white/8 p-3">
                         <div
@@ -1112,7 +1308,7 @@ export default function LayoutDemoSection() {
                             )}
                           >
                             {scene.exportDone && !scene.exporting && <Download className="h-3.5 w-3.5" />}
-                            {scene.exporting ? "Cancel" : scene.exportDone ? "Download" : "Export · 4 credits"}
+                            {scene.exporting ? "Cancel" : scene.exportDone ? "Download" : scene.brollOn ? "Export · 5 credits" : "Export · 4 credits"}
                           </span>
                         </div>
                         <p className="mt-2.5 text-center text-[11px] font-medium text-white/80">
@@ -1162,6 +1358,30 @@ export default function LayoutDemoSection() {
                         <div className="flex h-[22px] items-center rounded-md bg-violet-500/80 px-2">
                           <span className="text-[10px] font-semibold text-white">Slide Box</span>
                         </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  <AnimatePresence>
+                    {scene.brollOn && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                        animate={{ opacity: 1, height: 28, marginBottom: 6 }}
+                        exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                        className="relative overflow-hidden"
+                      >
+                        {BROLL_MOMENTS.slice(0, scene.brollStillCount).map((m) => (
+                          <motion.div
+                            key={m.src}
+                            initial={{ opacity: 0, scale: 0.96 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.3, ease: EASE }}
+                            className="absolute top-0 h-[28px] overflow-hidden rounded-md border border-white/15"
+                            style={{ left: m.left, width: m.width }}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={m.src} alt="" className="h-full w-full object-cover" />
+                          </motion.div>
+                        ))}
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -1292,6 +1512,7 @@ export default function LayoutDemoSection() {
               y={cursor.y}
               clicking={scene.clicking}
               visible={playing && scene.aim !== "rest"}
+              duration={scene.aim.startsWith("broll") ? 0.78 : 0.55}
             />
           </div>
           </div>

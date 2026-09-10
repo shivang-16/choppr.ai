@@ -311,53 +311,40 @@ export function BrollPanel({
         <div className="flex min-h-0 flex-col gap-3">
           <p className="text-[12px] text-white/40">AI cutaways. Voice stays.</p>
 
-          {windows.length === 0 && (
-            <button
-              type="button"
-              disabled={suggesting || generating || captionWords.length === 0}
-              onClick={() => void runSuggest()}
-              className="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#7c3aed] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#6d28d9] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {suggesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {suggesting ? "Finding moments…" : "Suggest B-roll"}
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={suggesting || generating || captionWords.length === 0}
+            onClick={() => void runSuggest()}
+            className="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#7c3aed] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#6d28d9] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {suggesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {suggesting ? "Finding moments…" : "Suggest B-roll"}
+          </button>
 
           {windows.length > 0 && (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="shrink-0 text-[12px] font-medium text-white/70">{windows.length} moments</p>
-                <div className="flex shrink-0 items-center gap-1.5">
+                {generateLimitReached ? (
+                  <a
+                    href="/dashboard/billing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-white px-2.5 py-1 text-[11px] font-bold text-black"
+                  >
+                    Upgrade for more
+                  </a>
+                ) : (
                   <button
                     type="button"
-                    disabled={suggesting || generating || captionWords.length === 0}
-                    onClick={() => void runSuggest()}
-                    className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-[#7c3aed] px-2.5 py-1 text-[11px] font-bold text-white transition-colors hover:bg-[#6d28d9] disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={generating || selected.size === 0}
+                    onClick={() => void runGenerate(windows.filter((_, i) => selected.has(i)))}
+                    className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-white px-2.5 py-1 text-[11px] font-bold text-black disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                    {suggesting ? "Finding…" : "Suggest"}
+                    {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                    Generate{selected.size ? ` · ${selected.size} credit${selected.size === 1 ? "" : "s"}` : ""}
                   </button>
-                  {generateLimitReached ? (
-                    <a
-                      href="/dashboard/billing"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-white px-2.5 py-1 text-[11px] font-bold text-black"
-                    >
-                      Upgrade for more
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={generating || selected.size === 0}
-                      onClick={() => void runGenerate(windows.filter((_, i) => selected.has(i)))}
-                      className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-white px-2.5 py-1 text-[11px] font-bold text-black disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
-                      Generate{selected.size ? ` · ${selected.size} credit${selected.size === 1 ? "" : "s"}` : ""}
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
 
               {isFreePlan && momentCapReached && (
