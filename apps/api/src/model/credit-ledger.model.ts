@@ -15,7 +15,9 @@ export type LedgerType =
   | "grant_admin"          // manual grant by admin
   | "job_cost"             // deducted when a job completes (negative)
   | "export_cost"          // deducted when a video export completes (negative)
-  | "refund_job_failed";   // refund when a job fails (positive)
+  | "broll_cost"           // deducted when AI B-roll stills are generated (negative)
+  | "refund_job_failed"    // refund when a job fails (positive)
+  | "refund_broll_failed"; // refund when AI B-roll stills fail (positive)
 
 export type CreditBucket = "subscription" | "topup";
 
@@ -47,7 +49,9 @@ const creditLedgerSchema = new Schema<ICreditLedger>(
         "grant_admin",
         "job_cost",
         "export_cost",
+        "broll_cost",
         "refund_job_failed",
+        "refund_broll_failed",
       ],
       required: true,
     },

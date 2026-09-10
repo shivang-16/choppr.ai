@@ -155,6 +155,17 @@ export interface ExportPipelineParams {
     opacity:  number; // 0-100
   } | null;
   previewWidth?:  number;
+  broll?:         BrollOverlay[];
+}
+
+export interface BrollOverlay {
+  id: string;
+  startTime: number;
+  duration: number;
+  src: string;
+  mediaType: "video" | "image";
+  mode?: "cutaway" | "pip" | "split";
+  trimIn?: number;
 }
 
 export interface TextOverlay {
@@ -456,10 +467,104 @@ function extFromUrl(url: string): string {
     const dot = pathname.lastIndexOf(".");
     if (dot !== -1) {
       const ext = pathname.slice(dot + 1).toLowerCase().split("?")[0]!;
-      if (["gif", "webp", "png", "jpg", "jpeg", "apng"].includes(ext)) return ext;
+      if (["gif", "webp", "png", "jpg", "jpeg", "apng", "mp4", "webm", "mov"].includes(ext)) return ext;
     }
   } catch { /* ignore */ }
   return "png"; // safe default
+}
+
+async function applyBrollOverlays(opts: {
+  exportId: string;
+  tmpDir: string;
+  inputPath: string;
+  broll: BrollOverlay[];
+  targetW: number;
+  targetH: number;
+  ffmpeg: (args: string[], tag: string) => Promise<void>;
+  download: (url: string, dest: string, timeoutMs?: number) => Promise<void>;
+}): Promise<string> {
+  const { exportId, tmpDir, broll, targetW, targetH, ffmpeg, download } = opts;
+  let current = opts.inputPath;
+
+  for (let i = 0; i < broll.length; i++) {
+    const shot = broll[i]!;
+    if (!shot.src || shot.duration < 0.2) continue;
+    const start = Math.max(0, shot.startTime);
+    const dur = shot.duration;
+    const fade = Math.min(0.22, dur * 0.22);
+    const fadeOutAt = Math.max(0, dur - fade);
+    const ext = extFromUrl(shot.src);
+    const local = join(tmpDir, `broll_src_${i}.${ext}`);
+    try {
+      await download(shot.src, local, 60_000);
+    } catch (err: any) {
+      logger.warn(`[export:${exportId}] B-roll download failed (${err?.message}), skipping`);
+      continue;
+    }
+
+    const isImage = shot.mediaType === "image" || ["png", "jpg", "jpeg", "webp", "gif"].includes(ext);
+    const prepared = join(tmpDir, `broll_prep_${i}.mp4`);
+    const cover = `scale=${targetW}:${targetH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${targetW}:${targetH}`;
+
+    try {
+      if (isImage) {
+        const frames = Math.max(8, Math.round(dur * 30));
+        try {
+          await ffmpeg([
+            "-y", "-loop", "1", "-t", String(dur), "-i", local,
+            "-vf",
+            `${cover},zoompan=z='min(zoom+0.0009,1.1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${targetW}x${targetH}:fps=30,format=yuv420p`,
+            "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-r", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            prepared,
+          ], `broll-prep-${i}`);
+        } catch {
+          await ffmpeg([
+            "-y", "-loop", "1", "-t", String(dur), "-i", local,
+            "-vf", `${cover},fps=30,format=yuv420p`,
+            "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-r", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            prepared,
+          ], `broll-prep-still-${i}`);
+        }
+      } else {
+        const trimIn = shot.trimIn ?? 0;
+        await ffmpeg([
+          "-y", "-ss", String(trimIn), "-t", String(dur), "-i", local,
+          "-vf", `${cover},fps=30,format=yuv420p`,
+          "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+          "-r", "30", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+          prepared,
+        ], `broll-prep-${i}`);
+      }
+    } catch (err: any) {
+      logger.warn(`[export:${exportId}] B-roll prepare failed (${err?.message}), skipping`);
+      continue;
+    }
+
+    const out = join(tmpDir, `with_broll_${i}.mp4`);
+    const fadeFilter =
+      `[1:v]format=rgba,fade=t=in:st=0:d=${fade.toFixed(3)}:alpha=1,fade=t=out:st=${fadeOutAt.toFixed(3)}:d=${fade.toFixed(3)}:alpha=1,setpts=PTS+${start.toFixed(3)}/TB[br];` +
+      `[0:v][br]overlay=0:0:eof_action=pass[vout]`;
+
+    try {
+      await ffmpeg([
+        "-y",
+        "-i", current,
+        "-i", prepared,
+        "-filter_complex", fadeFilter,
+        "-map", "[vout]", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "copy", "-movflags", "+faststart",
+        out,
+      ], `broll-overlay-${i}`);
+      current = out;
+    } catch (err: any) {
+      logger.warn(`[export:${exportId}] B-roll overlay failed (${err?.message}), skipping`);
+    }
+  }
+
+  return current;
 }
 
 /** Update the Export document in MongoDB. */
@@ -481,6 +586,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     brightness = 100, contrast = 100, saturation = 100, originalClipId,
     stickers = [], textOverlays = [],
     thumbnailOverlay = null,
+    broll = [],
   } = params;
 
   // Resolve clip media URLs server-side so the client doesn't ship large S3 URLs
@@ -688,9 +794,25 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
     ], "concat");
     await updateExport(exportId, { progress: 70 });
 
-    // ── 5. Sticker overlay (applied first so captions sit on top) ────────────
+    // ── 4.5 B-roll cutaways (overlay, A-roll audio unchanged) ────────────────
     tick();
     let finalOut = concatOut;
+    if (broll.length > 0) {
+      finalOut = await applyBrollOverlays({
+        exportId,
+        tmpDir,
+        inputPath: concatOut,
+        broll,
+        targetW,
+        targetH,
+        ffmpeg,
+        download: downloadFile,
+      });
+      await updateExport(exportId, { progress: 74 });
+    }
+
+    // ── 5. Sticker overlay (applied first so captions sit on top) ────────────
+    tick();
 
     if (stickers.length > 0) {
       // [LOG_REDUCED] logger.info(`[export:${exportId}] Compositing ${stickers.length} sticker(s)...`);

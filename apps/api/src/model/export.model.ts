@@ -31,6 +31,7 @@ export interface IExport {
   thumbnailOverlay?: { imageUrl: string; x: number; y: number; width: number; height: number; styleId: string; opacity: number } | null;
   previewWidth:    number;
   originalClipId?: string;
+  broll?:          Record<string, unknown>[];
   createdAt:       Date;
   updatedAt:       Date;
 }
@@ -63,6 +64,7 @@ const ExportSchema = new Schema<IExport>(
     thumbnailOverlay: { type: Schema.Types.Mixed, default: null },
     previewWidth:    { type: Number, default: 380 },
     originalClipId:  { type: String },
+    broll:           { type: Schema.Types.Mixed, default: [] },
   },
   { timestamps: true, _id: false }
 );

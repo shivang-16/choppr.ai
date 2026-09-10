@@ -13,6 +13,7 @@ import exportRoutes from "./routes/export.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import videoMetaRoutes from "./routes/video-meta.routes.js";
 import userAssetRoutes from "./routes/user-asset.routes.js";
+import { brollJobRouter } from "./routes/broll.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import errorHandler from "./middlewares/error.js";
 import expressWinston from "express-winston";
@@ -76,6 +77,7 @@ app.use("/api/exports",   exportRoutes);
 app.use("/api/uploads",     uploadRoutes);
 app.use("/api/video-meta",  videoMetaRoutes);
 app.use("/api/user-assets", userAssetRoutes);
+app.use("/api/broll",       brollJobRouter);
 app.use("/api/users",       userRoutes);
 
 // ── Error handler ───────────────────────────────────────────────────────────

@@ -19,6 +19,8 @@ export interface IUserCredits extends Document<string> {
   cycleEnd: Date;                 // when current cycle ends (reset happens here)
   lifetimeEarned: number;         // total credits ever granted (for analytics)
   lifetimeSpent: number;          // total credits ever spent
+  /** Account-wide AI B-roll generate clicks (free plan is capped). */
+  brollGenerateCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +40,7 @@ const userCreditsSchema = new Schema<IUserCredits>(
     cycleEnd:   { type: Date, required: true },
     lifetimeEarned: { type: Number, default: 0 },
     lifetimeSpent:  { type: Number, default: 0 },
+    brollGenerateCount: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );

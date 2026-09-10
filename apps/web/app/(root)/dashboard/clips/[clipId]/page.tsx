@@ -13,7 +13,7 @@ const ClipTimeline = dynamic(
 import { useApiFetch } from "@/lib/apiFetch";
 import {
   ArrowLeft, Play, Pause, Volume2, VolumeX,
-  Captions, Gauge, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Plus, Trash2, Smile, ImageIcon, Move, Upload,
+  Captions, Gauge, Sparkles, Check, Loader2, Languages, CheckCircle, AlertCircle, X, Layers, Download, ChevronLeft, ChevronRight, Plus, Trash2, Smile, ImageIcon, Move, Upload, Clapperboard,
 } from "lucide-react";
 import Link from "next/link";
 import Sidebar from "../../_components/sidebar";
@@ -27,7 +27,10 @@ import {
 import CaptionRenderer, { type CaptionStyle, type CaptionWord } from "./_components/caption-renderer";
 import BackgroundRenderer, { STIPOP_KEY, fetchStipopStickers, fetchStipopTrendingPacks, fetchStipopPackStickers, type StipopSticker, type StipopPack, type PlacedSticker, type ImageSegmenterRef } from "./_components/background-renderer";
 import { UploadPanel } from "./_components/upload-panel";
-import type { ChopprTrack, TimelineOverlayApi, OverlayTimingItem, TimelineMediaApi, CaptionTrackApi, CaptionSegment } from "./_components/clip-timeline";
+import type { ChopprTrack, TimelineOverlayApi, OverlayTimingItem, TimelineMediaApi, CaptionTrackApi, CaptionSegment, TimelineBrollApi, BrollShot } from "./_components/clip-timeline";
+import { BrollPanel } from "./_components/broll-panel";
+import { BrollRenderer } from "./_components/broll-renderer";
+import { DEFAULT_BROLL_DUR, parseBrollShots, serializedTracksHaveBroll, stripBrollTracks } from "./_components/broll-types";
 import { useClipDraftAutosave, loadClipDraft, clearClipDraft, type ClipDraftState } from "./_components/use-clip-draft";
 import { loadCachedTranslation, saveCachedTranslation } from "./_components/caption-translate-cache";
 import { CropLayoutModal } from "./_components/crop-layout-modal";
@@ -100,6 +103,7 @@ function computeExportCostEstimate(
   stickers: { stickerId: string }[],
   tracks: { items: { type: string }[] }[],
   captionSegments: Array<{ style: string }> = [],
+  brollCount = 0,
 ): number {
   const BASE = 2;
   const MAX  = 6;
@@ -115,6 +119,7 @@ function computeExportCostEstimate(
   if (stickers.length > 0) cost += 1;
   const videoItems = tracks.flatMap(t => t.items.filter(i => i.type === "video"));
   if (videoItems.length > 1) cost += 1;
+  if (brollCount > 0) cost += 1;
   return Math.min(cost, MAX);
 }
 
@@ -195,13 +200,14 @@ function useIsMobile() {
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 const TABS = [
   { id: "captions",  icon: Captions,  label: "Captions" },
+  { id: "broll",     icon: Clapperboard, label: "B-roll" },
   { id: "upload",    icon: Upload,    label: "Upload" },
   { id: "overlays",  icon: Layers,    label: "Overlays" },
   { id: "speed",     icon: Gauge,     label: "Speed" },
   { id: "enhance",   icon: Sparkles,  label: "Enhance" },
 ];
 
-/** Mobile: edit tools in the bottom bar (Upload is desktop-only). */
+/** Mobile: edit tools in the bottom bar (Upload still needs the desktop timeline). */
 const MOBILE_SIDE_TABS = TABS.filter(t => t.id !== "upload");
 
 const OVERLAY_SUB_TABS = [
@@ -581,6 +587,7 @@ interface EditPanelProps {
     url: string;
     name?: string;
   }) => void;
+  brollPanel?: React.ReactNode;
   // Thumbnail overlay
   thumbnailOverlay: ThumbnailOverlayState | null;
   setThumbnailOverlay: (o: ThumbnailOverlayState | null) => void;
@@ -1264,6 +1271,7 @@ function EditPanelContent({
   onAddTextOverlay, onRemoveTextOverlay, onToggleSticker, onRemoveSticker, onClearStickers,
   stickerSingleSelect = false,
   onAddToTimeline,
+  brollPanel,
   thumbnailOverlay, setThumbnailOverlay,
 }: EditPanelProps) {
   const [emojiOpenId, setEmojiOpenId] = useState<string | null>(null);
@@ -1795,6 +1803,8 @@ function EditPanelContent({
           </div>
         </div>
       )}
+
+      {activeTab === "broll" && brollPanel}
 
       {activeTab === "upload" && (
         <UploadPanel
@@ -2435,6 +2445,11 @@ export default function ClipRefinePage() {
 
   const { saveDraft, flush: flushDraft } = useClipDraftAutosave(clipId ?? "", activeEditId);
   const draftRestoredRef = useRef(false);
+  const pendingBrollHydrateRef = useRef<BrollShot[] | null>(null);
+  const hydratingBrollRef = useRef(false);
+  const hydratedBrollVersionRef = useRef<string | null>(null);
+  const activeEditIdRef = useRef<string | null>(null);
+  activeEditIdRef.current = activeEditId;
   const [draftTracks, setDraftTracks] = useState<unknown[] | null>(null);
   const [timelineResetKey, setTimelineResetKey] = useState(0);
 
@@ -2466,6 +2481,20 @@ export default function ClipRefinePage() {
     if (isSplitLayout(draft.splitLayout)) setSplitLayout(draft.splitLayout);
     if (isSourceCrop(draft.fillCrop)) setFillCrop(draft.fillCrop);
     if (draft.timelineTracks?.length) setDraftTracks(draft.timelineTracks);
+    {
+      const shots = parseBrollShots(draft.brollShots);
+      const lib = parseBrollShots(draft.brollLibrary);
+      setBrollLibrary(lib);
+      setBrollShots(shots);
+      pendingBrollHydrateRef.current =
+        shots.length && !serializedTracksHaveBroll(draft.timelineTracks) ? shots : null;
+      hydratedBrollVersionRef.current = null;
+    }
+    setBrollDismissedSrcs(
+      Array.isArray(draft.brollDismissedSrcs)
+        ? draft.brollDismissedSrcs.filter((s): s is string => typeof s === "string")
+        : [],
+    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clipId]);
 
@@ -2474,6 +2503,7 @@ export default function ClipRefinePage() {
   const exportTracksRef       = useRef<ChopprTrack[] | null>(null);
   const overlayApiRef         = useRef<TimelineOverlayApi | null>(null);
   const mediaApiRef           = useRef<TimelineMediaApi | null>(null);
+  const brollApiRef           = useRef<TimelineBrollApi | null>(null);
   const captionApiRef         = useRef<CaptionTrackApi | null>(null);
   const captionWordsRef       = useRef<import("./_components/caption-renderer").CaptionWord[]>([]);
   const originalCaptionsRef   = useRef<CaptionWord[]>([]);
@@ -2483,6 +2513,8 @@ export default function ClipRefinePage() {
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted]     = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const currentTimeRef = useRef(0);
+  currentTimeRef.current = currentTime;
   // Raw timeline cursor position — used for overlay visibility (different from currentTime
   // which is source time after trimStart + speed conversion)
   const [timelineTime, setTimelineTime] = useState(0);
@@ -2579,6 +2611,52 @@ export default function ClipRefinePage() {
   // Background overlay
   const [placedStickers, setPlacedStickers]     = useState<PlacedSticker[]>([]);
   const [textOverlays, setTextOverlays]         = useState<TextOverlay[]>([]);
+  const [brollShots, setBrollShots]             = useState<BrollShot[]>([]);
+  const [brollLibrary, setBrollLibrary]         = useState<BrollShot[]>([]);
+  const [brollDismissedSrcs, setBrollDismissedSrcs] = useState<string[]>([]);
+
+  // Phone has no Twick timeline — keep B-roll shots in React state for preview + export.
+  useEffect(() => {
+    if (!isMobile) return;
+    brollApiRef.current = {
+      addBroll: async (opts) => {
+        if (!opts.url) return null;
+        const id = opts.id ?? `broll-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const start = Math.max(0, opts.startTime ?? currentTimeRef.current);
+        const duration = Math.max(0.4, opts.duration ?? DEFAULT_BROLL_DUR);
+        setBrollShots(prev => {
+          if (prev.some(s => s.id === id || s.src === opts.url)) return prev;
+          const shot: BrollShot = {
+            id,
+            startTime: start,
+            duration,
+            src: opts.url,
+            mediaType: opts.type,
+            mode: opts.mode ?? "cutaway",
+            trimIn: opts.trimIn ?? 0,
+            prompt: opts.prompt,
+            phrase: opts.phrase,
+            source: opts.source,
+            status: "ready",
+          };
+          return [...prev, shot].sort((a, b) => a.startTime - b.startTime);
+        });
+        return id;
+      },
+      removeById: (id) => {
+        setBrollShots(prev => prev.filter(s => s.id !== id));
+      },
+      removeAll: () => setBrollShots([]),
+      getCurrentTime: () => currentTimeRef.current,
+      rescaleTimings: (factor) => {
+        if (factor <= 0 || factor === 1) return;
+        setBrollShots(prev => prev.map(s => ({ ...s, startTime: s.startTime * factor })));
+      },
+    };
+    return () => {
+      brollApiRef.current = null;
+    };
+  }, [isMobile]);
   const [selectedTextId, setSelectedTextId]     = useState<string | null>(null);
   const textDragRef = useRef<{ id: string; rectLeft: number; rectTop: number; rectW: number; rectH: number; startX: number; startY: number; moved: boolean } | null>(null);
   const ignoreDrawerCloseUntil = useRef(0);
@@ -2683,12 +2761,15 @@ export default function ClipRefinePage() {
       videoLayout,
       splitLayout,
       fillCrop,
+      brollShots: brollShots as unknown[],
+      brollLibrary: brollLibrary as unknown[],
+      brollDismissedSrcs,
     });
   }, [
     clipId, saveDraft, captionStyle, captionWords, captionFontSize,
     captionPosX, captionPosY, speed, trimStart, trimEnd, brightness,
     contrast, saturation, textOverlays, placedStickers, aspectRatio, thumbnailOverlay,
-    backgroundFill, videoLayout, splitLayout, fillCrop,
+    backgroundFill, videoLayout, splitLayout, fillCrop, brollShots, brollLibrary, brollDismissedSrcs,
   ]);
 
   // Load project aspect ratio
@@ -3137,6 +3218,17 @@ export default function ClipRefinePage() {
             : textOverlays,
           thumbnailOverlay: thumbnailOverlay ?? null,
           previewWidth: videoContainerRef.current?.clientWidth || 380,
+          broll: brollShots
+            .filter(s => s.src && s.status !== "failed" && s.status !== "generating")
+            .map(s => ({
+              id: s.id,
+              startTime: s.startTime,
+              duration: s.duration,
+              src: s.src,
+              mediaType: s.mediaType,
+              mode: s.mode,
+              trimIn: s.trimIn,
+            })),
         }),
       });
 
@@ -3249,6 +3341,12 @@ export default function ClipRefinePage() {
     setFillCropOpen(false);
     setCropPane(null);
     setCaptionSegments([]);
+    brollApiRef.current?.removeAll();
+    setBrollShots([]);
+    setBrollLibrary([]);
+    setBrollDismissedSrcs([]);
+    pendingBrollHydrateRef.current = null;
+    hydratedBrollVersionRef.current = null;
     // Restore the original (untranslated) captions
     apiFetch(`${API_URL}/api/clips/${clipId}`)
       .then(r => (r.ok ? r.json() : null))
@@ -3304,7 +3402,23 @@ export default function ClipRefinePage() {
         }
         if (isSplitLayout(draft.splitLayout)) setSplitLayout(draft.splitLayout);
         if (isSourceCrop(draft.fillCrop)) setFillCrop(draft.fillCrop);
-        if (draft.timelineTracks?.length) setDraftTracks(draft.timelineTracks);
+        {
+          const shots = parseBrollShots(draft.brollShots);
+          const lib = parseBrollShots(draft.brollLibrary);
+          setBrollLibrary(lib);
+          setBrollShots(shots);
+          const rawTracks = Array.isArray(draft.timelineTracks) ? draft.timelineTracks : [];
+          const tracks = shots.length ? rawTracks : stripBrollTracks(rawTracks);
+          if (tracks.length) setDraftTracks(tracks);
+          pendingBrollHydrateRef.current =
+            shots.length && !serializedTracksHaveBroll(tracks) ? shots : null;
+          hydratedBrollVersionRef.current = null;
+        }
+        setBrollDismissedSrcs(
+          Array.isArray(draft.brollDismissedSrcs)
+            ? draft.brollDismissedSrcs.filter((s): s is string => typeof s === "string")
+            : [],
+        );
       } else {
         applyDefaults();
         const edit = id ? editedClips.find(c => c._id === id) : null;
@@ -3348,8 +3462,8 @@ export default function ClipRefinePage() {
     const factor = oldSpeed / newSpeed;
     // Rescale timeline overlay elements (text + stickers)
     overlayApiRef.current?.rescaleTimings(factor);
-    // Rescale caption track elements
     captionApiRef.current?.rescaleTimings(factor);
+    brollApiRef.current?.rescaleTimings(factor);
     // Rescale React state for text overlays and placed stickers
     setTextOverlays(prev => prev.map(t => ({
       ...t,
@@ -3465,6 +3579,50 @@ export default function ClipRefinePage() {
     timelineSerializedRef.current = serializedTracks;
     saveDraft({ timelineTracks: serializedTracks });
   }, [saveDraft]);
+
+  const handleBrollChange = useCallback((next: BrollShot[]) => {
+    setBrollShots(next);
+    const versionKey = activeEditIdRef.current ?? "original";
+    if (next.length > 0) {
+      hydratedBrollVersionRef.current = versionKey;
+      pendingBrollHydrateRef.current = null;
+      return;
+    }
+    // Timeline is empty for this version. Restore this version's saved shots once
+    // (e.g. reload where timelineTracks didn't include stills). Never copy another version's library.
+    if (hydratedBrollVersionRef.current === versionKey) return;
+    const pending = pendingBrollHydrateRef.current;
+    const api = brollApiRef.current;
+    if (!pending?.length) {
+      hydratedBrollVersionRef.current = versionKey;
+      return;
+    }
+    if (!api || hydratingBrollRef.current) return;
+    hydratedBrollVersionRef.current = versionKey;
+    pendingBrollHydrateRef.current = null;
+    hydratingBrollRef.current = true;
+    void (async () => {
+      try {
+        for (const shot of pending) {
+          if (!shot.src) continue;
+          await api.addBroll({
+            id: shot.id,
+            type: shot.mediaType === "video" ? "video" : "image",
+            url: shot.src,
+            name: shot.phrase || "B-roll",
+            startTime: shot.startTime,
+            duration: shot.duration,
+            trimIn: shot.trimIn,
+            prompt: shot.prompt,
+            phrase: shot.phrase,
+            source: shot.source,
+          });
+        }
+      } finally {
+        hydratingBrollRef.current = false;
+      }
+    })();
+  }, []);
 
   const handleTimelineTimeChange = useCallback((time: number) => {
     setCurrentTime(time);
@@ -3764,6 +3922,7 @@ export default function ClipRefinePage() {
     placedStickers,
     exportTracksRef.current ?? [],
     captionSegments,
+    brollShots.length,
   );
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -3799,6 +3958,24 @@ export default function ClipRefinePage() {
     onAddToTimeline: (asset) => {
       void mediaApiRef.current?.addMedia(asset);
     },
+    brollPanel: (
+      <BrollPanel
+        key={activeEditId ?? "original"}
+        clipId={clipId ?? ""}
+        captionWords={captionWords}
+        aspectRatio={aspectRatio}
+        brollApiRef={brollApiRef}
+        shots={brollShots}
+        isFreePlan={isFreePlan === true}
+        versionKey={activeEditId ?? "original"}
+        initialLibrary={brollLibrary}
+        dismissedSrcs={brollDismissedSrcs}
+        onLibraryChange={setBrollLibrary}
+        onDismissSrc={src => {
+          setBrollDismissedSrcs(prev => prev.includes(src) ? prev : [...prev, src]);
+        }}
+      />
+    ),
     thumbnailOverlay, setThumbnailOverlay,
   };
   const handleMobileTab = (id: string) => {
@@ -4390,6 +4567,11 @@ export default function ClipRefinePage() {
                       console.warn("[clip] preview video failed to load metadata");
                     }}
                   />
+                  <BrollRenderer
+                    shots={brollShots}
+                    currentTime={isMobile ? currentTime : timelineTime}
+                    playing={playing}
+                  />
                   {applyLayoutFx && videoLayout === "split" && splitLayout && (
                     <>
                       <div
@@ -4818,6 +5000,8 @@ export default function ClipRefinePage() {
                 overlayApiRef={overlayApiRef}
                 onOverlayTimingChange={handleOverlayTimingChange}
                 mediaApiRef={mediaApiRef}
+                brollApiRef={brollApiRef}
+                onBrollChange={handleBrollChange}
                 captionApiRef={captionApiRef}
                 captionWordsRef={captionWordsRef}
                 onCaptionSegmentsChange={setCaptionSegments}

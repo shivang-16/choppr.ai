@@ -131,6 +131,15 @@ const CreateExportSchema = z.object({
     opacity:  z.number().min(0).max(100).default(100),
   }).nullable().optional(),
   previewWidth:   z.number().min(50).max(3000).default(380),
+  broll: z.array(z.object({
+    id:        z.string(),
+    startTime: z.number().min(0),
+    duration:  z.number().min(0.1),
+    src:       z.string().min(1),
+    mediaType: z.enum(["video", "image"]),
+    mode:      z.enum(["cutaway", "pip", "split"]).default("cutaway"),
+    trimIn:    z.number().min(0).default(0),
+  })).default([]),
 });
 
 // ── POST /api/exports ───────────────────────────────────────────────────────
@@ -158,6 +167,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       stickers:        req.body.stickers    ?? [],
       tracks:          req.body.tracks      ?? [],
       captionSegments: req.body.captionSegments ?? [],
+      brollCount:      Array.isArray(req.body.broll) ? req.body.broll.length : 0,
     });
 
     // Gate: user must have enough credits for the export
@@ -173,7 +183,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, captionSegments, aspectRatio, backgroundFill, videoLayout, splitLayout, fillCrop, brightness, contrast, saturation, originalClipId, stickers, textOverlays, thumbnailOverlay, previewWidth } = parsed.data;
+    const { projectId, tracks, volumes, speeds, captionStyle, captionFontSize, captionPosY, captionPosX, captionMap, captionSegments, aspectRatio, backgroundFill, videoLayout, splitLayout, fillCrop, brightness, contrast, saturation, originalClipId, stickers, textOverlays, thumbnailOverlay, previewWidth, broll } = parsed.data;
 
     // Gate: free plan cannot export clips longer than 5 minutes (after speed)
     const exportDurationSecs = getExportDurationSecs(tracks, speeds);
@@ -218,6 +228,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       textOverlays,
       thumbnailOverlay: thumbnailOverlay ?? null,
       previewWidth,
+      broll: broll ?? [],
       ...(originalClipId ? { originalClipId } : {}),
     } as any);
 
@@ -238,6 +249,7 @@ export async function createExport(req: Request, res: Response, next: NextFuncti
       textOverlays,
       thumbnailOverlay: thumbnailOverlay ?? null,
       previewWidth,
+      broll: broll ?? [],
     }).then(async () => {
       // Deduct credits only when the export actually completed (cancel returns without throwing)
       const doc = await Export.findById(exportId).lean();

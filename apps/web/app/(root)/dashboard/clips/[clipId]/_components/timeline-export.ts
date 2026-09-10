@@ -1,8 +1,10 @@
 import {
   AudioElement,
+  ImageElement,
   VideoElement,
   type TimelineEditor,
 } from "@twick/timeline";
+import { isBrollTrackName, type BrollShot } from "./broll-types";
 
 export interface ChopprTrackItem {
   id: string;
@@ -26,6 +28,7 @@ export function buildExportTracksFromEditor(editor: TimelineEditor): ChopprTrack
   const audioItems: ChopprTrackItem[] = [];
 
   for (const track of data?.tracks ?? []) {
+    if (isBrollTrackName(track.getName())) continue;
     for (const el of track.getElements()) {
       if (el instanceof VideoElement) {
         const trimIn = el.getStartAt();
@@ -77,15 +80,53 @@ export function findPrimaryVideoElement(
   if (!data?.tracks) return null;
 
   for (const track of data.tracks) {
+    if (isBrollTrackName(track.getName())) continue;
     for (const el of track.getElements()) {
       if (el instanceof VideoElement && el.getId() === primaryId) return el;
     }
   }
 
   for (const track of data.tracks) {
+    if (isBrollTrackName(track.getName())) continue;
     for (const el of track.getElements()) {
       if (el instanceof VideoElement) return el;
     }
   }
   return null;
+}
+
+function elementSrc(el: unknown): string {
+  if (!el || typeof el !== "object") return "";
+  const src = (el as { getSrc?: () => string }).getSrc;
+  return typeof src === "function" ? src.call(el) ?? "" : "";
+}
+
+/** Overlay B-roll items — never concatenated into the A-roll track. */
+export function buildBrollFromEditor(editor: TimelineEditor): BrollShot[] {
+  const shots: BrollShot[] = [];
+  for (const track of editor.getTimelineData()?.tracks ?? []) {
+    if (!isBrollTrackName(track.getName())) continue;
+    for (const el of track.getElements()) {
+      const src = elementSrc(el);
+      if (!src) continue;
+      const mediaType = el instanceof VideoElement ? "video" : el instanceof ImageElement ? "image" : null;
+      if (!mediaType) continue;
+      const trimIn = el instanceof VideoElement ? el.getStartAt() : 0;
+      const sourceDur = el instanceof VideoElement && el.getMediaDuration() > 0
+        ? el.getMediaDuration()
+        : Math.max(0.1, el.getEnd() - el.getStart());
+      shots.push({
+        id: el.getId(),
+        startTime: el.getStart(),
+        duration: Math.max(0.1, el.getEnd() - el.getStart()),
+        src,
+        mediaType,
+        mode: "cutaway",
+        trimIn: Math.min(trimIn, Math.max(0, sourceDur - 0.1)),
+        status: "ready",
+      });
+    }
+  }
+  shots.sort((a, b) => a.startTime - b.startTime);
+  return shots;
 }

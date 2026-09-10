@@ -18,6 +18,7 @@ import {
   type Track,
 } from "@twick/timeline";
 import { PLAYER_STATE, useLivePlayerContext } from "@twick/live-player";
+import { isBrollTrackName } from "./broll-types";
 
 export type TimelineMediaType = "video" | "audio" | "image";
 
@@ -29,7 +30,7 @@ export type TimelineMediaApi = {
   }) => Promise<void>;
 };
 
-const OVERLAY_TRACK_NAMES = new Set(["Text", "Stickers", "Captions"]);
+const OVERLAY_TRACK_NAMES = new Set(["Text", "Stickers", "Captions", "B-roll"]);
 
 /** Returns true if the track contains any VideoElement. */
 function trackHasVideo(t: Track): boolean {
@@ -40,7 +41,7 @@ function pickMediaTrack(editor: TimelineEditor, type: TimelineMediaType): Track 
   const tracks = editor.getTimelineData()?.tracks ?? [];
   for (let i = tracks.length - 1; i >= 0; i--) {
     const t = tracks[i]!;
-    if (OVERLAY_TRACK_NAMES.has(t.getName())) continue;
+    if (OVERLAY_TRACK_NAMES.has(t.getName()) || isBrollTrackName(t.getName())) continue;
     if (t.getType() !== TRACK_TYPES.ELEMENT && t.getType() !== TRACK_TYPES.VIDEO) continue;
     // Non-video media must NOT land on a track that already has video clips
     if (type !== "video" && trackHasVideo(t)) continue;

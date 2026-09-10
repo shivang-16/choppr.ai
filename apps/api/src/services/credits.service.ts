@@ -12,6 +12,7 @@ export const CREDITS_PER_MINUTE = 2;
 export const CREDITS_PER_EXPORT      = 2;
 export const CREDITS_PER_EXPORT_BASE = 2;
 export const CREDITS_PER_EXPORT_MAX  = 6;
+export const CREDITS_PER_BROLL_CANVAS = 1;
 
 // User must have at least this many credits to start a job (1 min worth)
 export const MIN_CREDITS_TO_START = CREDITS_PER_MINUTE;
@@ -24,6 +25,8 @@ export interface ExportCostPayload {
   tracks: { items: { type: string }[] }[];
   /** Per-segment styles from the editor — used to detect Pro captions on the timeline. */
   captionSegments?: Array<{ style: string }>;
+  /** Overlay B-roll cutaways (not concat clips). */
+  brollCount?: number;
 }
 
 /**
@@ -34,6 +37,7 @@ export interface ExportCostPayload {
  * +2 if any Pro animated caption style is used (instead of +1)
  * +1 if stickers are placed
  * +1 if more than 1 video item exists across all tracks (multi-clip)
+ * +1 if B-roll cutaways are composited
  * Maximum: 6 credits
  */
 export function computeExportCost(p: ExportCostPayload): number {
@@ -51,6 +55,7 @@ export function computeExportCost(p: ExportCostPayload): number {
   if (p.stickers.length > 0) cost += 1;
   const videoItems = p.tracks.flatMap(t => t.items.filter(i => i.type === "video"));
   if (videoItems.length > 1) cost += 1;
+  if ((p.brollCount ?? 0) > 0) cost += 1;
   return Math.min(cost, CREDITS_PER_EXPORT_MAX);
 }
 
@@ -594,6 +599,132 @@ export async function deductExportCredits(
     });
 
     return { deducted, balanceAfter };
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
+ * Deduct credits when the user generates AI B-roll stills.
+ */
+export async function deductBrollCredits(
+  userId: string,
+  jobId: string,
+  cost: number,
+): Promise<{ deducted: number; balanceAfter: number }> {
+  if (cost <= 0) return { deducted: 0, balanceAfter: 0 };
+
+  const session = await mongoose.startSession();
+  try {
+    let deducted = 0;
+    let balanceAfter = 0;
+
+    await session.withTransaction(async () => {
+      const doc = await UserCredits.findById(userId).session(session);
+      if (!doc) throw new Error(`UserCredits not found for user ${userId}`);
+      if (doc.totalCredits < cost) throw new Error("insufficient_credits");
+
+      const fromSub = Math.min(doc.subscriptionCredits, cost);
+      const remaining = cost - fromSub;
+      const fromTopup = Math.min(doc.topupCredits, remaining);
+      deducted = fromSub + fromTopup;
+      if (deducted < cost) throw new Error("insufficient_credits");
+
+      await UserCredits.updateOne(
+        { _id: userId },
+        {
+          $inc: {
+            subscriptionCredits: -fromSub,
+            topupCredits: -fromTopup,
+            totalCredits: -deducted,
+            lifetimeSpent: deducted,
+          },
+        },
+        { session },
+      );
+
+      balanceAfter = doc.totalCredits - deducted;
+
+      if (fromSub > 0) {
+        await writeLedger(
+          session, userId, -fromSub, "subscription", "broll_cost",
+          balanceAfter + fromTopup,
+          { jobId, note: `AI B-roll ${jobId} — ${fromSub} credit(s)` },
+        );
+      }
+      if (fromTopup > 0) {
+        await writeLedger(
+          session, userId, -fromTopup, "topup", "broll_cost",
+          balanceAfter,
+          { jobId, note: `AI B-roll ${jobId} — topup bucket` },
+        );
+      }
+    });
+
+    return { deducted, balanceAfter };
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
+ * Refund B-roll credits for stills that failed (or a crashed job).
+ * Restores the original buckets in reverse (topup first, then subscription).
+ * Idempotent per job: never refunds more than was deducted minus prior refunds.
+ */
+export async function refundBrollCredits(
+  userId: string,
+  jobId: string,
+  amount: number,
+): Promise<number> {
+  if (amount <= 0) return 0;
+
+  const chargedRows = await CreditLedger.find({ userId, jobId, type: "broll_cost" }).lean();
+  const chargedAbs = chargedRows.reduce((sum, row) => sum + Math.abs(row.amount), 0);
+  if (chargedAbs <= 0) return 0;
+
+  const alreadyRefunded = await CreditLedger.find({ userId, jobId, type: "refund_broll_failed" }).lean();
+  const alreadyAbs = alreadyRefunded.reduce((sum, row) => sum + Math.abs(row.amount), 0);
+  const toRefund = Math.min(amount, chargedAbs - alreadyAbs);
+  if (toRefund <= 0) return 0;
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      let left = toRefund;
+      const rowsNewestFirst = [...chargedRows].sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
+
+      for (const row of rowsNewestFirst) {
+        if (left <= 0) break;
+        const take = Math.min(left, Math.abs(row.amount));
+        if (take <= 0) continue;
+
+        await UserCredits.updateOne(
+          { _id: userId },
+          {
+            $inc: {
+              [`${row.bucket}Credits`]: take,
+              totalCredits: take,
+              lifetimeSpent: -take,
+            },
+          },
+          { session },
+        );
+
+        const doc = await UserCredits.findById(userId).session(session).lean() as IUserCredits;
+        await writeLedger(
+          session, userId, take, row.bucket, "refund_broll_failed",
+          doc.totalCredits,
+          { jobId, note: `Refund for failed B-roll ${jobId}` },
+        );
+        left -= take;
+      }
+    });
+    return toRefund;
   } finally {
     await session.endSession();
   }

@@ -60,6 +60,8 @@ import {
   type CaptionTrackApi,
   type CaptionSegment,
 } from "./timeline-caption-bridge";
+import { TimelineBrollBridge, type TimelineBrollApi } from "./timeline-broll-bridge";
+import { isBrollTrackName, type BrollShot } from "./broll-types";
 import { disposeOffscreenExtractors } from "@/lib/media-cleanup";
 
 import "@twick/video-editor/dist/video-editor.css";
@@ -106,14 +108,19 @@ async function toTimelineSrc(remoteSrc: string): Promise<string> {
   return remoteSrc;
 }
 
-function listVideoElements(editor: TimelineEditor): VideoElement[] {
+function listVideoElements(editor: TimelineEditor, includeBroll = true): VideoElement[] {
   const out: VideoElement[] = [];
   for (const track of editor.getTimelineData()?.tracks ?? []) {
+    if (!includeBroll && isBrollTrackName(track.getName())) continue;
     for (const el of track.getElements()) {
       if (el instanceof VideoElement) out.push(el);
     }
   }
   return out;
+}
+
+function listArollVideos(editor: TimelineEditor): VideoElement[] {
+  return listVideoElements(editor, false);
 }
 
 function contentEndSec(editor: TimelineEditor): number {
@@ -164,6 +171,8 @@ export interface ClipTimelineProps {
   overlayApiRef?: MutableRefObject<TimelineOverlayApi | null>;
   onOverlayTimingChange?: (items: OverlayTimingItem[]) => void;
   mediaApiRef?: MutableRefObject<TimelineMediaApi | null>;
+  brollApiRef?: MutableRefObject<TimelineBrollApi | null>;
+  onBrollChange?: (shots: BrollShot[]) => void;
   captionApiRef?: MutableRefObject<CaptionTrackApi | null>;
   captionWordsRef?: MutableRefObject<import("./caption-renderer").CaptionWord[]>;
   onCaptionSegmentsChange?: (segs: CaptionSegment[]) => void;
@@ -307,7 +316,7 @@ function ClipTimelineBridge({
       // After a split/cut, the main clip ID is gone but split pieces remain — those
       // count as content, so never reseed over them.
       if (lastSrcRef.current === src && initializedRef.current) {
-        if (listVideoElements(editor).length > 0) {
+        if (listArollVideos(editor).length > 0) {
           return;
         }
         // Timeline is genuinely empty (e.g. user deleted all clips) — allow reseed
@@ -333,7 +342,7 @@ function ClipTimelineBridge({
             editor.loadProject({ tracks: draftTracks as any[], version: 0 });
             editor.refresh();
             // Reject empty / corrupt drafts that have tracks but no video clips
-            restoredOk = listVideoElements(editor).length > 0;
+            restoredOk = listArollVideos(editor).length > 0;
           } catch (e) {
             console.warn("[ClipTimeline] failed to restore draft, seeding fresh", e);
             restoredOk = false;
@@ -349,12 +358,14 @@ function ClipTimelineBridge({
           console.warn("[ClipTimeline] draft had no video clips — seeding main clip");
         }
 
-        // Preserve Text / Stickers tracks across main-clip reseed
+        // Preserve Text / Stickers / B-roll tracks across main-clip reseed
+        const keepNames = (name: string) =>
+          name === "Text" || name === "Stickers" || isBrollTrackName(name);
         const overlayTracks = (editor.getTimelineData()?.tracks ?? []).filter(
-          t => t.getName() === "Text" || t.getName() === "Stickers",
+          t => keepNames(t.getName()),
         );
         for (const track of editor.getTimelineData()?.tracks ?? []) {
-          if (track.getName() === "Text" || track.getName() === "Stickers") continue;
+          if (keepNames(track.getName())) continue;
           editor.removeTrack(track);
         }
 
@@ -384,8 +395,11 @@ function ClipTimelineBridge({
           const all = editor.getTimelineData()?.tracks ?? [];
           const text = all.filter(t => t.getName() === "Text");
           const stickers = all.filter(t => t.getName() === "Stickers");
-          const rest = all.filter(t => t.getName() !== "Text" && t.getName() !== "Stickers");
-          editor.reorderTracks([...text, ...stickers, ...rest]);
+          const broll = all.filter(t => isBrollTrackName(t.getName()));
+          const rest = all.filter(
+            t => t.getName() !== "Text" && t.getName() !== "Stickers" && !isBrollTrackName(t.getName()),
+          );
+          editor.reorderTracks([...text, ...stickers, ...broll, ...rest]);
         }
 
         editor.refresh();
@@ -498,7 +512,7 @@ function ClipTimelineBridge({
   useEffect(() => {
     if (!initializedRef.current) return;
     // Never persist an empty timeline — that locks users into a blank draft on refresh
-    if (listVideoElements(editor).length === 0) return;
+    if (listArollVideos(editor).length === 0) return;
     ensurePadding();
     if (onExportTracksChange) {
       onExportTracksChange(buildExportTracksFromEditor(editor));
@@ -664,7 +678,7 @@ function ClipTimelineBridge({
     onPlayingChange(true);
 
     let startAt = Math.max(0, currentTimeRef.current);
-    const videos0 = listVideoElements(editor);
+    const videos0 = listArollVideos(editor);
     const resolved0 = resolvePlaybackAt(videos0, startAt, true);
     startAt = resolved0.time;
 
@@ -695,7 +709,7 @@ function ClipTimelineBridge({
       if (userSeek !== null) {
         userSeekRef.current = null;
         lastFrameTsRef.current = ts;
-        const videos = listVideoElements(editor);
+        const videos = listArollVideos(editor);
         const resolved = resolvePlaybackAt(videos, userSeek, true);
         const jumpTo = resolved.time;
         timelineClockRef.current = jumpTo;
@@ -734,7 +748,7 @@ function ClipTimelineBridge({
         setCurrentTime(0);
         setSeekTime(0);
         setPlayerState(PLAYER_STATE.PAUSED);
-        const first = resolvePlaybackAt(listVideoElements(editor), 0, false).active;
+        const first = resolvePlaybackAt(listArollVideos(editor), 0, false).active;
         if (first) void applyVideoRef.current(first, 0, false);
         else videoRef.current?.pause();
         reportTimeRef.current(0, first);
@@ -742,7 +756,7 @@ function ClipTimelineBridge({
         return;
       }
 
-      const videos = listVideoElements(editor);
+      const videos = listArollVideos(editor);
       const resolved = resolvePlaybackAt(videos, next, true);
       if (resolved.time !== next) {
         next = resolved.time;
@@ -787,7 +801,7 @@ function ClipTimelineBridge({
 
     const t = Math.max(0, seekTimeRef.current);
     timelineClockRef.current = t;
-    const videos = listVideoElements(editor);
+    const videos = listArollVideos(editor);
     const resolved = resolvePlaybackAt(videos, t, false);
     const previewTime = resolved.time;
     const active = resolved.active;
@@ -1215,6 +1229,12 @@ function ClipTimelineInner(props: ClipTimelineProps) {
       {props.mediaApiRef && (
         <TimelineMediaBridge apiRef={props.mediaApiRef} />
       )}
+      {props.brollApiRef && (
+        <TimelineBrollBridge
+          apiRef={props.brollApiRef}
+          onBrollChange={props.onBrollChange}
+        />
+      )}
       <TimelineMediaLengthClamp />
       {props.captionApiRef && props.captionWordsRef && (
         <TimelineCaptionBridge
@@ -1244,7 +1264,7 @@ function ClipTimelineInner(props: ClipTimelineProps) {
   );
 }
 
-export type { TimelineOverlayApi, OverlayTimingItem, TimelineMediaApi, CaptionTrackApi, CaptionSegment };
+export type { TimelineOverlayApi, OverlayTimingItem, TimelineMediaApi, CaptionTrackApi, CaptionSegment, TimelineBrollApi, BrollShot };
 
 export default function ClipTimeline(props: ClipTimelineProps) {
   const resolution = useMemo(
@@ -1256,7 +1276,7 @@ export default function ClipTimeline(props: ClipTimelineProps) {
     <LivePlayerProvider>
       <TimelineProvider
         key={`${props.clipId}-${props.src}-${props.resetKey ?? 0}`}
-        contextId={`clip-timeline-${props.clipId}`}
+        contextId={`clip-timeline-${props.clipId}-${props.resetKey ?? 0}`}
         resolution={resolution}
         initialData={{ tracks: [], version: 0 }}
         analytics={{ enabled: false }}

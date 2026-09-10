@@ -27,6 +27,12 @@ export interface ClipDraftState {
   videoLayout?: string;
   splitLayout?: unknown;
   fillCrop?: unknown;
+  /** B-roll stills currently on the preview/timeline */
+  brollShots?: unknown[];
+  /** Generated B-roll library (includes stills removed from the timeline) */
+  brollLibrary?: unknown[];
+  /** S3 URLs the user deleted permanently — do not restore from jobs */
+  brollDismissedSrcs?: string[];
   /** Serialized Twick timeline tracks (via track.serialize()) */
   timelineTracks: unknown[] | null;
 }
