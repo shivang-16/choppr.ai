@@ -60,7 +60,7 @@ export default function AutomaticVideoClipsPage() {
       steps={[
         {
           title: "Start a job",
-          body: "Paste a supported link or upload a file. Free plans cap source length at 30 minutes. Core goes to 2 hours. Growth and Scale take longer recordings.",
+          body: "Paste a supported link or upload a file. Free plans cap source length at 20 minutes. Core goes to 2 hours. Growth and Scale take longer recordings.",
         },
         {
           title: "Review what AI cut",
@@ -102,7 +102,7 @@ export default function AutomaticVideoClipsPage() {
         },
         {
           title: "You need a free way to try the workflow",
-          body: "150 monthly credits, no card, 720p export. Enough to run a real video and see whether the proposed clips are worth keeping.",
+          body: "100 monthly credits, no card, 720p export. Enough to run a real video and see whether the proposed clips are worth keeping.",
         },
       ]}
       faqs={faqs}

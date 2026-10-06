@@ -5,7 +5,7 @@ import { clearAuth, metricsFetch } from "@/lib/api";
 import { rangeQueryParams, type DateRange } from "@/lib/date-range";
 
 type BypassSeverity = "soft" | "hard" | "all";
-type BypassThreshold = "30" | "45";
+type BypassThreshold = "20" | "30";
 type BypassView = "projects" | "users";
 type BypassSortDir = "asc" | "desc";
 type BypassSort =
@@ -165,23 +165,23 @@ function SeverityBadge({ severity }: { severity: "soft" | "hard" }) {
   if (severity === "hard") {
     return (
       <span className="rounded-full border border-red-400/30 bg-red-400/10 px-2 py-0.5 text-[11px] text-red-200">
-        &gt;45 min
+        &gt;30 min
       </span>
     );
   }
   return (
     <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-100">
-      30–45 min
+      20–30 min
     </span>
   );
 }
 
 function FlagChips({ p }: { p: BypassProjectRow }) {
   const flags: string[] = [];
-  if (p.exceedsLegacyLimit) flags.push(">45m");
-  else if (p.exceedsCurrentLimit) flags.push(">30m");
-  if (p.exceedsLegacyCredits) flags.push(">250 cr");
-  else if (p.exceedsCurrentCredits) flags.push(">150 cr");
+  if (p.exceedsLegacyLimit) flags.push(">30m");
+  else if (p.exceedsCurrentLimit) flags.push(">20m");
+  if (p.exceedsLegacyCredits) flags.push(">150 cr");
+  else if (p.exceedsCurrentCredits) flags.push(">100 cr");
   if (flags.length === 0) return null;
   return (
     <div className="mt-1 flex flex-wrap gap-1">
@@ -282,7 +282,7 @@ export function BypassPanel({
   range: DateRange;
 }) {
   const [view, setView] = useState<BypassView>("projects");
-  const [threshold, setThreshold] = useState<BypassThreshold>("30");
+  const [threshold, setThreshold] = useState<BypassThreshold>("20");
   const [severity, setSeverity] = useState<BypassSeverity>("all");
   const [sort, setSort] = useState<BypassSort>("duration");
   const [sortDir, setSortDir] = useState<BypassSortDir>("desc");
@@ -385,15 +385,15 @@ export function BypassPanel({
         <p className="text-sm text-white/45">
           Free-plan projects that exceed video length limits. Current free:{" "}
           <span className="text-white/70">
-            {limits?.currentMaxMins ?? 30} min / {limits?.currentCredits ?? 150}{" "}
+            {limits?.currentMaxMins ?? 20} min / {limits?.currentCredits ?? 100}{" "}
             credits
           </span>
           . Previous free:{" "}
           <span className="text-white/70">
-            {limits?.legacyMaxMins ?? 45} min / {limits?.legacyCredits ?? 250}{" "}
+            {limits?.legacyMaxMins ?? 30} min / {limits?.legacyCredits ?? 150}{" "}
             credits
           </span>
-          . Soft = over current 30m but ≤45m; hard = over the old 45m ceiling.
+          . Soft = over current 20m but ≤30m; hard = over the old 30m ceiling.
         </p>
         <p className="text-[12px] text-white/35">
           Duration comes from the worker after download. API length checks can be
@@ -411,13 +411,13 @@ export function BypassPanel({
             tone={summary.totalProjects > 0 ? "warn" : "default"}
           />
           <StatCard
-            label="Soft (30–45 min)"
+            label="Soft (20–30 min)"
             value={summary.softCount}
             sub="Bypass current free only"
             tone="warn"
           />
           <StatCard
-            label="Hard (>45 min)"
+            label="Hard (>30 min)"
             value={summary.hardCount}
             sub="Past legacy free ceiling"
             tone={summary.hardCount > 0 ? "danger" : "default"}
@@ -433,17 +433,17 @@ export function BypassPanel({
       {summary && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <StatCard
-            label="Cost >150 credits"
+            label="Cost >100 credits"
             value={summary.overCurrentCredits}
             sub="Single job above current free allotment"
           />
           <StatCard
-            label="Cost >250 credits"
+            label="Cost >150 credits"
             value={summary.overLegacyCredits}
             sub="Single job above previous free allotment"
           />
           <StatCard
-            label="Over legacy 45 min"
+            label="Over legacy 30 min"
             value={summary.overLegacyMins}
             sub="Same as hard bypass count"
           />
@@ -505,8 +505,8 @@ export function BypassPanel({
               }}
               className="rounded-xl border border-white/10 bg-[#141414] px-3 py-2 text-sm text-white outline-none focus:border-white/25"
             >
-              <option value="30">&gt;30 min (current)</option>
-              <option value="45">&gt;45 min (legacy)</option>
+              <option value="20">&gt;20 min (current)</option>
+              <option value="30">&gt;30 min (legacy)</option>
             </select>
           </label>
 
@@ -521,8 +521,8 @@ export function BypassPanel({
               className="rounded-xl border border-white/10 bg-[#141414] px-3 py-2 text-sm text-white outline-none focus:border-white/25"
             >
               <option value="all">All</option>
-              <option value="soft">Soft (30–45)</option>
-              <option value="hard">Hard (&gt;45)</option>
+              <option value="soft">Soft (20–30)</option>
+              <option value="hard">Hard (&gt;30)</option>
             </select>
           </label>
 

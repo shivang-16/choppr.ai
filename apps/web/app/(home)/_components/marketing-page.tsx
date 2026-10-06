@@ -325,7 +325,7 @@ export default function MarketingPage(props: MarketingPageProps) {
               Start with a free clip
             </h2>
             <p className="text-[15px] leading-relaxed text-white/50">
-              150 credits each month. No card. Export at 720p on the free plan.
+              100 credits each month. No card. Export at 720p on the free plan.
             </p>
             <StartClipCta />
           </div>

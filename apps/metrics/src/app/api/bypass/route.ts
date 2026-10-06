@@ -19,7 +19,7 @@ function parseSeverity(v: string | null): BypassSeverity | "all" {
 }
 
 function parseThreshold(v: string | null): BypassThreshold {
-  return v === "45" ? "45" : "30";
+  return v === "30" ? "30" : "20";
 }
 
 function parseView(v: string | null): BypassView {

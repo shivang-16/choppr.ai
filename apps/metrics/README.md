@@ -38,11 +38,11 @@ Lists free-plan projects (and a per-user rollup) that exceed video length limits
 
 | Limit | Value |
 |-------|-------|
-| Current free | **30 min** / **150 credits** |
-| Previous free (legacy) | **45 min** / **250 credits** |
+| Current free | **20 min** / **100 credits** |
+| Previous free (legacy) | **30 min** / **150 credits** |
 
-- **Soft** — duration &gt; 30 min but ≤ 45 min (bypasses current free only)
-- **Hard** — duration &gt; 45 min (past the old free ceiling)
+- **Soft** — duration &gt; 20 min but ≤ 30 min (bypasses current free only)
+- **Hard** — duration &gt; 30 min (past the old free ceiling)
 
 Includes source URL, estimated job credits, status, and user contact. API: `GET /api/bypass`.
 

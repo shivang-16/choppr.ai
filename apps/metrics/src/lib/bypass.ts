@@ -1,8 +1,8 @@
 /**
  * Free-plan constraint bypass detection.
  *
- * Free limits today: 30 min / 150 credits.
- * Previous free limits: 45 min / 250 credits.
+ * Free limits today: 20 min / 100 credits.
+ * Previous free limits: 30 min / 150 credits.
  * (No worker-side maxVideoLengthMins check — client can omit durationSecs.)
  */
 
@@ -10,13 +10,13 @@ import { User, Project, CreditLedger } from "./models";
 import type { ParsedDateRange } from "./date-range";
 
 /** Current free plan video length (mins). */
-export const FREE_MAX_MINS_CURRENT = 30;
+export const FREE_MAX_MINS_CURRENT = 20;
 /** Previous free plan / legacy ceiling (mins). */
-export const FREE_MAX_MINS_LEGACY = 45;
+export const FREE_MAX_MINS_LEGACY = 30;
 /** Current free plan monthly credits. */
-export const FREE_CREDITS_CURRENT = 150;
+export const FREE_CREDITS_CURRENT = 100;
 /** Previous free plan monthly credits. */
-export const FREE_CREDITS_LEGACY = 250;
+export const FREE_CREDITS_LEGACY = 150;
 export const CREDITS_PER_MIN = 2;
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -25,7 +25,7 @@ const CACHE_TTL_MS = 2 * 60 * 1000;
 const aggOpts = { allowDiskUse: true };
 
 export type BypassSeverity = "soft" | "hard";
-/** soft = over 30 but ≤45; hard = over 45 (legacy ceiling too). */
+/** soft = over 20 but ≤30; hard = over 30 (legacy ceiling too). */
 
 export type BypassProjectRow = {
   projectId: string;
@@ -92,7 +92,7 @@ export type BypassSummary = {
   byStatus: Record<string, number>;
 };
 
-export type BypassThreshold = "30" | "45";
+export type BypassThreshold = "20" | "30";
 export type BypassView = "projects" | "users";
 export type BypassSortDir = "asc" | "desc";
 export type BypassSort =
@@ -451,7 +451,7 @@ export async function getFreePlanBypasses(opts?: {
 }) {
   const page = clampPage(opts?.page ?? 1);
   const limit = clampLimit(opts?.limit ?? DEFAULT_PAGE_SIZE);
-  const threshold = opts?.threshold === "45" ? "45" : "30";
+  const threshold = opts?.threshold === "30" ? "30" : "20";
   const view = opts?.view === "users" ? "users" : "projects";
   const severity = opts?.severity ?? "all";
   const q = opts?.q?.trim() ?? "";
@@ -461,7 +461,7 @@ export async function getFreePlanBypasses(opts?: {
   const range = opts?.range;
 
   const minSecs =
-    threshold === "45"
+    threshold === "30"
       ? FREE_MAX_MINS_LEGACY * 60
       : FREE_MAX_MINS_CURRENT * 60;
 
@@ -547,7 +547,7 @@ export async function getFreePlanBypasses(opts?: {
   // Rebuild user rollup from filtered projects when filtering
   let users = cache.users;
   const rangeFiltered = Boolean(range?.from || range?.to);
-  if (threshold === "45" || severity !== "all" || q || rangeFiltered) {
+  if (threshold === "30" || severity !== "all" || q || rangeFiltered) {
     const map = new Map<string, BypassUserRow>();
     for (const p of projects) {
       let row = map.get(p.userId);

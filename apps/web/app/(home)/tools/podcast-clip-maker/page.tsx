@@ -16,7 +16,7 @@ const faqs = [
   },
   {
     q: "How long can an episode be?",
-    a: "Free plans accept videos up to 30 minutes. Core accepts up to 2 hours per job. Growth and Scale do not cap length the same way. Credits still scale with minutes processed.",
+    a: "Free plans accept videos up to 20 minutes. Core accepts up to 2 hours per job. Growth and Scale do not cap length the same way. Credits still scale with minutes processed.",
   },
   {
     q: "Can captions match how we actually talk?",

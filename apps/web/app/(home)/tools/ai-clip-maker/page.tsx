@@ -12,7 +12,7 @@ const faqs = [
   },
   {
     q: "How do I start a clip for free?",
-    a: "Create an account with no credit card. The free plan includes 150 credits each month, about 1.25 hours of AI clipping, up to 10 clips per video, a 30-minute source limit, and 720p exports.",
+    a: "Create an account with no credit card. The free plan includes 100 credits each month, about 50 minutes of AI clipping, up to 10 clips per video, a 20-minute source limit, and 720p exports.",
   },
   {
     q: "What happens after the AI makes clips?",
@@ -60,7 +60,7 @@ export default function AiClipMakerPage() {
       steps={[
         {
           title: "Bring the video in",
-          body: "Paste a YouTube, X, Drive, Loom, or Instagram URL, or upload a file. Free accounts can process videos up to 30 minutes. Paid plans go longer.",
+          body: "Paste a YouTube, X, Drive, Loom, or Instagram URL, or upload a file. Free accounts can process videos up to 20 minutes. Paid plans go longer.",
         },
         {
           title: "Let AI propose clips",
@@ -122,7 +122,7 @@ export default function AiClipMakerPage() {
               "@type": "Offer",
               price: "0",
               priceCurrency: "USD",
-              description: "Free plan with 150 credits per month",
+              description: "Free plan with 100 credits per month",
             },
             isPartOf: {
               "@type": "WebSite",

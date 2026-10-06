@@ -20,7 +20,7 @@ const faqs = [
   },
   {
     q: "Is Choppr cheaper than Opus Clip?",
-    a: "It depends on how many minutes you process. Choppr uses credits (2 per source minute for clipping, 2 per export). There is a free plan with 150 credits and no credit card. Compare live prices on both sites against your monthly minutes rather than a slogan.",
+    a: "It depends on how many minutes you process. Choppr uses credits (2 per source minute for clipping, 2 per export). There is a free plan with 100 credits and no credit card. Compare live prices on both sites against your monthly minutes rather than a slogan.",
   },
   {
     q: "Who should pick Choppr instead?",
@@ -87,7 +87,7 @@ export default function OpusClipAlternativePage() {
         },
         {
           title: "Credits you can read",
-          body: "2 credits per source minute to clip, 2 to export, 1 per minute for captions or reframe alone. Failed jobs refund. Free plan: 150 credits, 30-minute cap, 10 clips, 720p.",
+          body: "2 credits per source minute to clip, 2 to export, 1 per minute for captions or reframe alone. Failed jobs refund. Free plan: 100 credits, 20-minute cap, 10 clips, 720p.",
         },
       ]}
       compareTitle="Choppr vs Opus Clip, without the brochure"
@@ -120,7 +120,7 @@ export default function OpusClipAlternativePage() {
         },
         {
           item: "Try it",
-          choppr: "Free plan, 150 credits / month, no credit card.",
+          choppr: "Free plan, 100 credits / month, no credit card.",
           other: "Free or trial tiers - check their current limits and watermarks.",
         },
       ]}
