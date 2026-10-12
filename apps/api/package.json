@@ -8,7 +8,8 @@
     "start": "tsx src/server.ts",
     "build": "tsc",
     "dev": "tsx watch src/server.ts",
-    "seed:plans": "tsx src/db/seed-plans.ts"
+    "seed:plans": "tsx src/db/seed-plans.ts",
+    "cleanup:old-media": "tsx src/services/purge-old-media.ts"
   },
   "keywords": [],
   "author": "",

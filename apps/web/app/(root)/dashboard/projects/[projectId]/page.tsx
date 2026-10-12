@@ -472,6 +472,18 @@ function ProcessingView({ jobStatus, editFull }: { jobStatus?: string | null; ed
   );
 }
 
+const KEEP_MS = 30 * 24 * 60 * 60 * 1000;
+
+function projectDeletionNote(createdAt?: string) {
+  const created = createdAt ? new Date(createdAt) : null;
+  if (!created || Number.isNaN(created.getTime())) {
+    return "This project and its clips will be deleted 30 days after it was created.";
+  }
+  const when = new Date(created.getTime() + KEEP_MS);
+  const date = when.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return `This project and its clips will be deleted on ${date}.`;
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -490,6 +502,7 @@ export default function ProjectDetailPage() {
   const apiFetch = useApiFetch();
 
   const displayName = project?.name?.trim() || project?.title || "Project";
+  const deletionNote = projectDeletionNote(project?.createdAt);
 
   const handleRetry = () => {
     if (!project?.sourceUrl) return;
@@ -810,6 +823,12 @@ export default function ProjectDetailPage() {
           {/* Empty — only after job is fully done with no clips */}
           {!loading && originalClips.length === 0 && project?.status === "done" && (
             <p className="text-[13px] text-white/30">No clips found for this project.</p>
+          )}
+
+          {project && deletionNote && (
+            <p className="mt-auto pt-8 text-center text-[12px] text-white/30">
+              {deletionNote}
+            </p>
           )}
         </div>
       </main>

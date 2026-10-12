@@ -5,6 +5,7 @@ import {
   Export,
   UserCredits,
   CreditLedger,
+  UsageCounter,
 } from "./models";
 import {
   toSalesLead,
@@ -559,6 +560,7 @@ export async function getOverview(range?: ParsedDateRange) {
     topupRevenue,
     creditSpent,
     daily,
+    lifetime,
   ] = await Promise.all([
     User.countDocuments(),
     hasDate ? User.countDocuments(dateMatch) : User.countDocuments(),
@@ -627,6 +629,7 @@ export async function getOverview(range?: ParsedDateRange) {
       aggOpts
     ),
     getDailySeries(r),
+    UsageCounter.findById("lifetime").select("projects clips").lean(),
   ]);
 
   return {
@@ -648,14 +651,14 @@ export async function getOverview(range?: ParsedDateRange) {
     },
     projects: {
       total: projectsInRange,
-      allTime: projectsAllTime,
+      allTime: Math.max(projectsAllTime, lifetime?.projects ?? 0),
       last7d: projectsInRange,
       last30d: projectsInRange,
       byStatus: toMap(projectsByStatus),
     },
     clips: {
       total: clipsInRange,
-      allTime: clipsAllTime,
+      allTime: Math.max(clipsAllTime, lifetime?.clips ?? 0),
       last7d: clipsInRange,
     },
     exports: {

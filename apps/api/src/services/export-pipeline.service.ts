@@ -22,6 +22,7 @@ import { randomUUID }        from "crypto";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Export }            from "../model/export.model.js";
 import { Clip }              from "../model/clip.model.js";
+import { incClips }          from "../model/usage-counter.model.js";
 import { renderCaptionToFile } from "./caption-overlay.service.js";
 import { type PlacedSticker } from "./sticker-renderer.js";
 import { renderTextOverlaysToBuffer, type TextOverlay as TextOverlayRenderable } from "./text-overlay-renderer.js";
@@ -1170,6 +1171,7 @@ export async function runExportPipeline(params: ExportPipelineParams): Promise<v
           createdAt:      now,
           updatedAt:      now,
         });
+        await incClips().catch((err) => logger.error("Usage counter clips failed", { error: err }));
         // [LOG_REDUCED] logger.info(`[export:${exportId}] Saved exported clip with originalClipId=${originalClipId}`);
       }
     }

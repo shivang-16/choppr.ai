@@ -83,9 +83,22 @@ function model<T>(name: string, schema: Schema) {
   return (mongoose.models[name] as mongoose.Model<T>) || mongoose.model<T>(name, schema);
 }
 
+const UsageCounterSchema = new Schema(
+  {
+    _id: String,
+    projects: Number,
+    clips: Number,
+  },
+  { collection: "usagecounters", _id: false }
+);
+
 export const User = model("User", UserSchema);
 export const Project = model("Project", ProjectSchema);
 export const Clip = model("Clip", ClipSchema);
 export const Export = model("Export", ExportSchema);
 export const UserCredits = model("UserCredits", UserCreditsSchema);
 export const CreditLedger = model("CreditLedger", CreditLedgerSchema);
+export const UsageCounter = model<{ _id: string; projects?: number; clips?: number }>(
+  "UsageCounter",
+  UsageCounterSchema
+);

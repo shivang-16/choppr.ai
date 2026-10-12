@@ -6,6 +6,7 @@ import { Project } from "../model/project.model.js";
 import { enqueueJob } from "../services/sqs.js";
 import { checkBalance, MIN_CREDITS_TO_START, CREDITS_PER_MINUTE } from "../services/credits.service.js";
 import { logger } from "../utils/logger.js";
+import { incProjects } from "../model/usage-counter.model.js";
 
 function titleFromUrl(url: string): string {
   try {
@@ -149,6 +150,8 @@ export async function createJob(req: Request, res: Response, next: NextFunction)
         ...(s3Key ? { sourceVideoS3Key: s3Key } : {}),
       }),
     ]);
+
+    await incProjects().catch((err) => logger.error("Usage counter projects failed", { error: err }));
 
   // 2. Push to SQS with all clip settings
     await enqueueJob({ jobId, userId, url: url ?? "", s3Key: s3Key ?? "", query, projectId, clipModel, genre, clipLength, maxClips, ...(language ? { language } : {}), ...(editFull ? { editFull: true } : {}) });
