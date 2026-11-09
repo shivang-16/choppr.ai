@@ -114,32 +114,37 @@ export function SplitLayoutRenderer({
         <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2v10h10M2 4h10v10" /></svg>
         Crop bottom
       </button>
-      {/* Left/right only so the center play/pause control stays clickable */}
-      {(["left-0", "right-0"] as const).map((side) => (
-        <div
-          key={side}
-          className={`pointer-events-auto absolute w-[32%] -translate-y-1/2 cursor-row-resize ${side}`}
-          style={{ top: `${topPct}%`, height: 18 }}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const parent = frameRef.current?.getBoundingClientRect();
-            dragRef.current = {
-              startY: e.clientY,
-              startDivider: layout.divider,
-              height: parent?.height ?? 1,
-            };
-            e.currentTarget.setPointerCapture(e.pointerId);
-          }}
-          onPointerMove={(e) => {
-            const drag = dragRef.current;
-            if (!drag) return;
-            onDivider?.(clamp(drag.startDivider + (e.clientY - drag.startY) / drag.height, 0.2, 0.8));
-          }}
-          onPointerUp={() => { dragRef.current = null; }}
-          onPointerCancel={() => { dragRef.current = null; }}
-        />
-      ))}
+      {/* Full-width divider — drag up/down to resize panes (20%–80%) */}
+      <div
+        data-split-divider
+        className="pointer-events-auto absolute inset-x-0 z-[7] -translate-y-1/2 cursor-row-resize touch-none"
+        style={{ top: `${topPct}%`, height: 28 }}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const parent = frameRef.current?.getBoundingClientRect();
+          dragRef.current = {
+            startY: e.clientY,
+            startDivider: layout.divider,
+            height: parent?.height ?? 1,
+          };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const drag = dragRef.current;
+          if (!drag) return;
+          onDivider?.(clamp(drag.startDivider + (e.clientY - drag.startY) / drag.height, 0.2, 0.8));
+        }}
+        onPointerUp={() => { dragRef.current = null; }}
+        onPointerCancel={() => { dragRef.current = null; }}
+      >
+        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-white/70" />
+        <div className="absolute left-1/2 top-1/2 flex h-5 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-[3px] rounded-full bg-white shadow-[0_1px_8px_rgba(0,0,0,0.45)]">
+          <span className="h-[3px] w-[3px] rounded-full bg-black/45" />
+          <span className="h-[3px] w-[3px] rounded-full bg-black/45" />
+          <span className="h-[3px] w-[3px] rounded-full bg-black/45" />
+        </div>
+      </div>
     </div>
   );
 }

@@ -4664,7 +4664,7 @@ export default function ClipRefinePage() {
                     }}
                     onPointerDown={(e) => {
                       if (dragRef.current) return;
-                      if ((e.target as HTMLElement).closest("[data-crop-btn]")) return;
+                      if ((e.target as HTMLElement).closest("[data-crop-btn],[data-split-divider]")) return;
                       e.preventDefault(); // stop browser claiming the touch for scroll
                       const rect = videoContainerRef.current?.getBoundingClientRect();
                       if (!rect) return;
