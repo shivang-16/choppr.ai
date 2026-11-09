@@ -13,6 +13,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const HOUR_MS = 60 * 60 * 1000;
 
 type Category = "all" | "video" | "short" | "live";
+type PrivacyFilter = "all" | "public" | "unlisted" | "private";
 
 type Connection = {
   _id: string;
@@ -50,6 +51,13 @@ const TABS: { id: Category; label: string }[] = [
   { id: "video", label: "Videos" },
   { id: "short", label: "Shorts" },
   { id: "live", label: "Live" },
+];
+
+const PRIVACY_OPTIONS: { id: PrivacyFilter; label: string }[] = [
+  { id: "all", label: "All visibility" },
+  { id: "public", label: "Public" },
+  { id: "unlisted", label: "Unlisted" },
+  { id: "private", label: "Private" },
 ];
 
 function formatDuration(seconds: number) {
@@ -104,6 +112,7 @@ export default function YoutubePage() {
   const [error, setError] = useState<string | null>(null);
   const [channelId, setChannelId] = useState<string>("all");
   const [category, setCategory] = useState<Category>("all");
+  const [privacy, setPrivacy] = useState<PrivacyFilter>("all");
 
   const load = useCallback(async () => {
     const res = await apiFetch(`${API_URL}/api/youtube`);
@@ -140,6 +149,12 @@ export default function YoutubePage() {
     if (params.get("connected")) setNotice("Channel connected");
     if (params.toString()) window.history.replaceState(null, "", "/dashboard/youtube");
   }, []);
+
+  useEffect(() => {
+    if (!refreshDone) return;
+    const timer = window.setTimeout(() => setRefreshDone(false), 2800);
+    return () => window.clearTimeout(timer);
+  }, [refreshDone]);
 
   const hasRunningProject = library.videos.some(
     (video) => video.projectStatus === "pending" || video.projectStatus === "processing",
@@ -212,15 +227,19 @@ export default function YoutubePage() {
     [library.videos, channelId],
   );
 
-  const visible = category === "all"
+  const privacyFiltered = privacy === "all"
     ? channelVideos
-    : channelVideos.filter((video) => video.category === category);
+    : channelVideos.filter((video) => video.privacyStatus === privacy);
+
+  const visible = category === "all"
+    ? privacyFiltered
+    : privacyFiltered.filter((video) => video.category === category);
 
   const counts = {
-    all: channelVideos.length,
-    video: channelVideos.filter((video) => video.category === "video").length,
-    short: channelVideos.filter((video) => video.category === "short").length,
-    live: channelVideos.filter((video) => video.category === "live").length,
+    all: privacyFiltered.length,
+    video: privacyFiltered.filter((video) => video.category === "video").length,
+    short: privacyFiltered.filter((video) => video.category === "short").length,
+    live: privacyFiltered.filter((video) => video.category === "live").length,
   };
 
   const newestSync = library.connections
@@ -244,37 +263,39 @@ export default function YoutubePage() {
                   : `Updated ${timeAgo(newestSync)} · refreshes every hour`}
               </p>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-2">
-              {refreshDone && (
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2.5 text-[13px] text-emerald-200">
-                  Refresh complete
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                {library.connections.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => void refresh(true)}
-                    disabled={refreshing}
-                    aria-label="Refresh"
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/8 px-2.5 py-2 text-[13px] font-medium text-white/80 hover:bg-white/12 disabled:opacity-50 sm:px-3.5"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                    <span className="hidden sm:inline">Refresh</span>
-                  </button>
-                )}
+            <div className="flex shrink-0 items-center gap-2">
+              {library.connections.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => void connect()}
-                  disabled={connecting}
-                  className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-white px-4 py-2 text-[13px] font-semibold text-black hover:bg-white/90 disabled:opacity-50"
+                  onClick={() => void refresh(true)}
+                  disabled={refreshing}
+                  aria-label="Refresh"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/8 px-2.5 py-2 text-[13px] font-medium text-white/80 hover:bg-white/12 disabled:opacity-50 sm:px-3.5"
                 >
-                  {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                  Add channel
+                  <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                  <span className="hidden sm:inline">Refresh</span>
                 </button>
-              </div>
+              )}
+              <button
+                type="button"
+                onClick={() => void connect()}
+                disabled={connecting}
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-white px-4 py-2 text-[13px] font-semibold text-black hover:bg-white/90 disabled:opacity-50"
+              >
+                {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                Add channel
+              </button>
             </div>
           </div>
+
+          {refreshDone && (
+            <div
+              role="status"
+              className="pointer-events-none fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-emerald-500/25 bg-[#111]/95 px-4 py-2.5 text-[13px] text-emerald-200 shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-top-2"
+            >
+              Refresh complete
+            </div>
+          )}
 
           {notice && (
             <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[13px] text-white/70">{notice}</p>
@@ -349,17 +370,34 @@ export default function YoutubePage() {
                 ))}
               </div>
 
-              <div className="flex gap-2">
-                {TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setCategory(tab.id)}
-                    className={`rounded-lg px-3 py-1.5 text-[12px] ${category === tab.id ? "bg-white text-black" : "bg-white/5 text-white/55"}`}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-2">
+                  {TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setCategory(tab.id)}
+                      className={`rounded-lg px-3 py-1.5 text-[12px] ${category === tab.id ? "bg-white text-black" : "bg-white/5 text-white/55"}`}
+                    >
+                      {tab.label} {counts[tab.id]}
+                    </button>
+                  ))}
+                </div>
+                <label className="relative">
+                  <span className="sr-only">Filter by visibility</span>
+                  <select
+                    value={privacy}
+                    onChange={(e) => setPrivacy(e.target.value as PrivacyFilter)}
+                    className="appearance-none rounded-lg border border-white/10 bg-white/5 py-1.5 pl-3 pr-8 text-[12px] text-white/70 outline-none hover:bg-white/8 focus:border-white/20"
                   >
-                    {tab.label} {counts[tab.id]}
-                  </button>
-                ))}
+                    {PRIVACY_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id} className="bg-[#111]">
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-white/35 text-[10px]">▾</span>
+                </label>
               </div>
 
               {visible.length === 0 ? (

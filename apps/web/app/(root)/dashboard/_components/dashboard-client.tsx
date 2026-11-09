@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useApiFetch } from "@/lib/apiFetch";
-import { Link2, Upload, Scissors, Film, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
+import { Link2, Upload, Scissors, Film, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { URL_PLACEHOLDERS, validateVideoUrl } from "@/lib/url-placeholders";
@@ -13,6 +13,49 @@ import posthog from "posthog-js";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const SAMPLE_PROJECT_URL = "https://youtu.be/M2nz0pkmUf8?si=_zMXPnTLAfnG29ks";
+const RECENT_PROMPTS_MAX = 4;
+
+type RecentPrompt = { text: string; createdAt: number };
+
+function recentPromptsKey(userId?: string | null) {
+  return `choppr:recent-prompts:${userId || "anon"}`;
+}
+
+function loadRecentPrompts(userId?: string | null): RecentPrompt[] {
+  try {
+    const raw = localStorage.getItem(recentPromptsKey(userId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is RecentPrompt =>
+        !!item
+        && typeof item === "object"
+        && typeof (item as RecentPrompt).text === "string"
+        && typeof (item as RecentPrompt).createdAt === "number"
+        && (item as RecentPrompt).text.trim().length > 0,
+      )
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, RECENT_PROMPTS_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentPrompt(text: string, userId?: string | null): RecentPrompt[] {
+  const trimmed = text.trim();
+  if (!trimmed) return loadRecentPrompts(userId);
+  const next: RecentPrompt[] = [
+    { text: trimmed, createdAt: Date.now() },
+    ...loadRecentPrompts(userId).filter((item) => item.text !== trimmed),
+  ].slice(0, RECENT_PROMPTS_MAX);
+  try {
+    localStorage.setItem(recentPromptsKey(userId), JSON.stringify(next));
+  } catch {
+    // ignore quota / private mode
+  }
+  return next;
+}
 
 type VideoMeta = {
   url: string;
@@ -217,7 +260,7 @@ function DashboardInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const apiFetch = useApiFetch();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId } = useAuth();
   const didRedirectFromCheckout = searchParams.get("success") === "1";
   const paidPlan = searchParams.get("plan");
 
@@ -313,6 +356,22 @@ function DashboardInner() {
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [maxClips, setMaxClips] = useState(10);
   const [prompt, setPrompt] = useState("");
+  const [recentPrompts, setRecentPrompts] = useState<RecentPrompt[]>([]);
+  const [recentOpen, setRecentOpen] = useState(false);
+  const recentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setRecentPrompts(loadRecentPrompts(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    if (!recentOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!recentRef.current?.contains(event.target as Node)) setRecentOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [recentOpen]);
 
   // Derive available clip count options from video duration
   const maxClipsLimit = (() => {
@@ -677,6 +736,7 @@ function DashboardInner() {
       }
 
       const { projectId } = await res.json();
+      if (prompt.trim()) setRecentPrompts(saveRecentPrompt(prompt, userId));
       posthog.capture("job_created", {
         source: uploadedS3Key ? "upload" : "url",
         clip_model: clipModel,
@@ -1278,7 +1338,44 @@ function DashboardInner() {
                 You can change aspect ratio after clipping.
               </p>
               <div className="flex items-center justify-between">
-                <span className="text-[12px] text-white/50">Include specific moments</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[12px] text-white/50">Include specific moments</span>
+                  <div className="relative" ref={recentRef}>
+                    <button
+                      type="button"
+                      onClick={() => setRecentOpen((open) => !open)}
+                      disabled={recentPrompts.length === 0}
+                      aria-label="Recent prompts"
+                      title={recentPrompts.length === 0 ? "No recent prompts yet" : "Recent prompts"}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/8 hover:text-white/70 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-white/40"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                    </button>
+                    {recentOpen && recentPrompts.length > 0 && (
+                      <div className="absolute left-0 top-full z-20 mt-1 w-72 overflow-hidden rounded-xl border border-white/10 bg-[#141414] shadow-xl">
+                        <p className="border-b border-white/8 px-3 py-2 text-[11px] text-white/35">
+                          Recent prompts
+                        </p>
+                        <ul className="max-h-56 overflow-y-auto py-1">
+                          {recentPrompts.map((item) => (
+                            <li key={`${item.createdAt}-${item.text}`}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPrompt(item.text.slice(0, 2000));
+                                  setRecentOpen(false);
+                                }}
+                                className="w-full px-3 py-2 text-left text-[12px] text-white/75 transition-colors hover:bg-white/8 hover:text-white"
+                              >
+                                <span className="line-clamp-2">{item.text}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <span className={`text-[11px] tabular-nums transition-colors ${
                   prompt.length >= 2000 ? "text-red-400" :
                   prompt.length >= 1600 ? "text-amber-400" :

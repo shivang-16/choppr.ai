@@ -23,9 +23,16 @@ export function parseIsoDuration(iso: string): number {
   return Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0);
 }
 
-/** YouTube has no Shorts flag. 60 seconds is the strict cut; 61–180s Shorts land in Videos. */
-export function categorize(liveBroadcastContent: string, durationSecs: number): YoutubeVideoCategory {
-  if (liveBroadcastContent === "live" || liveBroadcastContent === "upcoming") return "live";
+/**
+ * YouTube has no Shorts flag. 60s is the strict cut; 61–180s Shorts land in Videos.
+ * Past live VODs have liveBroadcastContent "none" but liveStreamingDetails.actualStartTime.
+ */
+export function categorize(
+  liveBroadcastContent: string,
+  durationSecs: number,
+  wasLive = false,
+): YoutubeVideoCategory {
+  if (liveBroadcastContent === "live" || liveBroadcastContent === "upcoming" || wasLive) return "live";
   if (durationSecs > 0 && durationSecs <= 60) return "short";
   return "video";
 }
@@ -37,6 +44,7 @@ function selfCheck() {
   if (parseIsoDuration("") !== 0) throw new Error("empty duration");
   if (categorize("live", 10) !== "live") throw new Error("live beats short");
   if (categorize("upcoming", 0) !== "live") throw new Error("upcoming is live");
+  if (categorize("none", 3600, true) !== "live") throw new Error("past live is live");
   if (categorize("none", 60) !== "short") throw new Error("60s is a short");
   if (categorize("none", 61) !== "video") throw new Error("61s is a video");
 }
@@ -253,6 +261,7 @@ type VideoItem = {
   contentDetails?: { duration?: string };
   status?: { privacyStatus?: string; madeForKids?: boolean };
   statistics?: { viewCount?: string };
+  liveStreamingDetails?: { actualStartTime?: string; actualEndTime?: string };
 };
 
 async function ytAuthed<T>(conn: IYoutubeConnection & { save: () => Promise<unknown> }, path: string): Promise<T> {
@@ -293,7 +302,7 @@ async function doSync(connectionId: string): Promise<number> {
       const details = new Map<string, VideoItem>();
       if (ids.length > 0) {
         const videoQuery = new URLSearchParams({
-          part: "snippet,contentDetails,status,statistics",
+          part: "snippet,contentDetails,status,statistics,liveStreamingDetails",
           id: ids.join(","),
           maxResults: "50",
         });
@@ -308,6 +317,10 @@ async function doSync(connectionId: string): Promise<number> {
         const detail = details.get(videoId);
         const durationSecs = parseIsoDuration(detail?.contentDetails?.duration ?? "");
         const live = detail?.snippet?.liveBroadcastContent ?? "none";
+        const wasLive = Boolean(
+          detail?.liveStreamingDetails?.actualStartTime
+          || detail?.liveStreamingDetails?.actualEndTime,
+        );
         seen.push(videoId);
         const thumbnailUrl = item.snippet?.thumbnails?.medium?.url
           ?? item.snippet?.thumbnails?.high?.url;
@@ -324,7 +337,7 @@ async function doSync(connectionId: string): Promise<number> {
                 ...(publishedAt ? { publishedAt } : {}),
                 durationSecs,
                 privacyStatus: detail?.status?.privacyStatus ?? "unknown",
-                category: categorize(live, durationSecs),
+                category: categorize(live, durationSecs, wasLive),
                 madeForKids: detail?.status?.madeForKids === true,
                 viewCount: Number(detail?.statistics?.viewCount ?? 0) || 0,
                 syncedAt: now,
