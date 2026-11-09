@@ -9,6 +9,7 @@ import {
   readConnectState,
   revokeConnection,
   signConnectState,
+  publishToYoutube,
   syncConnection,
 } from "../services/youtube.service.js";
 
@@ -148,6 +149,35 @@ export async function refreshYoutube(req: Request, res: Response, next: NextFunc
       }
     }
     res.json(await library(ownerId));
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function publishYoutube(req: Request, res: Response, next: NextFunction) {
+  try {
+    const ownerId = userId(req);
+    const body = req.body ?? {};
+    const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";
+    const title = typeof body.title === "string" ? body.title : "";
+    const description = typeof body.description === "string" ? body.description : "";
+    const privacy = body.privacy === "private" ? "private" : "public";
+    const publishAt = typeof body.publishAt === "string" && body.publishAt ? body.publishAt : undefined;
+    const clipId = typeof body.clipId === "string" && body.clipId ? body.clipId : undefined;
+    const exportId = typeof body.exportId === "string" && body.exportId ? body.exportId : undefined;
+    if (!connectionId) throw new CustomError("Choose a YouTube channel", 400);
+    if (!clipId && !exportId) throw new CustomError("Nothing to publish", 400);
+    const result = await publishToYoutube(ownerId, {
+      connectionId,
+      title,
+      description,
+      privacy,
+      publishAt,
+      madeForKids: body.madeForKids === true,
+      clipId,
+      exportId,
+    });
+    res.json(result);
   } catch (error) {
     next(error);
   }

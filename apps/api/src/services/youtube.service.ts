@@ -1,12 +1,17 @@
 import { randomUUID } from "crypto";
 import { CustomError } from "../middlewares/error.js";
+import { Clip } from "../model/clip.model.js";
+import { Export } from "../model/export.model.js";
 import { YoutubeConnection, type IYoutubeConnection } from "../model/youtube-connection.model.js";
 import { YoutubeVideo, type YoutubeVideoCategory } from "../model/youtube-video.model.js";
 import { decrypt, encrypt } from "../utils/crypto.js";
 import { logger } from "../utils/logger.js";
 
 const HOUR_MS = 60 * 60 * 1000;
-const SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
+const SCOPE = [
+  "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/youtube.upload",
+].join(" ");
 // shortcut: 20 pages is 1,000 videos. Raise this when the project quota is higher than the default 10,000 units/day.
 const MAX_PAGES = 20;
 
@@ -94,6 +99,7 @@ export function readConnectState(state: string): string {
 type TokenResponse = {
   access_token?: string;
   refresh_token?: string;
+  scope?: string;
   expires_in?: number;
   error?: string;
   error_description?: string;
@@ -184,6 +190,14 @@ export async function connectFromCode(userId: string, code: string): Promise<str
   }));
   if (!token.access_token || !token.refresh_token) {
     throw new CustomError(token.error_description || "Google did not return a refresh token", 400);
+  }
+
+  // Google's consent screen lets users untick individual permissions.
+  if (!(token.scope ?? "").split(" ").includes("https://www.googleapis.com/auth/youtube.upload")) {
+    throw new CustomError(
+      "Allow \"Manage your YouTube videos\" on the Google consent screen, otherwise Choppr can't publish.",
+      400,
+    );
   }
 
   const channels = await yt<{ items?: ChannelItem[] }>(
@@ -397,4 +411,150 @@ export async function revokeConnection(refreshToken: string): Promise<void> {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ token }),
   }).catch(() => undefined);
+}
+
+type PublishPrivacy = "public" | "private";
+
+export function youtubePublishBody(input: {
+  title: string;
+  description: string;
+  privacy: PublishPrivacy;
+  publishAt?: string;
+  madeForKids?: boolean;
+}) {
+  const title = input.title.trim().slice(0, 100);
+  if (!title) throw new CustomError("Add a title", 400);
+  const description = input.description.trim().slice(0, 5000);
+  let privacyStatus: PublishPrivacy = input.privacy === "private" ? "private" : "public";
+  let publishAt: string | undefined;
+  if (input.publishAt) {
+    const when = new Date(input.publishAt);
+    if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() + 60_000) {
+      throw new CustomError("Pick a schedule time at least a minute from now", 400);
+    }
+    privacyStatus = "private";
+    publishAt = when.toISOString();
+  }
+  return {
+    snippet: { title, description, categoryId: "22" },
+    status: {
+      privacyStatus,
+      selfDeclaredMadeForKids: input.madeForKids === true,
+      ...(publishAt ? { publishAt } : {}),
+    },
+  };
+}
+
+function selfCheckPublish() {
+  const soon = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  const scheduled = youtubePublishBody({ title: "Hi", description: "d", privacy: "public", publishAt: soon });
+  if (scheduled.status.privacyStatus !== "private" || !scheduled.status.publishAt) {
+    throw new Error("schedule is private");
+  }
+  const pub = youtubePublishBody({ title: "Hi", description: "", privacy: "public" });
+  if (pub.status.privacyStatus !== "public" || pub.status.publishAt) throw new Error("public has no schedule");
+  let blank = false;
+  try { youtubePublishBody({ title: "  ", description: "", privacy: "public" }); } catch { blank = true; }
+  if (!blank) throw new Error("blank title");
+}
+selfCheckPublish();
+
+async function youtubeFailure(res: Response): Promise<CustomError> {
+  const json = await res.json().catch(() => ({})) as {
+    error?: { message?: string; errors?: { reason?: string }[] };
+  };
+  const reason = json.error?.errors?.[0]?.reason ?? "";
+  if (res.status === 401 || reason === "authError") return new CustomError("unauthorized", 401);
+  if (reason === "insufficientPermissions" || reason === "forbidden") {
+    return new CustomError("Reconnect this YouTube channel to allow publishing", 403);
+  }
+  if (reason === "quotaExceeded" || reason === "uploadLimitExceeded") {
+    return new CustomError("YouTube upload limit is used up for today. Try again tomorrow.", 429);
+  }
+  return new CustomError(json.error?.message || `YouTube API ${res.status}`, res.status >= 400 && res.status < 500 ? res.status : 502);
+}
+
+async function ownedVideoUrl(userId: string, clipId?: string, exportId?: string): Promise<string> {
+  if (exportId) {
+    const doc = await Export.findOne({ _id: exportId, userId, status: "done" }).select("s3Url").lean();
+    if (doc?.s3Url?.startsWith("https://")) return doc.s3Url;
+  }
+  if (clipId) {
+    const doc = await Clip.findOne({ _id: clipId, userId }).select("s3Url").lean();
+    if (doc?.s3Url?.startsWith("https://")) return doc.s3Url;
+  }
+  throw new CustomError("Exported video not found", 404);
+}
+
+async function startResumable(token: string, meta: object, length: number): Promise<string> {
+  const res = await fetch(
+    "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Length": String(length),
+        "X-Upload-Content-Type": "video/mp4",
+      },
+      body: JSON.stringify(meta),
+    },
+  );
+  if (!res.ok) throw await youtubeFailure(res);
+  const location = res.headers.get("location");
+  if (!location) throw new CustomError("YouTube did not start the upload", 502);
+  return location;
+}
+
+export async function publishToYoutube(userId: string, input: {
+  connectionId: string;
+  title: string;
+  description: string;
+  privacy: PublishPrivacy;
+  publishAt?: string;
+  madeForKids?: boolean;
+  clipId?: string;
+  exportId?: string;
+}): Promise<{ videoId: string; url: string }> {
+  const conn = await YoutubeConnection.findOne({ _id: input.connectionId, userId, status: "active" });
+  if (!conn) throw new CustomError("Connect a YouTube channel first", 404);
+  const meta = youtubePublishBody(input);
+  const sourceUrl = await ownedVideoUrl(userId, input.clipId, input.exportId);
+  const file = await fetch(sourceUrl);
+  if (!file.ok) throw new CustomError("Could not read the exported video", 502);
+  const bytes = Buffer.from(await file.arrayBuffer());
+  // shortcut: the whole file is held in memory. Switch to a streamed upload if exports pass 200MB.
+  if (bytes.length === 0) throw new CustomError("Could not read the exported video", 502);
+  if (bytes.length > 200 * 1024 * 1024) {
+    throw new CustomError("This video is too large to publish from here", 413);
+  }
+
+  let location: string;
+  try {
+    location = await startResumable(await accessTokenFor(conn), meta, bytes.length);
+  } catch (error) {
+    if (!(error instanceof CustomError) || error.statusCode !== 401) throw error;
+    location = await startResumable(await accessTokenFor(conn, true), meta, bytes.length);
+  }
+
+  const put = await fetch(location, {
+    method: "PUT",
+    headers: { "Content-Type": "video/mp4" },
+    body: new Uint8Array(bytes),
+  });
+  const json = await put.json().catch(() => ({})) as {
+    id?: string;
+    error?: { message?: string; errors?: { reason?: string }[] };
+  };
+  if (!put.ok || !json.id) {
+    const reason = json.error?.errors?.[0]?.reason ?? "";
+    if (reason === "insufficientPermissions" || reason === "forbidden") {
+      throw new CustomError("Reconnect this YouTube channel to allow publishing", 403);
+    }
+    if (reason === "quotaExceeded" || reason === "uploadLimitExceeded") {
+      throw new CustomError("YouTube upload limit is used up for today. Try again tomorrow.", 429);
+    }
+    throw new CustomError(json.error?.message || "YouTube rejected the upload", put.ok ? 502 : put.status);
+  }
+  return { videoId: json.id, url: `https://www.youtube.com/shorts/${json.id}` };
 }

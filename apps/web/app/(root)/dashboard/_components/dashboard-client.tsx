@@ -269,6 +269,8 @@ function DashboardInner() {
   const [error, setError] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoMeta | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
+  const [projectsReady, setProjectsReady] = useState(false);
+  const [youtubeConnected, setYoutubeConnected] = useState(false);
   const [connectingYoutube, setConnectingYoutube] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -280,14 +282,24 @@ function DashboardInner() {
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
-    apiFetch(`${API_URL}/api/projects`)
-      .then((r) => r.ok ? r.json() : [])
-      .then(setProjects)
-      .catch(() => {});
+    let cancelled = false;
+    Promise.all([
+      apiFetch(`${API_URL}/api/projects`).then((r) => r.ok ? r.json() : []),
+      apiFetch(`${API_URL}/api/youtube`).then((r) => r.ok ? r.json() : null),
+    ])
+      .then(([projectList, youtube]) => {
+        if (cancelled) return;
+        setProjects(Array.isArray(projectList) ? projectList : []);
+        const connections = (youtube?.connections ?? []) as { status?: string }[];
+        setYoutubeConnected(connections.some((connection) => connection.status === "active"));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setProjectsReady(true); });
     apiFetch(`${API_URL}/api/credits`)
       .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d?.balance != null) setUserBalance(d.balance); })
+      .then((d) => { if (!cancelled && d?.balance != null) setUserBalance(d.balance); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [apiFetch, isLoaded, isSignedIn]);
 
   // "thumbnail" = show thumbnail + two buttons; "clips" = expand clip settings
@@ -958,33 +970,49 @@ function DashboardInner() {
         <div className="relative z-10 flex flex-col items-center gap-6 mt-10 w-full max-w-3xl">
           {/* Projects section */}
           <div className="w-full">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-[13px] font-medium text-white">
-                All projects ({projects.length})
-              </span>
-              {projects.length > 0 && (
-                <Link href="/dashboard/projects" className="text-[12px] text-white/35 hover:text-white/60 transition-colors">
-                  View all →
-                </Link>
-              )}
-            </div>
+            {projectsReady && (
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[13px] font-medium text-white">
+                  All projects ({projects.length})
+                </span>
+                {projects.length > 0 && (
+                  <Link href="/dashboard/projects" className="text-[12px] text-white/35 hover:text-white/60 transition-colors">
+                    View all →
+                  </Link>
+                )}
+              </div>
+            )}
 
-            {projects.length === 0 ? (
+            {!projectsReady ? (
+              <div className="flex justify-center py-16">
+                <Loader2 className="h-5 w-5 animate-spin text-white/30" />
+              </div>
+            ) : projects.length === 0 ? (
               <div className="flex flex-col items-center gap-4 py-16 text-center">
                 <svg viewBox="0 0 24 24" className="h-12 w-12" aria-hidden>
                   <path fill="#fff" d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.2 31.2 0 0 0 0 12a31.2 31.2 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.2 31.2 0 0 0 24 12a31.2 31.2 0 0 0-.5-5.8z" />
                   <path fill="#000" d="M9.75 15.5V8.5l6.25 3.5-6.25 3.5z" />
                 </svg>
-                <button
-                  type="button"
-                  onClick={() => void connectYoutube()}
-                  disabled={connectingYoutube}
-                  className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-[14px] font-semibold text-black hover:bg-white/90 disabled:opacity-50"
-                >
-                  {connectingYoutube && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Connect your YouTube channel
-                  <span aria-hidden>→</span>
-                </button>
+                {youtubeConnected ? (
+                  <Link
+                    href="/dashboard/youtube"
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-[14px] font-semibold text-black hover:bg-white/90"
+                  >
+                    Create your first project
+                    <span aria-hidden>→</span>
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void connectYoutube()}
+                    disabled={connectingYoutube}
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-[14px] font-semibold text-black hover:bg-white/90 disabled:opacity-50"
+                  >
+                    {connectingYoutube && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Connect your YouTube channel
+                    <span aria-hidden>→</span>
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">

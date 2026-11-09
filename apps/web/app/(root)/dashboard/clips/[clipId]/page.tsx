@@ -34,6 +34,7 @@ import { DEFAULT_BROLL_DUR, parseBrollShots, serializedTracksHaveBroll, stripBro
 import { useClipDraftAutosave, loadClipDraft, clearClipDraft, type ClipDraftState } from "./_components/use-clip-draft";
 import { loadCachedTranslation, saveCachedTranslation } from "./_components/caption-translate-cache";
 import { CropLayoutModal } from "./_components/crop-layout-modal";
+import { PublishYoutubeDialog, YoutubeMark } from "./_components/publish-youtube-dialog";
 import { SplitLayoutRenderer } from "./_components/split-layout-renderer";
 import {
   aspectRatioToPair,
@@ -151,16 +152,10 @@ interface ThumbnailOverlayState {
 }
 
 /**
- * Open the exported video in a new tab AND force a download to the local machine.
- * The `download` attribute is ignored for cross-origin URLs (S3), so we fetch
- * the file as a blob and download via an object URL. Falls back to a direct
- * anchor click if the blob fetch is blocked (e.g. CORS).
+ * Save the exported video. The `download` attribute is ignored for cross-origin
+ * URLs (S3), so we fetch the file as a blob. Falls back to a direct anchor click.
  */
 async function openAndDownload(url: string, filename: string) {
-  // Open the exported video in a new tab
-  window.open(url, "_blank", "noopener,noreferrer");
-
-  // Force a real local download
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2078,6 +2073,7 @@ function ExportSection({
   downloadMode = false,
   onDownloadEdit,
   onResetAll,
+  onPublish,
   compact = false,
   exportRequiresUpgrade = false,
   exportCreditCost,
@@ -2087,6 +2083,7 @@ function ExportSection({
   downloadMode?: boolean;
   onDownloadEdit?: () => void;
   onResetAll?: () => void;
+  onPublish?: () => void;
   compact?: boolean;
   exportRequiresUpgrade?: boolean;
   exportCreditCost?: number;
@@ -2101,15 +2098,29 @@ function ExportSection({
   ) : null;
 
   // Previewing an already-exported version → the action is a straight download
+  const readyActions = (
+    <div className="grid grid-cols-2 gap-2">
+      <button
+        type="button"
+        onClick={downloadMode ? onDownloadEdit : handlePrimaryExportAction}
+        className="flex items-center justify-center gap-1.5 rounded-2xl bg-white py-3 text-[13px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all cursor-pointer"
+      >
+        <Download className="h-4 w-4" /> Download
+      </button>
+      <button
+        type="button"
+        onClick={onPublish}
+        className="flex items-center justify-center gap-1.5 rounded-2xl bg-white py-3 text-[13px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all cursor-pointer"
+      >
+        <YoutubeMark className="h-4 w-4" /> Publish
+      </button>
+    </div>
+  );
+
   if (downloadMode) {
     return (
       <div className="flex flex-col gap-2">
-        <button
-          onClick={onDownloadEdit}
-          className="w-full flex items-center justify-center gap-2 rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
-        >
-          <Download className="h-4 w-4" /> Download
-        </button>
+        {readyActions}
         {ResetLink}
       </div>
     );
@@ -2159,12 +2170,7 @@ function ExportSection({
           <div className="flex items-center gap-2 text-[12px] text-green-400 mb-1">
             <CheckCircle className="h-4 w-4" /> Export ready!
           </div>
-          <button
-            onClick={handlePrimaryExportAction}
-            className="w-full rounded-2xl bg-white py-3 text-[14px] font-semibold text-black hover:bg-white/90 active:scale-[0.99] transition-all"
-          >
-            Download
-          </button>
+          {readyActions}
           {!compact && (
             <button
               onClick={handleExport}
@@ -2665,6 +2671,8 @@ export default function ClipRefinePage() {
   const [isFreePlan, setIsFreePlan]         = useState<boolean | null>(null);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportUrl, setExportUrl]           = useState<string | null>(null);
+  const [readyExportId, setReadyExportId]   = useState<string | null>(null);
+  const [publishOpen, setPublishOpen]       = useState(false);
   const [exportError, setExportError]       = useState<string | null>(null);
   const exportPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const exportIdRef = useRef<string | null>(null);
@@ -3136,6 +3144,7 @@ export default function ClipRefinePage() {
     setExportPhase("exporting");
     setExportProgress(0);
     setExportUrl(null);
+    setReadyExportId(null);
     setExportError(null);
     stopExportPolling();
 
@@ -3272,11 +3281,11 @@ export default function ClipRefinePage() {
             exportIdRef.current = null;
             exportPollStartedRef.current = null;
             setExportUrl(data.s3Url);
+            setReadyExportId(exportId);
             setExportPhase("done");
             if (clipId) clearClipDraft(clipId, activeEditId);
             markExportCurrent();
             loadEdits();
-            openAndDownload(data.s3Url, `clip-${index}.mp4`);
           } else if (data.status === "failed") {
             failExport(data.error ?? "Export failed on server");
           } else if (data.status === "cancelled") {
@@ -4413,17 +4422,36 @@ export default function ClipRefinePage() {
           {/* Mobile export — stays top-right */}
           {isMobile && (
             <div className="absolute top-3 right-3 z-20">
-              <ExportClipButton
-                exportPhase={exportPhase === "error" ? "idle" : exportPhase}
-                exportProgress={exportProgress}
-                exportReadyToDownload={exportReadyToDownload}
-                onExport={handleExport}
-                onCancel={handleCancelExport}
-                onDownload={handlePrimaryExportAction}
-                size="compact"
-                className="backdrop-blur-sm shadow-lg"
-                creditCost={exportCreditCost}
-              />
+              {exportReadyToDownload || downloadMode ? (
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handlePrimaryExportAction}
+                    className="inline-flex items-center gap-1 rounded-xl bg-white px-2.5 py-1.5 text-[11px] font-semibold text-black cursor-pointer"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Download
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPublishOpen(true)}
+                    className="inline-flex items-center gap-1 rounded-xl bg-white px-2.5 py-1.5 text-[11px] font-semibold text-black cursor-pointer"
+                  >
+                    <YoutubeMark className="h-3.5 w-3.5" /> Publish
+                  </button>
+                </div>
+              ) : (
+                <ExportClipButton
+                  exportPhase={exportPhase === "error" ? "idle" : exportPhase}
+                  exportProgress={exportProgress}
+                  exportReadyToDownload={exportReadyToDownload}
+                  onExport={handleExport}
+                  onCancel={handleCancelExport}
+                  onDownload={handlePrimaryExportAction}
+                  size="compact"
+                  className="backdrop-blur-sm shadow-lg"
+                  creditCost={exportCreditCost}
+                />
+              )}
             </div>
           )}
 
@@ -5122,6 +5150,7 @@ export default function ClipRefinePage() {
                     downloadMode={downloadMode}
                     onDownloadEdit={handleDownloadEdit}
                     onResetAll={resetAll}
+                    onPublish={() => setPublishOpen(true)}
                     setExportPhase={setExportPhase}
                     setExportUrl={setExportUrl}
                     exportRequiresUpgrade={exportRequiresUpgrade}
@@ -5184,6 +5213,14 @@ export default function ClipRefinePage() {
           </div>
         )}
       </main>
+
+      <PublishYoutubeDialog
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        apiFetch={apiFetch}
+        clipId={downloadMode && activeEdit?._id ? String(activeEdit._id) : undefined}
+        exportId={downloadMode ? undefined : readyExportId ?? undefined}
+      />
 
       {cropPane !== null && splitLayout && (
         <CropLayoutModal
