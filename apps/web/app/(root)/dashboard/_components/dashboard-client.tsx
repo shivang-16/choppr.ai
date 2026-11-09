@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useApiFetch } from "@/lib/apiFetch";
-import { Link2, Upload, Scissors, Film, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle, FileText } from "lucide-react";
+import { Link2, Upload, Scissors, Film, X, Loader2, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { URL_PLACEHOLDERS, validateVideoUrl } from "@/lib/url-placeholders";
@@ -28,13 +28,18 @@ function loadRecentPrompts(userId?: string | null): RecentPrompt[] {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed
-      .filter((item): item is RecentPrompt =>
-        !!item
-        && typeof item === "object"
-        && typeof (item as RecentPrompt).text === "string"
-        && typeof (item as RecentPrompt).createdAt === "number"
-        && (item as RecentPrompt).text.trim().length > 0,
-      )
+      .map((item, index) => {
+        if (!item || typeof item !== "object") return null;
+        const text = typeof (item as RecentPrompt).text === "string"
+          ? (item as RecentPrompt).text.trim()
+          : "";
+        if (!text) return null;
+        const createdAt = typeof (item as RecentPrompt).createdAt === "number"
+          ? (item as RecentPrompt).createdAt
+          : RECENT_PROMPTS_MAX - index;
+        return { text, createdAt };
+      })
+      .filter((item): item is RecentPrompt => item !== null)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, RECENT_PROMPTS_MAX);
   } catch {
@@ -360,8 +365,20 @@ function DashboardInner() {
   const [recentOpen, setRecentOpen] = useState(false);
   const recentRef = useRef<HTMLDivElement>(null);
 
+  const syncRecentPrompts = () => {
+    const items = loadRecentPrompts(userId);
+    setRecentPrompts(items);
+    return items;
+  };
+
+  const openRecentPrompts = () => {
+    const items = syncRecentPrompts();
+    if (items.length > 0) setRecentOpen(true);
+  };
+
   useEffect(() => {
-    setRecentPrompts(loadRecentPrompts(userId));
+    syncRecentPrompts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when clerk userId resolves
   }, [userId]);
 
   useEffect(() => {
@@ -1331,51 +1348,14 @@ function DashboardInner() {
             </div>
 
             {/* Prompt */}
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5" ref={recentRef}>
               <p className="text-[11px] text-white/35 leading-relaxed">
                 <span className="text-white/50">Aspect ratio:</span> default video one
                 <span className="text-white/25"> · </span>
                 You can change aspect ratio after clipping.
               </p>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[12px] text-white/50">Include specific moments</span>
-                  <div className="relative" ref={recentRef}>
-                    <button
-                      type="button"
-                      onClick={() => setRecentOpen((open) => !open)}
-                      disabled={recentPrompts.length === 0}
-                      aria-label="Recent prompts"
-                      title={recentPrompts.length === 0 ? "No recent prompts yet" : "Recent prompts"}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/8 hover:text-white/70 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-white/40"
-                    >
-                      <FileText className="h-3.5 w-3.5" />
-                    </button>
-                    {recentOpen && recentPrompts.length > 0 && (
-                      <div className="absolute left-0 top-full z-20 mt-1 w-72 overflow-hidden rounded-xl border border-white/10 bg-[#141414] shadow-xl">
-                        <p className="border-b border-white/8 px-3 py-2 text-[11px] text-white/35">
-                          Recent prompts
-                        </p>
-                        <ul className="max-h-56 overflow-y-auto py-1">
-                          {recentPrompts.map((item) => (
-                            <li key={`${item.createdAt}-${item.text}`}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPrompt(item.text.slice(0, 2000));
-                                  setRecentOpen(false);
-                                }}
-                                className="w-full px-3 py-2 text-left text-[12px] text-white/75 transition-colors hover:bg-white/8 hover:text-white"
-                              >
-                                <span className="line-clamp-2">{item.text}</span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <span className="text-[12px] text-white/50">Include specific moments</span>
                 <span className={`text-[11px] tabular-nums transition-colors ${
                   prompt.length >= 2000 ? "text-red-400" :
                   prompt.length >= 1600 ? "text-amber-400" :
@@ -1384,14 +1364,43 @@ function DashboardInner() {
                   {prompt.length}/2000
                 </span>
               </div>
-              <div className="flex flex-col gap-1">
+              <div className="relative flex flex-col gap-1">
                 <input
                   type="text"
                   value={prompt}
-                  onChange={(e) => setPrompt(e.target.value.slice(0, 2000))}
+                  onChange={(e) => {
+                    setPrompt(e.target.value.slice(0, 2000));
+                    if (recentOpen) setRecentOpen(false);
+                  }}
+                  onFocus={openRecentPrompts}
                   placeholder="Example: find all the moments when someone scored"
                   className="w-full rounded-xl border border-white/8 bg-white/4 px-4 py-2.5 text-[13px] text-white placeholder:text-white/35 outline-none focus:border-white/20 transition-colors"
+                  autoComplete="off"
                 />
+                {recentOpen && recentPrompts.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-white/10 bg-[#141414] shadow-xl">
+                    <p className="border-b border-white/8 px-3 py-2 text-[11px] text-white/35">
+                      Recent prompts
+                    </p>
+                    <ul className="max-h-56 overflow-y-auto py-1">
+                      {recentPrompts.map((item) => (
+                        <li key={`${item.createdAt}-${item.text}`}>
+                          <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setPrompt(item.text.slice(0, 2000));
+                              setRecentOpen(false);
+                            }}
+                            className="w-full px-3 py-2.5 text-left text-[12px] text-white/75 transition-colors hover:bg-white/8 hover:text-white"
+                          >
+                            <span className="line-clamp-2">{item.text}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {prompt.length > 0 && (
                   <div className="h-0.5 w-full rounded-full bg-white/8 overflow-hidden">
                     <div
