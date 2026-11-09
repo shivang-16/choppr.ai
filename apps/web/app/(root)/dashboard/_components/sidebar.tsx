@@ -11,10 +11,16 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { icon: Home,       label: "Home",     href: "/dashboard",          exact: true  },
   { icon: LayoutGrid, label: "Projects", href: "/dashboard/projects", exact: false },
-  // { icon: FolderOpen, label: "Library",  href: "/dashboard/library" },
-  // { icon: Calendar,   label: "Schedule", href: "/dashboard/schedule" },
-  // { icon: Link2,      label: "Publish",  href: "/dashboard/publish" },
+  { icon: YoutubeMark, label: "YouTube", href: "/dashboard/youtube",  exact: false },
 ];
+
+function YoutubeMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31.5 31.5 0 0 0 0 12a31.5 31.5 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31.5 31.5 0 0 0 24 12a31.5 31.5 0 0 0-.5-5.8zM9.75 15.5v-7l6.5 3.5-6.5 3.5z" />
+    </svg>
+  );
+}
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(false);

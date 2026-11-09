@@ -269,6 +269,7 @@ function DashboardInner() {
   const [error, setError] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoMeta | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
+  const [connectingYoutube, setConnectingYoutube] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTriggeredRef = useRef(false);
@@ -394,12 +395,36 @@ function DashboardInner() {
     }
   };
 
-  // Pre-populate URL from landing page hero (?url=...) or retry redirect
+  // Pre-populate URL from landing page hero (?url=...) or retry redirect.
+  // A video opened from a connected channel already has title, thumbnail, and
+  // duration in our database, so skip the metadata fetch.
   useEffect(() => {
     const prefilledUrl = searchParams.get("url");
+    const cachedDuration = Number(searchParams.get("duration"));
+    const cachedTitle = searchParams.get("title")?.trim();
+    const cachedThumb = searchParams.get("thumb")?.trim();
     if (prefilledUrl) {
       setInputUrl(prefilledUrl);
-      handleFetch(prefilledUrl);
+      const ytId = extractYouTubeId(prefilledUrl);
+      if (ytId && Number.isFinite(cachedDuration) && cachedDuration > 0) {
+        const secs = Math.floor(cachedDuration);
+        setVideo({
+          url: prefilledUrl.trim(),
+          thumbnail: cachedThumb && /^https?:\/\//i.test(cachedThumb)
+            ? cachedThumb
+            : `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+          title: cachedTitle || "YouTube video",
+          duration: formatDurationLabel(secs),
+          durationSecs: secs,
+          platform: getPlatformInfo(prefilledUrl),
+        });
+        setThumbFailed(false);
+        setUpgradePrompt(null);
+        setVideoMode("thumbnail");
+        setMaxClips(secs / 60 <= 5 ? 5 : 10);
+      } else {
+        handleFetch(prefilledUrl);
+      }
     }
     // Auto-open file picker if redirected from landing page upload button
     if (searchParams.get("upload") === "1" && !uploadTriggeredRef.current) {
@@ -722,6 +747,20 @@ function DashboardInner() {
     }
   };
 
+  const connectYoutube = async () => {
+    setConnectingYoutube(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`${API_URL}/api/youtube/connect`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || body.message || "Could not start YouTube connect");
+      window.location.href = body.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start YouTube connect");
+      setConnectingYoutube(false);
+    }
+  };
+
   return (
     <div className="relative flex flex-col items-center w-full px-6 pt-16 pb-10 sm:pt-32">
       {/* Background brand watermark — brighter on top, fades out below.
@@ -932,10 +971,20 @@ function DashboardInner() {
 
             {projects.length === 0 ? (
               <div className="flex flex-col items-center gap-4 py-16 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/8 bg-[#141414]">
-                  <FolderIcon />
-                </div>
-                <p className="text-[14px] text-white/40">No projects yet. Drop a video link above to get started.</p>
+                <svg viewBox="0 0 24 24" className="h-12 w-12" aria-hidden>
+                  <path fill="#fff" d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.2 31.2 0 0 0 0 12a31.2 31.2 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.2 31.2 0 0 0 24 12a31.2 31.2 0 0 0-.5-5.8z" />
+                  <path fill="#000" d="M9.75 15.5V8.5l6.25 3.5-6.25 3.5z" />
+                </svg>
+                <button
+                  type="button"
+                  onClick={() => void connectYoutube()}
+                  disabled={connectingYoutube}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-[14px] font-semibold text-black hover:bg-white/90 disabled:opacity-50"
+                >
+                  {connectingYoutube && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Connect your YouTube channel
+                  <span aria-hidden>→</span>
+                </button>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -1298,13 +1347,5 @@ export default function DashboardClient() {
     <Suspense>
       <DashboardInner />
     </Suspense>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-6 w-6 text-white/25 fill-none stroke-current" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-    </svg>
   );
 }
