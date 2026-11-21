@@ -7,7 +7,7 @@ import { Check, Zap, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Navbar from "../../_components/navbar";
 import Footer from "../../_components/footer";
-import { getOfferForPlan } from "@/lib/plan-offers";
+import { MAX_OFFER_PERCENT, discountedPrice, getOfferForPlan } from "@/lib/plan-offers";
 import { CouponBadge } from "@/components/coupon-badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -93,7 +93,7 @@ export function PricingClient({ initialPlans = [] }: { initialPlans?: Plan[] }) 
 
             <div className="flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3.5 py-1.5 text-[12px] text-indigo-300/90">
               <Sparkles className="h-3 w-3" />
-              <span>Limited time offer - up to <span className="font-semibold text-indigo-200">25% off</span> with checkout codes</span>
+              <span>Limited time offer - up to <span className="font-semibold text-indigo-200">{MAX_OFFER_PERCENT}% off</span> with checkout codes</span>
             </div>
           </div>
 
@@ -110,9 +110,7 @@ export function PricingClient({ initialPlans = [] }: { initialPlans?: Plan[] }) 
                 const price = formatPrice(plan.monthlyPrice);
                 const offer = getOfferForPlan(plan.slug);
                 const discounted =
-                  offer && price > 0
-                    ? Math.round(price * (1 - offer.discountPercent / 100) * 100) / 100
-                    : null;
+                  offer && price > 0 ? discountedPrice(price, offer) : null;
 
                 return (
                   <div

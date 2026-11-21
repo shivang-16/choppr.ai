@@ -6,7 +6,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useApiFetch } from "@/lib/apiFetch";
 import { Check, Zap, Loader2, CheckCircle, XCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getOfferForPlan } from "@/lib/plan-offers";
+import { MAX_OFFER_PERCENT, discountedPrice, getOfferForPlan } from "@/lib/plan-offers";
 import { CouponBadge } from "@/components/coupon-badge";
 import posthog from "posthog-js";
 
@@ -194,7 +194,7 @@ function BillingContent() {
           {currentId === "free" && (
             <div className="flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3.5 py-1.5 text-[12px] text-indigo-300/90">
               <Sparkles className="h-3 w-3" />
-              <span>Limited time offer - up to <span className="font-semibold text-indigo-200">25% off</span> with checkout codes</span>
+              <span>Limited time offer - up to <span className="font-semibold text-indigo-200">{MAX_OFFER_PERCENT}% off</span> with checkout codes</span>
             </div>
           )}
 
@@ -298,9 +298,7 @@ function BillingContent() {
               const offer = getOfferForPlan(plan.slug);
               const showOffer = !!offer && currentId === "free";
               const discounted =
-                showOffer && price > 0
-                  ? Math.round(price * (1 - offer.discountPercent / 100) * 100) / 100
-                  : null;
+                showOffer && price > 0 ? discountedPrice(price, offer) : null;
 
               return (
                 <div
