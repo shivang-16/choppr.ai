@@ -1,6 +1,6 @@
 "use client";
 
-import { gtaOr, gtaSrc, gtaVideoProps } from "@/lib/gta-launch";
+import { GLASS_BG, gtaOr, gtaSrc, gtaVideoProps } from "@/lib/gta-launch";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
@@ -339,7 +339,7 @@ export default function AiModelsSection() {
   return (
     <section className="relative overflow-x-clip px-4 pt-20 pb-24 sm:pt-28 sm:pb-32">
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-24 bg-gradient-to-b from-black to-transparent sm:h-28"
+        className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-24 bg-gradient-to-b from-[var(--page-bg,#000)] to-transparent sm:h-28"
         aria-hidden
       />
       <div className="relative z-10 mx-auto flex max-w-6xl flex-col">
@@ -367,7 +367,7 @@ export default function AiModelsSection() {
               transition={{ ...reveal.transition, delay: i * 0.1 }}
               className="flex min-w-0 flex-col"
             >
-              <div className="relative h-[300px] overflow-hidden rounded-3xl border border-white/8 bg-[#0e0e0f] sm:h-[320px]">
+              <div className={`relative h-[300px] overflow-hidden rounded-3xl border border-white/8 ${GLASS_BG || "bg-[#0e0e0f]"} sm:h-[320px]`}>
                 {m.visual}
               </div>
               <h3 className="mt-6 text-[1.5rem] font-semibold tracking-[-0.03em] text-white sm:text-[1.65rem]">

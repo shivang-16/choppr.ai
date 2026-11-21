@@ -2,6 +2,14 @@
 // Set to false to restore the original images (nothing was deleted).
 export const GTA_LAUNCH_MODE = true;
 
+/** Page background base colour (deep GTA-6 plum when launch mode is on). */
+/** Glassy translucent panel look for demo frames in launch mode. */
+export const GLASS_BG = GTA_LAUNCH_MODE
+  ? "bg-[#140a34]/55 backdrop-blur-xl shadow-[0_0_60px_-20px_rgba(255,79,160,0.35)]"
+  : "";
+
+export const PAGE_BG = GTA_LAUNCH_MODE ? "#1a0b3a" : "#000000";
+
 const N = 11;
 /** 11 full 16:9 images: /gta6/gta6-1.jpg … gta6-11.jpg */
 export const GTA6 = Array.from({ length: N }, (_, i) => `/gta6/gta6-${i + 1}.jpg`);

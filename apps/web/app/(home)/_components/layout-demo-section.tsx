@@ -1,6 +1,6 @@
 "use client";
 
-import { gtaOr, gtaSrc, gtaVideoProps } from "@/lib/gta-launch";
+import { GTA_LAUNCH_MODE, gtaOr, gtaSrc, gtaVideoProps } from "@/lib/gta-launch";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import {
@@ -715,15 +715,15 @@ export default function LayoutDemoSection() {
             "linear-gradient(to bottom, transparent 0%, black 16%, black 58%, transparent 100%)",
         }}
       >
-        <div className="absolute left-1/2 top-[42%] h-[380px] w-[640px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c48a4a]/28 blur-[130px] sm:h-[520px] sm:w-[900px]" />
+        <div className={`absolute left-1/2 top-[42%] h-[380px] w-[640px] -translate-x-1/2 -translate-y-1/2 rounded-full ${GTA_LAUNCH_MODE ? "bg-[#ff5aa0]/22" : "bg-[#c48a4a]/28"} blur-[130px] sm:h-[520px] sm:w-[900px]`} />
         <div className="absolute left-[18%] top-[30%] h-[200px] w-[200px] rounded-full bg-white/[0.04] blur-[90px] sm:h-[280px] sm:w-[280px]" />
       </div>
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-28 bg-gradient-to-b from-transparent via-black/55 to-black sm:h-36"
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-28 bg-gradient-to-b from-transparent to-[var(--page-bg,#000)] sm:h-36"
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-16 bg-gradient-to-b from-black to-transparent sm:h-20"
+        className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-16 bg-gradient-to-b from-[var(--page-bg,#000)] to-transparent sm:h-20"
         aria-hidden
       />
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { GTA_LAUNCH_MODE, gtaImage } from "@/lib/gta-launch";
+import { GTA_LAUNCH_MODE, gtaImage, GLASS_BG } from "@/lib/gta-launch";
 import { motion, AnimatePresence } from "framer-motion";
 
 const u = (id: string, w: number, h: number) =>
@@ -102,7 +102,7 @@ export default function HeroReframeDemo({ active = true }: Props) {
 
   return (
     <div className="relative h-full w-full select-none">
-      <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/8 bg-[#0d0d0d]">
+      <div className={`relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/8 ${GLASS_BG || "bg-[#0d0d0d]"}`}>
         <div className="relative min-h-0 flex-1 overflow-hidden">
 
           {/* Ambient glow from current scene */}

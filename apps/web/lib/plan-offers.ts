@@ -20,7 +20,7 @@ export const PLAN_OFFERS: PlanOffer[] = [
     planName: "Core Plan",
     discountPercent: 14,
     effectivePercent: 14.29,
-    code: "CORE14",
+    code: "GTAVI",
     features: [
       "500 credits per month",
       "Up to 2-hour video length per upload",
@@ -32,7 +32,7 @@ export const PLAN_OFFERS: PlanOffer[] = [
     planName: "Growth Plan",
     discountPercent: 17,
     effectivePercent: 16.67,
-    code: "GROWTH17",
+    code: "LUCIA17",
     features: [
       "1,500 credits per month",
       "Unlimited video length processing",
