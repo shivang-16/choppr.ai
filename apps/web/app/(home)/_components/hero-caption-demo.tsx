@@ -3,6 +3,7 @@
 import { GTA_LAUNCH_MODE, gtaOr } from "@/lib/gta-launch";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Volume2, VolumeX } from "lucide-react";
 
 const FONT_URL =
   "https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Montserrat:wght@900&family=Oswald:wght@400;700;900&family=Permanent+Marker&family=Poppins:wght@800&family=Press+Start+2P&family=Space+Grotesk:wght@400;700;900&display=swap";
@@ -1028,9 +1029,30 @@ export default function HeroCaptionDemo({ active = true }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const [capVisible, setCapVisible] = useState(true);
-  const [soundOn, setSoundOn] = useState(GTA_LAUNCH_MODE);
+  const [soundOn, setSoundOn] = useState(true); // sound is on by default
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const soundRef = useRef(soundOn);
   soundRef.current = soundOn;
+
+  // Browsers block unmuted autoplay until a user gesture. If that happened,
+  // turn sound on at the visitor's first click / tap / keypress anywhere.
+  useEffect(() => {
+    if (!autoplayBlocked || !active) return;
+    const enable = (e: Event) => {
+      // The sound button handles its own click
+      if ((e.target as Element | null)?.closest?.("[data-sound-toggle]")) return;
+      setAutoplayBlocked(false);
+      setSoundOn(true);
+      const v = videoRef.current;
+      if (v) {
+        v.muted = false;
+        void v.play().catch(() => {});
+      }
+    };
+    const evts = ["pointerdown", "mousedown", "click", "touchend", "keydown"] as const;
+    evts.forEach((e) => window.addEventListener(e, enable, { once: true, passive: true }));
+    return () => evts.forEach((e) => window.removeEventListener(e, enable));
+  }, [autoplayBlocked, active]);
   const clip = DEMO_CLIPS[clipIdx]!;
 
   // Browsers only allow audio after a user click, so start muted + offer a toggle.
@@ -1077,6 +1099,7 @@ export default function HeroCaptionDemo({ active = true }: Props) {
           window.setTimeout(() => {
             video.muted = true;
             setSoundOn(false);
+            setAutoplayBlocked(true);
             void video.play().catch(() => {});
           }, 50);
         });
@@ -1202,14 +1225,34 @@ export default function HeroCaptionDemo({ active = true }: Props) {
               className={`pointer-events-none absolute inset-0 z-[5] h-full w-full object-cover transition-opacity duration-500 ${active ? "opacity-0" : "opacity-100"}`}
             />
             <div className="absolute inset-0 bg-black/20 pointer-events-none" />
-            <button
-              type="button"
-              onClick={() => setSoundOn((s) => !s)}
-              aria-label={soundOn ? "Mute video" : "Unmute video"}
-              className={`absolute right-2 top-2 z-20 ${active ? "" : "pointer-events-none opacity-0"} flex h-8 items-center gap-1.5 rounded-full bg-black/60 px-3 text-[11px] font-medium text-white backdrop-blur hover:bg-black/80`}
-            >
-              {soundOn ? "🔊 Sound on" : "🔇 Tap for sound"}
-            </button>
+            {/* Muted: big centered tap-to-unmute button. Sound on: small mute icon bottom-right. */}
+            {!soundOn ? (
+              <button
+                type="button"
+                data-sound-toggle
+                onClick={() => {
+                  setAutoplayBlocked(false);
+                  setSoundOn(true);
+                }}
+                aria-label="Unmute video"
+                className={`absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 ${active ? "" : "pointer-events-none opacity-0"} flex h-20 w-20 items-center justify-center rounded-full border border-white/25 bg-black/60 text-white shadow-2xl shadow-black/50 backdrop-blur-md transition-transform hover:scale-105 hover:bg-black/75 active:scale-95`}
+              >
+                <VolumeX className="h-9 w-9" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-sound-toggle
+                onClick={() => {
+                  setAutoplayBlocked(false);
+                  setSoundOn(false);
+                }}
+                aria-label="Mute video"
+                className={`absolute bottom-2 right-2 z-20 ${active ? "" : "pointer-events-none opacity-0"} flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75`}
+              >
+                <Volume2 className="h-4 w-4" />
+              </button>
+            )}
 
             {/* Moving full-line caption */}
             <div className={`absolute inset-x-2 bottom-[14%] z-10 flex justify-center px-2 transition-opacity duration-200 ${capVisible && active ? "opacity-100" : "opacity-0"}`}>
