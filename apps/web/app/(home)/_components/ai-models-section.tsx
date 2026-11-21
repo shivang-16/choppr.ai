@@ -70,7 +70,7 @@ export function ClipVisual() {
         }}
       />
 
-      <div className="relative z-10 flex h-full w-full max-w-[680px] items-center gap-4 px-5 py-5">
+      <div className="relative z-10 flex h-full w-full min-w-0 max-w-[680px] items-center gap-3 px-3 py-4 sm:gap-4 sm:px-5 sm:py-5">
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-2.5 min-h-0">
           <div className="shrink-0">
             <span className="text-[11px] font-medium tracking-wide text-white/45">Prompt</span>
@@ -359,13 +359,13 @@ export default function AiModelsSection() {
         </motion.div>
 
         {/* Model cards */}
-        <div className="mt-14 grid gap-6 md:grid-cols-2">
+        <div className="mt-14 grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-2">
           {MODELS.map((m, i) => (
             <motion.div
               key={m.title}
               {...reveal}
               transition={{ ...reveal.transition, delay: i * 0.1 }}
-              className="flex flex-col"
+              className="flex min-w-0 flex-col"
             >
               <div className="relative h-[300px] overflow-hidden rounded-3xl border border-white/8 bg-[#0e0e0f] sm:h-[320px]">
                 {m.visual}

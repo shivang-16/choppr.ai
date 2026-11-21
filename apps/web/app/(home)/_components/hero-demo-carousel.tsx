@@ -31,7 +31,18 @@ export default function HeroDemoCarousel() {
     return () => ro.disconnect();
   }, []);
 
+  const userInteracted = useRef(false);
+
+  // One-time auto-advance to the AI captioning slide after ~5s, then stay put.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!userInteracted.current) setActive(1);
+    }, 5000);
+    return () => clearTimeout(t);
+  }, []);
+
   const go = (dir: number) => {
+    userInteracted.current = true;
     setActive((i) => (i + dir + SLIDES.length) % SLIDES.length);
   };
 
@@ -141,7 +152,10 @@ export default function HeroDemoCarousel() {
           <button
             key={slide.id}
             type="button"
-            onClick={() => setActive(i)}
+            onClick={() => {
+              userInteracted.current = true;
+              setActive(i);
+            }}
             aria-label={slide.label}
             className="h-1.5 rounded-full transition-all duration-300"
             style={{
