@@ -1,5 +1,6 @@
 "use client";
 
+import { gtaOr, gtaSrc, gtaVideoProps } from "@/lib/gta-launch";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import {
@@ -30,12 +31,12 @@ import { cn } from "@/lib/utils";
 import type { CaptionWord } from "@/app/(root)/dashboard/clips/[clipId]/_components/caption-renderer";
 import { renderProCaptionFrame } from "@/app/(root)/dashboard/clips/[clipId]/_components/pro-captions";
 
-const SRC = "/demo/pod-mic-conversation.mp4";
-const POSTER = "/demo/pod-mic-conversation-poster.jpg";
-const TOP_SRC = "/demo/pod-women-studio.mp4";
-const TOP_POSTER = "/demo/pod-women-studio-poster.jpg";
-const BOT_SRC = "/demo/pod-talking-mic.mp4";
-const BOT_POSTER = "/demo/pod-talking-mic-poster.jpg";
+const SRC = gtaSrc("/demo/pod-mic-conversation.mp4", 50, 58);
+const POSTER = gtaOr("/demo/pod-mic-conversation-poster.jpg", 7);
+const TOP_SRC = gtaSrc("/demo/pod-women-studio.mp4", 90, 98);
+const TOP_POSTER = gtaOr("/demo/pod-women-studio-poster.jpg", 8);
+const BOT_SRC = gtaSrc("/demo/pod-talking-mic.mp4", 130, 138);
+const BOT_POSTER = gtaOr("/demo/pod-talking-mic-poster.jpg", 9);
 
 const LOOP_MS = 47800;
 const DESIGN_W = 1180;
@@ -150,9 +151,9 @@ const TABS = [
 ] as const;
 
 const BROLL_MOMENTS = [
-  { start: "0:04", end: "0:07", phrase: "waiting for the perfect moment", src: "/demo/broll-still-clock.jpg", left: "10%", width: "16%" },
-  { start: "0:08", end: "0:11", phrase: "start right now", src: "/demo/broll-still-start.jpg", left: "32%", width: "15%" },
-  { start: "0:16", end: "0:19", phrase: "break through", src: "/demo/broll-still-breakthrough.jpg", left: "55%", width: "18%" },
+  { start: "0:04", end: "0:07", phrase: "waiting for the perfect moment", src: gtaOr("/demo/broll-still-clock.jpg", 10), left: "10%", width: "16%" },
+  { start: "0:08", end: "0:11", phrase: "start right now", src: gtaOr("/demo/broll-still-start.jpg", 1), left: "32%", width: "15%" },
+  { start: "0:16", end: "0:19", phrase: "break through", src: gtaOr("/demo/broll-still-breakthrough.jpg", 4), left: "55%", width: "18%" },
 ] as const;
 
 function ensureFonts() {
@@ -824,7 +825,7 @@ export default function LayoutDemoSection() {
                     style={{ height: "86%", aspectRatio: "9 / 16", maxWidth: "100%" }}
                   >
                     <div className={cn("absolute inset-0", scene.applied && !scene.viewingOriginal && "opacity-0")}>
-                      <video
+                      <video {...gtaVideoProps}
                         ref={fitRef}
                         className="absolute inset-0 h-full w-full scale-110 object-cover"
                         poster={POSTER}
@@ -835,21 +836,21 @@ export default function LayoutDemoSection() {
                         style={{ filter: "blur(20px) brightness(0.55)" }}
                         src={SRC}
                       />
-                      <video
+                      <video {...gtaVideoProps}
                         ref={fitFgRef}
                         className="absolute inset-0 h-full w-full object-contain"
                         poster={POSTER}
                         muted
                         loop
                         playsInline
-                        preload="auto"
+                        preload="metadata"
                         src={SRC}
                       />
                     </div>
 
                     <div className={cn("absolute inset-0 flex flex-col", (!scene.applied || scene.viewingOriginal) && "opacity-0")}>
                       <div className="relative min-h-0 flex-1 overflow-hidden border-b border-white/25">
-                        <video
+                        <video {...gtaVideoProps}
                           ref={splitTopRef}
                           className="absolute inset-0 h-full w-full object-cover"
                           style={{ objectPosition: "32% 28%" }}
@@ -857,12 +858,12 @@ export default function LayoutDemoSection() {
                           muted
                           loop
                           playsInline
-                          preload="auto"
+                          preload="metadata"
                           src={TOP_SRC}
                         />
                       </div>
                       <div className="relative min-h-0 flex-1 overflow-hidden">
-                        <video
+                        <video {...gtaVideoProps}
                           ref={splitBotRef}
                           className="absolute inset-0 h-full w-full object-cover"
                           style={{ objectPosition: "60% 30%" }}
@@ -870,7 +871,7 @@ export default function LayoutDemoSection() {
                           muted
                           loop
                           playsInline
-                          preload="auto"
+                          preload="metadata"
                           src={BOT_SRC}
                         />
                       </div>
@@ -1446,7 +1447,7 @@ export default function LayoutDemoSection() {
 
                       <div className="flex items-center justify-center bg-black/30 px-4 py-4">
                         <div className="relative overflow-hidden" style={{ width: "min(100%, 300px)" }}>
-                          <video
+                          <video {...gtaVideoProps}
                             key={modalSrc}
                             ref={modalRef}
                             className="block w-full"
@@ -1454,7 +1455,7 @@ export default function LayoutDemoSection() {
                             muted
                             loop
                             playsInline
-                            preload="auto"
+                            preload="metadata"
                             src={modalSrc}
                           />
                           <div

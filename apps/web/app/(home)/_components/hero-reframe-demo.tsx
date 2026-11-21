@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { GTA_LAUNCH_MODE, gtaImage } from "@/lib/gta-launch";
 import { motion, AnimatePresence } from "framer-motion";
 
 const u = (id: string, w: number, h: number) =>
-  `https://images.unsplash.com/${id}?w=${w}&h=${h}&fit=crop&q=80`;
+  GTA_LAUNCH_MODE ? gtaImage(id) : `https://images.unsplash.com/${id}?w=${w}&h=${h}&fit=crop&q=80`;
 
 type FaceBox = { top: string; left: string; w: string; h: string };
 

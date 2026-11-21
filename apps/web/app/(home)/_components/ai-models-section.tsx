@@ -1,5 +1,6 @@
 "use client";
 
+import { gtaOr, gtaSrc, gtaVideoProps } from "@/lib/gta-launch";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
@@ -90,18 +91,18 @@ export function ClipVisual() {
           </div>
 
           <div className="relative w-full max-h-[150px] sm:max-h-[168px] overflow-hidden rounded-xl border border-white/12 shadow-lg shadow-black/40 aspect-video">
-            <video
+            <video {...gtaVideoProps}
               ref={centerRef}
               className="h-full w-full object-cover"
-              poster="/demo/pod-mic-conversation-poster.jpg"
+              poster={gtaOr("/demo/pod-mic-conversation-poster.jpg", 4)}
               autoPlay
               muted
               loop
               playsInline
-              preload="auto"
+              preload="metadata"
               disablePictureInPicture
             >
-              <source src="/demo/pod-mic-conversation.mp4" type="video/mp4" />
+              <source src={gtaSrc("/demo/pod-mic-conversation.mp4", 30, 38)} type="video/mp4" />
             </video>
           </div>
 
@@ -132,18 +133,18 @@ export function ClipVisual() {
           className="relative h-full shrink-0 overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/60"
           style={{ aspectRatio: "9 / 16" }}
         >
-          <video
+          <video {...gtaVideoProps}
             ref={portraitRef}
             className="h-full w-full object-cover"
-            poster="/demo/pod-talking-mic-poster.jpg"
+            poster={gtaOr("/demo/pod-talking-mic-poster.jpg", 5)}
             autoPlay
             muted
             loop
             playsInline
-            preload="auto"
+            preload="metadata"
             disablePictureInPicture
           >
-            <source src="/demo/pod-talking-mic.mp4" type="video/mp4" />
+            <source src={gtaSrc("/demo/pod-talking-mic.mp4", 70, 78)} type="video/mp4" />
           </video>
           <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/70 to-transparent" />
           <span className="absolute bottom-2 left-2 rounded-md bg-black/50 px-1.5 py-0.5 text-[9px] font-semibold text-white/90 backdrop-blur-sm">
@@ -157,8 +158,8 @@ export function ClipVisual() {
 
 /* ------------------------------ ReframeAnything visual ----------------------------- */
 
-const REFRAME_SRC = "/demo/pod-alt-2.mp4";
-const REFRAME_POSTER = "/demo/pod-alt-2-poster.jpg";
+const REFRAME_SRC = gtaSrc("/demo/pod-alt-2.mp4", 110, 118);
+const REFRAME_POSTER = gtaOr("/demo/pod-alt-2-poster.jpg", 6);
 const RATIOS = [
   { label: "16:9", ar: 16 / 9, focus: "50% 50%" },
   { label: "1:1", ar: 1, focus: "50% 45%" },
@@ -207,14 +208,14 @@ export function ReframeVisual() {
     <div ref={wrapRef} className="relative flex h-full w-full items-center justify-center overflow-hidden">
       {/* Ambient blurred video background */}
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-        <video
+        <video {...gtaVideoProps}
           ref={bgRef}
           className="h-full w-full scale-110 object-cover opacity-40 blur-2xl"
           autoPlay
           muted
           loop
           playsInline
-          preload="auto"
+          preload="metadata"
         >
           <source src={REFRAME_SRC} type="video/mp4" />
         </video>
@@ -227,7 +228,7 @@ export function ReframeVisual() {
           className="relative overflow-hidden rounded-xl border border-white/12 shadow-lg shadow-black/40"
           style={{ width: beforeW, height: beforeH }}
         >
-          <video
+          <video {...gtaVideoProps}
             ref={beforeRef}
             className="h-full w-full object-cover"
             poster={REFRAME_POSTER}
@@ -235,7 +236,7 @@ export function ReframeVisual() {
             muted
             loop
             playsInline
-            preload="auto"
+            preload="metadata"
           >
             <source src={REFRAME_SRC} type="video/mp4" />
           </video>
@@ -281,7 +282,7 @@ export function ReframeVisual() {
             animate={{ width: afterW, height: afterH }}
             transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           >
-            <video
+            <video {...gtaVideoProps}
               ref={afterRef}
               className="h-full w-full object-cover"
               style={{ objectPosition: ratio.focus }}
@@ -290,7 +291,7 @@ export function ReframeVisual() {
               muted
               loop
               playsInline
-              preload="auto"
+              preload="metadata"
             >
               <source src={REFRAME_SRC} type="video/mp4" />
             </video>

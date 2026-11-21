@@ -1,5 +1,6 @@
 "use client";
 
+import { GTA_LAUNCH_MODE, gtaOr } from "@/lib/gta-launch";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -965,24 +966,51 @@ function LiveCaptionLine({
   );
 }
 
-const DEMO_CLIPS = [
+const ORIGINAL_DEMO_CLIPS = [
   {
     src: "/demo/pod-women-studio.mp4",
-    poster: "/demo/pod-women-studio-poster.jpg",
+    poster: gtaOr("/demo/pod-women-studio-poster.jpg", 0),
   },
   {
     src: "/demo/pod-mic-conversation.mp4",
-    poster: "/demo/pod-mic-conversation-poster.jpg",
+    poster: gtaOr("/demo/pod-mic-conversation-poster.jpg", 1),
   },
   {
     src: "/demo/pod-talking-mic.mp4",
-    poster: "/demo/pod-talking-mic-poster.jpg",
+    poster: gtaOr("/demo/pod-talking-mic-poster.jpg", 2),
   },
   {
     src: "/demo/pod-alt-2.mp4",
-    poster: "/demo/pod-alt-2-poster.jpg",
+    poster: gtaOr("/demo/pod-alt-2-poster.jpg", 3),
   },
 ] as const;
+
+// GTA VI launch trailer streamed straight from S3, looped between 0:10 and 1:18.
+const GTA_VIDEO_URL = "https://general-storage-shivang.s3.ap-south-1.amazonaws.com/choppr/gta6/GTAVI_Launch_Trailer_720p.mp4";
+const GTA_START = 10;
+const GTA_END = 78;
+
+// GTA 6 launch promo: use the GTA trailer as the only caption-demo video.
+const DEMO_CLIPS = GTA_LAUNCH_MODE
+  ? ([{ src: GTA_VIDEO_URL, poster: gtaOr("", 0) }] as const)
+  : ORIGINAL_DEMO_CLIPS;
+
+// Timed transcript of the trailer: [text, startSec, endSec] in trailer time.
+type TW = [string, number, number];
+const GTA_TIMED: TW[][] = [
+  [["This",10.92,11.16],["is",11.16,11.52],["a",11.52,11.8],["free",11.8,12.12],["call",12.12,12.76],["from",12.76,13.28],["Lucia",13.28,13.56],["Caminos.",13.56,14.24]],
+  [["I",30.78,31.02],["ain't",31.02,31.22],["gonna",31.22,31.46],["slow",31.46,32],["the",32,32.22],["law",32.22,32.82],["again",32.82,33.64],["I",33.7,33.9]],
+  [["will",33.84,34.14],["die",34.14,34.7],["before",34.7,35.2],["I",35.2,35.4],["walk",35.32,35.8],["away,",35.8,36.22],["walk",36.28,36.68],["away",36.68,37.4]],
+  [["Let's",38.36,38.66],["take",38.66,38.86],["it",38.86,39.2],["back,",39.2,39.56],["just",39.78,40.06],["make",40.06,40.26],["it",40.26,40.64],["flash",40.64,40.84]],
+  [["And",41.32,41.52],["it'll",41.5,42.1],["only",42.1,42.48],["go",42.48,43.42],["like",43.42,43.62],["a",43.62,43.9],["second",43.9,44.42],["chance",44.42,44.8]],
+  [["You",45.38,45.58],["and",45.54,45.9],["me,",45.9,46.3],["we",46.3,46.5],["know",46.48,46.7],["that",46.7,46.96],["this",46.96,47.2],["life",47.2,47.46]],
+  [["will",47.46,47.72],["rush",47.72,47.92],["you",47.92,48.26],["out",48.26,48.46],["So",48.82,49.1],["I'm",49.1,49.52],["gonna",49.52,50.24],["get",50.24,50.62]],
+  [["to",50.62,51.02],["the",51.02,51.22],["very",51.16,51.9],["last",51.9,52.54],["break",52.54,53.74],["Are",63.22,63.42],["we",63.3,63.5],["gonna",63.42,63.62]],
+  [["be",63.6,63.82],["okay?",63.82,64.2],["We",65.26,65.52],["stuck",65.52,65.86],["together",65.86,66.14],["through",66.14,66.42],["everything",66.42,67],["Just",67.3,67.5]],
+  [["gotta",67.44,67.64],["get",67.58,67.78],["through",67.76,68.64]],
+];
+const GTA_LINES: string[][] = GTA_TIMED.map((l) => l.map((w) => w[0]));
+const LINES = GTA_LAUNCH_MODE ? GTA_LINES : CAPTION_LINES;
 
 const WORD_MS = 560; // advance active word — slower for smoother read
 const STYLE_MS = 3400; // switch caption style — dwell longer so motion settles
@@ -999,7 +1027,16 @@ export default function HeroCaptionDemo({ active = true }: Props) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
+  const [capVisible, setCapVisible] = useState(true);
+  const [soundOn, setSoundOn] = useState(GTA_LAUNCH_MODE);
+  const soundRef = useRef(soundOn);
+  soundRef.current = soundOn;
   const clip = DEMO_CLIPS[clipIdx]!;
+
+  // Browsers only allow audio after a user click, so start muted + offer a toggle.
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = !soundOn || !active;
+  }, [soundOn, active, clip.src]);
 
   useEffect(() => {
     ensureFonts();
@@ -1031,12 +1068,15 @@ export default function HeroCaptionDemo({ active = true }: Props) {
     }
 
     const tryPlay = () => {
-      video.muted = true;
+      // Try with sound first (only while this slide is active); browsers that
+      // block it fall back to muted + the "Tap for sound" button.
+      video.muted = !soundRef.current;
       const p = video.play();
       if (p && typeof p.catch === "function") {
         p.catch(() => {
           window.setTimeout(() => {
             video.muted = true;
+            setSoundOn(false);
             void video.play().catch(() => {});
           }, 50);
         });
@@ -1044,7 +1084,7 @@ export default function HeroCaptionDemo({ active = true }: Props) {
     };
 
     try {
-      video.currentTime = 0;
+      video.currentTime = GTA_LAUNCH_MODE ? GTA_START : 0;
     } catch {
       /* ignore */
     }
@@ -1063,9 +1103,40 @@ export default function HeroCaptionDemo({ active = true }: Props) {
     };
   }, [active, clipIdx]);
 
+  // GTA mode: captions follow the video's playback time (real word timings)
+  useEffect(() => {
+    if (!active || !GTA_LAUNCH_MODE) return;
+    let raf = 0;
+    const tick = () => {
+      const v = videoRef.current;
+      if (v) {
+        if (v.currentTime >= GTA_END || v.currentTime < GTA_START - 0.5) v.currentTime = GTA_START;
+        const t = v.currentTime;
+        let li = -1;
+        for (let i = 0; i < GTA_TIMED.length; i++) {
+          const L = GTA_TIMED[i]!;
+          if (t >= L[0]![1] - 0.15 && t <= L[L.length - 1]![2] + 0.7) { li = i; break; }
+        }
+        if (li === -1) {
+          setCapVisible(false);
+        } else {
+          const L = GTA_TIMED[li]!;
+          let wi = 0;
+          for (let i = 0; i < L.length; i++) if (t >= L[i]![1]) wi = i;
+          setCapVisible(true);
+          setLineIdx(li);
+          setWordIdx(wi);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [active]);
+
   // Word-by-word caption progress through full lines
   useEffect(() => {
-    if (!active) return;
+    if (!active || GTA_LAUNCH_MODE) return;
     const t = setInterval(() => {
       setWordIdx((w) => w + 1);
     }, WORD_MS);
@@ -1073,9 +1144,10 @@ export default function HeroCaptionDemo({ active = true }: Props) {
   }, [active]);
 
   useEffect(() => {
-    const line = CAPTION_LINES[lineIdx]!;
+    if (GTA_LAUNCH_MODE) return;
+    const line = LINES[lineIdx]!;
     if (wordIdx < line.length) return;
-    setLineIdx((l) => (l + 1) % CAPTION_LINES.length);
+    setLineIdx((l) => (l + 1) % LINES.length);
     setWordIdx(0);
   }, [wordIdx, lineIdx]);
 
@@ -1100,7 +1172,7 @@ export default function HeroCaptionDemo({ active = true }: Props) {
   }, [styleIdx]);
 
   const preset = PRESETS[styleIdx]!;
-  const words = CAPTION_LINES[lineIdx]!;
+  const words = LINES[lineIdx]!;
 
   return (
     <div className="relative h-full w-full select-none">
@@ -1116,15 +1188,31 @@ export default function HeroCaptionDemo({ active = true }: Props) {
               muted
               loop
               playsInline
-              preload="auto"
+              preload={GTA_LAUNCH_MODE ? "metadata" : "auto"}
               disablePictureInPicture
             >
-              <source src={clip.src} type="video/mp4" />
+              <source src={GTA_LAUNCH_MODE ? `${clip.src}#t=${GTA_START}` : clip.src} type="video/mp4" />
             </video>
+            {/* Thumbnail shown until this slide is active, then the video + captions start */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={clip.poster}
+              alt=""
+              aria-hidden
+              className={`pointer-events-none absolute inset-0 z-[5] h-full w-full object-cover transition-opacity duration-500 ${active ? "opacity-0" : "opacity-100"}`}
+            />
             <div className="absolute inset-0 bg-black/20 pointer-events-none" />
+            <button
+              type="button"
+              onClick={() => setSoundOn((s) => !s)}
+              aria-label={soundOn ? "Mute video" : "Unmute video"}
+              className={`absolute right-2 top-2 z-20 ${active ? "" : "pointer-events-none opacity-0"} flex h-8 items-center gap-1.5 rounded-full bg-black/60 px-3 text-[11px] font-medium text-white backdrop-blur hover:bg-black/80`}
+            >
+              {soundOn ? "🔊 Sound on" : "🔇 Tap for sound"}
+            </button>
 
             {/* Moving full-line caption */}
-            <div className="absolute inset-x-2 bottom-[14%] z-10 flex justify-center px-2">
+            <div className={`absolute inset-x-2 bottom-[14%] z-10 flex justify-center px-2 transition-opacity duration-200 ${capVisible && active ? "opacity-100" : "opacity-0"}`}>
               <div className="w-full max-w-[520px]">
                 <LiveCaptionLine
                   words={words}

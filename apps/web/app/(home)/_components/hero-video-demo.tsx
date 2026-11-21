@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { GTA_LAUNCH_MODE, gtaImage } from "@/lib/gta-launch";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play } from "lucide-react";
 
 const u = (id: string, w: number, h: number) =>
-  `https://images.unsplash.com/${id}?w=${w}&h=${h}&fit=crop&q=80`;
+  GTA_LAUNCH_MODE ? gtaImage(id) : `https://images.unsplash.com/${id}?w=${w}&h=${h}&fit=crop&q=80`;
 
 const PLATFORMS = [
   { platform: "YT", pColor: "#FF0000" },
@@ -371,6 +372,7 @@ export default function HeroVideoDemo() {
                         src={clip.img}
                         alt=""
                         className="w-full h-full object-cover"
+                        style={{ objectPosition: `${[50, 20, 80, 35, 65, 10][i % 6]}% 50%` }}
                       />
                       {/* Score */}
                       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent px-2 pt-4 pb-2">
